@@ -62,7 +62,7 @@ export default function ClockOverlay({ config }: Props) {
 
   return (
     <div
-      className={`absolute flex flex-col gap-0.5 pointer-events-none select-none ${posClass}`}
+      className={`fixed flex flex-col gap-0.5 pointer-events-none select-none z-50 ${posClass}`}
       style={{ fontFamily: `'${config.font}', sans-serif` }}
     >
       {/* Drop shadow for legibility over any photo */}
