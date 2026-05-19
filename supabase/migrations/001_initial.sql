@@ -125,24 +125,7 @@ create trigger photos_updated_at before update on public.photos
 create trigger display_state_updated_at before update on public.display_state
   for each row execute function public.handle_updated_at();
 
--- RLS
-alter table public.albums          enable row level security;
-alter table public.photos          enable row level security;
-alter table public.modes           enable row level security;
-alter table public.display_state   enable row level security;
-alter table public.schedules       enable row level security;
-alter table public.reminders       enable row level security;
-alter table public.settings        enable row level security;
-alter table public.spotify_auth    enable row level security;
-alter table public.drive_auth      enable row level security;
-
-create policy "anon read" on public.albums         for select using (true);
-create policy "anon read" on public.photos         for select using (true);
-create policy "anon read" on public.modes          for select using (true);
-create policy "anon read" on public.display_state  for select using (true);
-create policy "anon read" on public.schedules      for select using (true);
-create policy "anon read" on public.reminders      for select using (true);
-create policy "anon read" on public.settings       for select using (true);
+-- No RLS — single-user personal app, all tables open to anon reads and writes.
 
 -- Realtime
 alter publication supabase_realtime add table public.display_state;
