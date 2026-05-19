@@ -31,7 +31,6 @@ function GridSet({
     >
       {layout.areas.map((area, i) => {
         const photo = photos[i];
-        const url = photo?.storage_path ?? photo?.thumbnail_path;
         return (
           <div
             key={i}
@@ -40,18 +39,23 @@ function GridSet({
               gridRow: `${area.rowStart} / ${area.rowEnd}`,
               overflow: 'hidden',
               position: 'relative',
+              background: '#000',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            {url ? (
+            {photo ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={url}
+                src={`/api/photos/${photo.id}/thumbnail`}
                 alt=""
                 style={{
                   width: '100%',
                   height: '100%',
-                  objectFit: 'cover',
+                  objectFit: 'contain',
                   display: 'block',
+                  imageOrientation: 'from-image',
                 }}
               />
             ) : (

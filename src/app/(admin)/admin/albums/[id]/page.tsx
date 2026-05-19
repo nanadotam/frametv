@@ -20,7 +20,7 @@ export default function AlbumPhotosPage() {
         fetch(`/api/albums/${id}`),
         fetch(`/api/albums/${id}/photos`),
       ]);
-      if (albumRes.ok) setAlbum(await albumRes.json());
+      if (albumRes.ok) { const j = await albumRes.json(); setAlbum(j.album ?? j); }
       if (photosRes.ok) setPhotos(await photosRes.json());
     } finally {
       setLoading(false);

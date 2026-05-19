@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { FastAverageColor } from 'fast-average-color';
 import type { ModeProps } from '@/modes/types';
-import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
+import { useSpotifyNowPlaying, type SpotifyTrack } from '@/hooks/useSpotifyNowPlaying';
 import CoverFlowCarousel from './CoverFlowCarousel';
 
 function NoSpotify() {
@@ -35,10 +35,9 @@ export default function CoverFlowMode({
   brightness,
   onReady,
 }: ModeProps) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const spotifyResult: any = useSpotifyNowPlaying();
-  const nowPlaying = spotifyResult?.nowPlaying ?? spotifyResult?.track ?? null;
-  const history: unknown[] = spotifyResult?.history ?? [];
+  const spotifyResult = useSpotifyNowPlaying();
+  const nowPlaying: SpotifyTrack | null = spotifyResult.current;
+  const queue: SpotifyTrack[] = spotifyResult.queue;
   const [dominantColor, setDominantColor] = useState('#1db954');
   const imgRef = useRef<string | null>(null);
   const fac = useRef(new FastAverageColor());
@@ -49,11 +48,11 @@ export default function CoverFlowMode({
 
   // Extract dominant color from album art
   useEffect(() => {
-    const albumArt = nowPlaying?.albumArt;
+    const albumArt = nowPlaying?.albumArtUrl;
     if (!albumArt || albumArt === imgRef.current) return;
     imgRef.current = albumArt;
 
-    const img = new Image();
+    const img = document.createElement('img');
     img.crossOrigin = 'anonymous';
     img.src = albumArt;
     img.onload = () => {
@@ -62,12 +61,11 @@ export default function CoverFlowMode({
         .then((color) => setDominantColor(color.hex))
         .catch(() => setDominantColor('#1db954'));
     };
-  }, [nowPlaying?.albumArt]);
+  }, [nowPlaying?.albumArtUrl]);
 
-  // Build track list: history + current
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tracks: any[] = [
-    ...(history ?? []),
+  // Build track list: queue + current
+  const tracks = [
+    ...(queue ?? []),
     ...(nowPlaying ? [nowPlaying] : []),
   ];
   const currentIndex = tracks.length - 1;
@@ -97,7 +95,7 @@ export default function CoverFlowMode({
 
           {/* Track info */}
           <motion.div
-            key={nowPlaying.title}
+            key={nowPlaying.name}
             className="text-center mt-12 px-8"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -116,7 +114,7 @@ export default function CoverFlowMode({
                 textOverflow: 'ellipsis',
               }}
             >
-              {nowPlaying.title}
+              {nowPlaying.name}
             </div>
             <div
               style={{
@@ -126,7 +124,7 @@ export default function CoverFlowMode({
                 letterSpacing: '0.02em',
               }}
             >
-              {nowPlaying.artist}
+              {nowPlaying.artists?.join(', ')}
             </div>
           </motion.div>
         </>

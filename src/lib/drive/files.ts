@@ -38,19 +38,17 @@ export async function resolveApiKey(): Promise<string> {
   );
 }
 
-export async function listFolderFiles(
-  folderId: string,
-  apiKey?: string
-): Promise<{ id: string; name: string; mimeType: string; imageMediaMetadata?: { width?: number; height?: number; time?: string } | null; size?: string | null }[]> {
-  const key = apiKey ?? (await resolveApiKey());
-  const results: { id: string; name: string; mimeType: string; imageMediaMetadata?: { width?: number; height?: number; time?: string } | null; size?: string | null }[] = [];
+export type DriveFile = { id: string; name: string; mimeType: string };
+
+async function listFolderFilesShallow(folderId: string, key: string): Promise<DriveFile[]> {
+  const results: DriveFile[] = [];
   let pageToken: string | undefined;
 
   do {
     const params = new URLSearchParams({
       key,
-      q: `'${folderId}' in parents and (mimeType contains 'image/') and trashed = false`,
-      fields: 'nextPageToken,files(id,name,mimeType,size,imageMediaMetadata)',
+      q: `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`,
+      fields: 'nextPageToken,files(id,name,mimeType)',
       pageSize: '1000',
       orderBy: 'name',
     });
@@ -65,9 +63,32 @@ export async function listFolderFiles(
     const data = await res.json();
     results.push(...(data.files ?? []));
     pageToken = data.nextPageToken;
-  } while (pageToken && results.length < 1000);
+  } while (pageToken);
 
   return results;
+}
+
+export async function listFolderFiles(
+  folderId: string,
+  apiKey?: string
+): Promise<{ files: DriveFile[]; unaccessibleSubfolders: string[] }> {
+  const key = apiKey ?? (await resolveApiKey());
+
+  const files = await listFolderFilesShallow(folderId, key);
+  const unaccessibleSubfolders: string[] = [];
+
+  const subfolders = await listSubFolders(folderId, key);
+  for (const sub of subfolders) {
+    const nested = await listFolderFiles(sub.id, key);
+    if (nested.files.length === 0) {
+      unaccessibleSubfolders.push(sub.name);
+    } else {
+      files.push(...nested.files);
+    }
+    unaccessibleSubfolders.push(...nested.unaccessibleSubfolders);
+  }
+
+  return { files, unaccessibleSubfolders };
 }
 
 export async function listSubFolders(

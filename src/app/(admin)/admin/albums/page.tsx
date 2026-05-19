@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { HardDrive, CloudUpload, ImageIcon, Archive, Star, RefreshCw, Plus, FolderOpen } from 'lucide-react';
+import { HardDrive, CloudUpload, ImageIcon, Trash2, Star, RefreshCw, Plus, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -95,12 +95,8 @@ export default function AlbumsPage() {
     await fetchAlbums();
   };
 
-  const archiveAlbum = async (id: string) => {
-    await fetch(`/api/albums/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_archived: true }),
-    });
+  const deleteAlbum = async (id: string) => {
+    await fetch(`/api/albums/${id}`, { method: 'DELETE' });
     setAlbums((prev) => prev.filter((a) => a.id !== id));
   };
 
@@ -233,8 +229,8 @@ export default function AlbumsPage() {
                       </Button>
                     )}
                     <Button size="sm" variant="ghost" className="h-9 w-9 p-0 hover:text-destructive"
-                      onClick={() => archiveAlbum(album.id)} title="Archive">
-                      <Archive size={13} />
+                      onClick={() => deleteAlbum(album.id)} title="Delete album">
+                      <Trash2 size={13} />
                     </Button>
                   </div>
                 </CardContent>

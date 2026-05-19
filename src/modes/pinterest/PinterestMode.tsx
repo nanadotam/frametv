@@ -94,29 +94,22 @@ export default function PinterestMode({
                 } as React.CSSProperties
               }
             >
-              {doubled.map((photo, imgIdx) => {
-                const url = photo.storage_path ?? photo.thumbnail_path;
-                const aspectRatio =
-                  photo.aspect_ratio ??
-                  (photo.width && photo.height
-                    ? photo.width / photo.height
-                    : 1.5);
-                const imgWidth = `calc(${rowHeight} * ${aspectRatio})`;
-
-                return url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={`${photo.id}-${imgIdx}`}
-                    src={url}
-                    alt=""
-                    className={styles.photo}
-                    style={{
-                      width: imgWidth,
-                      borderRadius: `${cornerRadius}px`,
-                    }}
-                  />
-                ) : null;
-              })}
+              {doubled.map((photo, imgIdx) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={`${photo.id}-${imgIdx}`}
+                  src={`/api/photos/${photo.id}/thumbnail`}
+                  alt=""
+                  className={styles.photo}
+                  style={{
+                    height: '100%',
+                    width: 'auto',
+                    borderRadius: `${cornerRadius}px`,
+                    imageOrientation: 'from-image',
+                    flexShrink: 0,
+                  }}
+                />
+              ))}
             </div>
           </div>
         );

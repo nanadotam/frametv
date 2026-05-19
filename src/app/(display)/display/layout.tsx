@@ -42,10 +42,8 @@ export default function DisplayLayout({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <html lang="en" className="bg-black overflow-hidden">
-      <body className="bg-black overflow-hidden w-screen h-screen">
-        {children}
-      </body>
-    </html>
+    <div className="bg-black overflow-hidden w-screen h-screen">
+      {children}
+    </div>
   );
 }

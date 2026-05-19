@@ -1,13 +1,11 @@
 'use client';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { useDisplayStateRealtime } from '@/hooks/useDisplayStateRealtime';
 import { useActiveMode } from '@/hooks/useActiveMode';
 import { useAutoTheme } from '@/hooks/useAutoTheme';
 import { useAutoDim } from '@/hooks/useAutoDim';
 import { MODES } from '@/modes/index';
 import type { ModeId } from '@/modes/types';
-import type { DisplayState } from '@/types/db';
 
 function LoadingSkeleton() {
   return (
@@ -21,19 +19,10 @@ function LoadingSkeleton() {
 }
 
 export default function DisplayPage() {
-  // useDisplayStateRealtime manages its own subscription and returns DisplayState | null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const displayState: DisplayState | null = (useDisplayStateRealtime as any)();
-
-  // useActiveMode accepts displayState and returns an object with mode id + config
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const activeMode: any = (useActiveMode as any)(displayState);
-
-  // useAutoTheme returns 'light' | 'dark'
-  const theme: 'light' | 'dark' = useAutoTheme();
-
-  // useAutoDim returns boolean
-  const dim: boolean = useAutoDim();
+  const displayState = useDisplayStateRealtime();
+  const activeMode = useActiveMode();
+  const theme = useAutoTheme();
+  const dim = useAutoDim();
 
   if (!displayState) {
     return (
@@ -43,18 +32,17 @@ export default function DisplayPage() {
     );
   }
 
-  const modeId = (activeMode?.id ?? activeMode?.mode_id ?? null) as ModeId | null;
+  const modeId = activeMode.modeId as ModeId | null;
   const ModeComponent = modeId && MODES[modeId] ? MODES[modeId] : null;
 
   const brightness: number = (displayState.brightness as number) ?? 100;
   const isPaused: boolean = (displayState.is_paused as boolean) ?? false;
-  const config: Record<string, unknown> = (activeMode?.config as Record<string, unknown>) ?? {};
 
   return (
     <div className="w-screen h-screen bg-black overflow-hidden relative">
       {ModeComponent ? (
         <ModeComponent
-          config={config}
+          config={{}}
           theme={theme}
           brightness={brightness}
           isPaused={isPaused}

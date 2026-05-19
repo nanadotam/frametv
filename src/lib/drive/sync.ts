@@ -24,14 +24,14 @@ export async function syncFolderByUrl(
     .from('albums')
     .select('id')
     .eq('drive_folder_id', folderId)
-    .maybeSingle();
+    .maybeSingle(); // intentionally matches archived albums too so we can unarchive them
 
   let albumId: string;
 
   if (existing) {
     albumId = existing.id;
-    // Update name in case folder was renamed
-    await supabase.from('albums').update({ name, updated_at: new Date().toISOString() }).eq('id', albumId);
+    // Update name and unarchive in case folder was renamed or previously archived
+    await supabase.from('albums').update({ name, is_archived: false, updated_at: new Date().toISOString() }).eq('id', albumId);
   } else {
     const { data: inserted, error: insertErr } = await supabase
       .from('albums')
@@ -49,9 +49,15 @@ export async function syncFolderByUrl(
   }
 
   // ── 2. List files from Drive ──────────────────────────────────────────────
-  let files: Awaited<ReturnType<typeof listFolderFiles>> = [];
+  let files: { id: string; name: string; mimeType: string }[] = [];
   try {
-    files = await listFolderFiles(folderId);
+    const result = await listFolderFiles(folderId);
+    files = result.files;
+    if (result.unaccessibleSubfolders.length > 0) {
+      errors.push(
+        `Some subfolders could not be read (they need to be individually shared as "Anyone with the link"): ${result.unaccessibleSubfolders.join(', ')}`
+      );
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     errors.push(msg);
@@ -60,7 +66,7 @@ export async function syncFolderByUrl(
   }
 
   if (files.length === 0) {
-    errors.push('Drive folder is empty or contains no images.');
+    errors.push('Drive folder is empty or contains no images. If photos are in subfolders, each subfolder must also be shared as "Anyone with the link".');
     return { synced: 0, albumId, errors };
   }
 
@@ -82,15 +88,12 @@ export async function syncFolderByUrl(
       source_id: file.id,
       storage_path: getImageUrl(file.id),
       thumbnail_path: getThumbnailUrl(file.id, 800),
-      width: file.imageMediaMetadata?.width ?? null,
-      height: file.imageMediaMetadata?.height ?? null,
-      aspect_ratio:
-        file.imageMediaMetadata?.width && file.imageMediaMetadata?.height
-          ? `${file.imageMediaMetadata.width}:${file.imageMediaMetadata.height}`
-          : null,
+      width: null,
+      height: null,
+      aspect_ratio: null,
       mime_type: file.mimeType,
-      bytes: file.size ? parseInt(file.size) : null,
-      taken_at: file.imageMediaMetadata?.time ?? null,
+      bytes: null,
+      taken_at: null,
       metadata: { originalName: file.name, driveIndex: idx },
     }));
 

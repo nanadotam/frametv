@@ -89,7 +89,7 @@ export default function SlideshowSingleMode({
       : true;
   const showBackdrop = blurredBackdrop && photo && !isLandscape;
 
-  const photoUrl = photo?.storage_path ?? photo?.thumbnail_path ?? null;
+  const photoUrl = photo ? `/api/photos/${photo.id}/thumbnail` : null;
 
   return (
     <div
@@ -102,13 +102,12 @@ export default function SlideshowSingleMode({
     >
       {/* Blurred backdrop */}
       {showBackdrop && photoUrl && (
-        <div
-          className="absolute inset-0 bg-cover bg-center scale-110"
-          style={{
-            backgroundImage: `url(${photoUrl})`,
-            filter: 'blur(32px)',
-            transform: 'scale(1.15)',
-          }}
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photoUrl}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover scale-110"
+          style={{ filter: 'blur(32px)', transform: 'scale(1.15)', imageOrientation: 'from-image' }}
         />
       )}
 
@@ -128,7 +127,7 @@ export default function SlideshowSingleMode({
               src={photoUrl}
               alt=""
               className="max-w-full max-h-full object-contain"
-              style={{ display: 'block' }}
+              style={{ display: 'block', imageOrientation: 'from-image' }}
             />
           </motion.div>
         )}

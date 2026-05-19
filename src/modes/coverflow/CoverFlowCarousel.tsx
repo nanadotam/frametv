@@ -1,13 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useRef, useEffect, useState } from 'react';
 
-interface Track {
-  albumArt?: string;
-  title: string;
-  artist: string;
-}
+import type { SpotifyTrack } from '@/hooks/useSpotifyNowPlaying';
+
+type Track = Pick<SpotifyTrack, 'name' | 'artists' | 'albumArtUrl'>;
 
 interface CoverFlowCarouselProps {
   tracks: Track[];
@@ -15,75 +12,96 @@ interface CoverFlowCarouselProps {
   dominantColor: string;
 }
 
-const FLANK_COUNT = 2;
+const COVER_SIZE = 240;
+const FLANK_COUNT = 4;
+
+// Ported from ipod-classic-js AlbumCover.tsx getOffsetPx
+function getOffsetPx(offset: number, midpointX: number): number {
+  if (offset === 0) return 0;
+  const val = midpointX - COVER_SIZE / 2 + offset * (COVER_SIZE / 2);
+  return val + (offset < 0 ? -COVER_SIZE / 2 : COVER_SIZE / 4);
+}
 
 export default function CoverFlowCarousel({
   tracks,
   currentIndex,
   dominantColor,
 }: CoverFlowCarouselProps) {
-  const visibleTracks: { track: Track; offset: number }[] = [];
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [midpointX, setMidpointX] = useState(0);
 
+  useEffect(() => {
+    const update = () => {
+      if (containerRef.current) {
+        setMidpointX(containerRef.current.getBoundingClientRect().width / 2);
+      }
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  const visibleTracks: { track: Track; index: number; offset: number }[] = [];
   for (let o = -FLANK_COUNT; o <= FLANK_COUNT; o++) {
     const idx = currentIndex + o;
     if (idx >= 0 && idx < tracks.length) {
-      visibleTracks.push({ track: tracks[idx], offset: o });
+      visibleTracks.push({ track: tracks[idx], index: idx, offset: o });
     }
   }
 
   return (
     <div
+      ref={containerRef}
       style={{
         position: 'relative',
         width: '100%',
-        height: '360px',
-        perspective: '1000px',
+        height: `${COVER_SIZE + 80}px`,
+        perspective: '500px',
+        transformStyle: 'preserve-3d',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
+        paddingTop: '20px',
       }}
     >
-      {visibleTracks.map(({ track, offset }) => {
-        const isCurrent = offset === 0;
-        const absOffset = Math.abs(offset);
+      {visibleTracks.map(({ track, index, offset }) => {
+        const isActive = offset === 0;
+        const offsetPx = getOffsetPx(offset, midpointX);
+        const zIndex = 1 - Math.abs(offset);
 
-        const translateX = offset * 220;
-        const translateZ = isCurrent ? 80 : -absOffset * 60;
-        const rotateY = isCurrent ? 0 : offset > 0 ? -35 : 35;
-        const scale = isCurrent ? 1 : 1 - absOffset * 0.15;
-        const zIndex = 10 - absOffset;
-        const opacity = 1 - absOffset * 0.25;
+        // CSS transform matching ipod-classic-js patterns exactly
+        const transform = isActive
+          ? `translate3d(0, 4px, 20px)`
+          : `translateX(${offsetPx}px) scale(1.1) translateZ(-65px) rotateY(${offset < 0 ? '70deg' : '-70deg'})`;
 
         return (
-          <motion.div
-            key={`${track.title}-${offset}`}
+          <div
+            key={`cf-${index}`}
             style={{
               position: 'absolute',
-              width: '240px',
-              height: '240px',
+              width: `${COVER_SIZE}px`,
+              height: `${COVER_SIZE}px`,
               zIndex,
+              transition: 'transform 0.25s ease, opacity 0.35s ease',
+              transform,
+              transformStyle: 'preserve-3d',
+              // Reflection matching ipod-classic-js -webkit-box-reflect
+              WebkitBoxReflect:
+                'below 0px -webkit-gradient(linear, left top, left bottom, from(transparent), color-stop(70%, transparent), to(rgba(240,240,240,0.2)))',
             }}
-            animate={{
-              x: translateX,
-              z: translateZ,
-              rotateY,
-              scale,
-              opacity,
-            }}
-            transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
           >
-            {/* Album art */}
-            {track.albumArt ? (
+            {track.albumArtUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={track.albumArt}
-                alt={track.title}
+                src={track.albumArtUrl}
+                alt={track.name}
                 style={{
                   width: '100%',
                   height: '100%',
                   objectFit: 'cover',
-                  borderRadius: '8px',
-                  boxShadow: isCurrent
+                  borderRadius: '4px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  boxShadow: isActive
                     ? `0 24px 80px rgba(0,0,0,0.8), 0 0 40px ${dominantColor}66`
                     : '0 8px 32px rgba(0,0,0,0.6)',
                 }}
@@ -93,38 +111,19 @@ export default function CoverFlowCarousel({
                 style={{
                   width: '100%',
                   height: '100%',
-                  borderRadius: '8px',
+                  borderRadius: '4px',
                   background: `linear-gradient(135deg, ${dominantColor}88, #1a1a1a)`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '48px',
+                  border: '1px solid rgba(255,255,255,0.1)',
                 }}
               >
                 🎵
               </div>
             )}
-
-            {/* Reflection */}
-            {isCurrent && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  width: '100%',
-                  height: '60px',
-                  background:
-                    'linear-gradient(to bottom, rgba(255,255,255,0.15), transparent)',
-                  transform: 'scaleY(-1)',
-                  maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.4), transparent)',
-                  WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.4), transparent)',
-                  borderRadius: '0 0 8px 8px',
-                  overflow: 'hidden',
-                }}
-              />
-            )}
-          </motion.div>
+          </div>
         );
       })}
     </div>
