@@ -164,7 +164,10 @@ export default function RemindersPage() {
   const fetchReminders = useCallback(async () => {
     try {
       const res = await fetch('/api/reminders');
-      if (res.ok) setReminders(await res.json());
+      if (res.ok) {
+        const json = await res.json();
+        setReminders(Array.isArray(json) ? json : (json.reminders ?? []));
+      }
     } finally {
       setLoading(false);
     }

@@ -64,8 +64,15 @@ export default function SchedulePage() {
         fetch('/api/schedules'),
         fetch('/api/albums'),
       ]);
-      if (schRes.ok) setSchedules(await schRes.json());
-      if (albRes.ok) setAlbums((await albRes.json()).filter((a: Album) => !a.is_archived));
+      if (schRes.ok) {
+        const json = await schRes.json();
+        setSchedules(Array.isArray(json) ? json : (json.schedules ?? []));
+      }
+      if (albRes.ok) {
+        const json = await albRes.json();
+        const list: Album[] = Array.isArray(json) ? json : (json.albums ?? []);
+        setAlbums(list.filter((a) => !a.is_archived));
+      }
     } finally {
       setLoading(false);
     }

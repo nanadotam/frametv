@@ -35,10 +35,14 @@ export default function AlbumsPage() {
   const fetchAlbums = useCallback(async () => {
     try {
       const res = await fetch('/api/albums');
-      if (res.ok) setAlbums(await res.json());
+      if (res.ok) {
+        const json = await res.json();
+        setAlbums(Array.isArray(json) ? json : (json.albums ?? []));
+      }
       const dsRes = await fetch('/api/display-state');
       if (dsRes.ok) {
-        const ds = await dsRes.json();
+        const json = await dsRes.json();
+        const ds = json.state ?? json;
         setActiveAlbumIds(ds.active_album_ids ?? []);
       }
     } catch {

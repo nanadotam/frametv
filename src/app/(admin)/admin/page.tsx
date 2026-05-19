@@ -5,7 +5,7 @@ import { SkipForward, Sun } from 'lucide-react';
 import { Button } from '@/components/admin/Button';
 import { Card } from '@/components/admin/Card';
 import { Badge } from '@/components/admin/Badge';
-import type { DisplayState, Album, Mode } from '@/types/db';
+import type { DisplayState, Album } from '@/types/db';
 
 const MODES = [
   { id: 'slideshow-single', label: 'Slideshow' },
@@ -29,24 +29,28 @@ async function patchDisplayState(patch: Partial<DisplayState>) {
 export default function NowPlayingPage() {
   const [displayState, setDisplayState] = useState<DisplayState | null>(null);
   const [albums, setAlbums] = useState<Album[]>([]);
-  const [modes, setModes] = useState<Mode[]>([]);
   const [scheduleActive, setScheduleActive] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const [dsRes, albumsRes, modesRes, scheduleRes] = await Promise.all([
+      const [dsRes, albumsRes, scheduleRes] = await Promise.all([
         fetch('/api/display-state'),
         fetch('/api/albums'),
-        fetch('/api/modes'),
-        fetch('/api/schedules/active'),
+        fetch('/api/schedules'),
       ]);
-      if (dsRes.ok) setDisplayState(await dsRes.json());
-      if (albumsRes.ok) setAlbums(await albumsRes.json());
-      if (modesRes.ok) setModes(await modesRes.json());
+      if (dsRes.ok) {
+        const json = await dsRes.json();
+        setDisplayState(json.state ?? json ?? null);
+      }
+      if (albumsRes.ok) {
+        const json = await albumsRes.json();
+        setAlbums(Array.isArray(json) ? json : (json.albums ?? []));
+      }
       if (scheduleRes.ok) {
-        const s = await scheduleRes.json();
-        setScheduleActive(!!s);
+        const json = await scheduleRes.json();
+        const list = Array.isArray(json) ? json : (json.schedules ?? []);
+        setScheduleActive(list.length > 0);
       }
     } catch {
       // silently ignore fetch errors during dev
@@ -83,9 +87,7 @@ export default function NowPlayingPage() {
   };
 
   const activeModeName =
-    MODES.find((m) => m.id === displayState?.active_mode_id)?.label ??
-    modes.find((m) => m.id === displayState?.active_mode_id)?.name ??
-    'None';
+    MODES.find((m) => m.id === displayState?.active_mode_id)?.label ?? 'None';
 
   const activeAlbumNames = albums
     .filter((a) => displayState?.active_album_ids?.includes(a.id))
