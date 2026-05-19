@@ -1,139 +1,159 @@
-// Drive sync — API key approach (public shared folders, no OAuth)
-// Walks Drive/FrameTV/<Album>/ and caches photo metadata in Supabase.
-// Photos are NOT downloaded to Supabase Storage — we serve them directly
-// from Google Drive CDN via getThumbnailUrl/getImageUrl (much simpler).
-
 import { createServiceClient } from '@/lib/supabase/server';
-import { listFolderFiles, listSubFolders, getThumbnailUrl, getImageUrl } from './files';
+import { extractFolderId, getFolderName, listFolderFiles, getThumbnailUrl, getImageUrl } from './files';
 
-const FRAMETV_ROOT_FOLDER_ID = process.env.FRAMETV_ROOT_FOLDER_ID!;
+/**
+ * Import a single public Drive folder as an album.
+ * Creates the album row, lists all image files, bulk-inserts photo rows.
+ * Re-importing the same folder (same drive_folder_id) re-syncs photos.
+ */
+export async function syncFolderByUrl(
+  folderUrl: string
+): Promise<{ synced: number; albumId: string; errors: string[] }> {
+  const folderId = extractFolderId(folderUrl);
+  if (!folderId) throw new Error('Invalid Drive folder URL — could not extract folder ID.');
 
+  const supabase = createServiceClient();
+  const errors: string[] = [];
+
+  // ── 1. Get / create album row ─────────────────────────────────────────────
+  // Get folder name first (falls back to "Album (XXXXXXXX)" when API key missing)
+  const name = await getFolderName(folderId);
+
+  // Check whether this folder has already been imported
+  const { data: existing } = await supabase
+    .from('albums')
+    .select('id')
+    .eq('drive_folder_id', folderId)
+    .maybeSingle();
+
+  let albumId: string;
+
+  if (existing) {
+    albumId = existing.id;
+    // Update name in case folder was renamed
+    await supabase.from('albums').update({ name, updated_at: new Date().toISOString() }).eq('id', albumId);
+  } else {
+    const { data: inserted, error: insertErr } = await supabase
+      .from('albums')
+      .insert({ name, source_type: 'drive', drive_folder_id: folderId, display_order: 0 })
+      .select('id')
+      .single();
+
+    if (!inserted) {
+      throw new Error(
+        `Could not create album in database: ${insertErr?.message ?? 'unknown error'}. ` +
+        'Make sure the Supabase URL and key are correct and the albums table exists.'
+      );
+    }
+    albumId = inserted.id;
+  }
+
+  // ── 2. List files from Drive ──────────────────────────────────────────────
+  let files: Awaited<ReturnType<typeof listFolderFiles>> = [];
+  try {
+    files = await listFolderFiles(folderId);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(msg);
+    // Album exists but photos couldn't be fetched (e.g. no API key yet)
+    return { synced: 0, albumId, errors };
+  }
+
+  if (files.length === 0) {
+    errors.push('Drive folder is empty or contains no images.');
+    return { synced: 0, albumId, errors };
+  }
+
+  // ── 3. Find which files are already tracked ────────────────────────────────
+  const { data: existingPhotos } = await supabase
+    .from('photos')
+    .select('source_id')
+    .eq('album_id', albumId)
+    .eq('source_type', 'drive');
+
+  const existingIds = new Set((existingPhotos ?? []).map((p: { source_id: string }) => p.source_id));
+  const newFiles = files.filter((f) => !existingIds.has(f.id));
+
+  // ── 4. Bulk insert new photos ──────────────────────────────────────────────
+  if (newFiles.length > 0) {
+    const rows = newFiles.map((file, idx) => ({
+      album_id: albumId,
+      source_type: 'drive' as const,
+      source_id: file.id,
+      storage_path: getImageUrl(file.id),
+      thumbnail_path: getThumbnailUrl(file.id, 800),
+      width: file.imageMediaMetadata?.width ?? null,
+      height: file.imageMediaMetadata?.height ?? null,
+      aspect_ratio:
+        file.imageMediaMetadata?.width && file.imageMediaMetadata?.height
+          ? `${file.imageMediaMetadata.width}:${file.imageMediaMetadata.height}`
+          : null,
+      mime_type: file.mimeType,
+      bytes: file.size ? parseInt(file.size) : null,
+      taken_at: file.imageMediaMetadata?.time ?? null,
+      metadata: { originalName: file.name, driveIndex: idx },
+    }));
+
+    // Insert in batches of 500 to stay within Supabase payload limits
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error: batchErr } = await supabase.from('photos').insert(rows.slice(i, i + 500));
+      if (batchErr) errors.push(`Batch ${i / 500 + 1}: ${batchErr.message}`);
+    }
+
+    // Set cover photo to first image if album has none
+    const { data: albumRow } = await supabase
+      .from('albums')
+      .select('cover_photo_id')
+      .eq('id', albumId)
+      .single();
+
+    if (!albumRow?.cover_photo_id) {
+      const { data: firstPhoto } = await supabase
+        .from('photos')
+        .select('id')
+        .eq('album_id', albumId)
+        .order('metadata->driveIndex', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (firstPhoto) {
+        await supabase.from('albums').update({ cover_photo_id: firstPhoto.id }).eq('id', albumId);
+      }
+    }
+  }
+
+  return { synced: newFiles.length, albumId, errors };
+}
+
+/**
+ * Re-sync all drive albums (called by cron).
+ */
 export async function syncDrive(filterAlbumId?: string): Promise<{ synced: number; errors: string[] }> {
   const supabase = createServiceClient();
   let synced = 0;
   const errors: string[] = [];
 
-  // 1. Get album subfolders from the FrameTV root
-  let albumFolders: { id: string; name: string }[] = [];
-  try {
-    albumFolders = await listSubFolders(FRAMETV_ROOT_FOLDER_ID);
-  } catch (err: unknown) {
-    throw new Error(`Could not list FrameTV root folder: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const query = supabase
+    .from('albums')
+    .select('id, drive_folder_id, name')
+    .eq('source_type', 'drive')
+    .eq('is_archived', false);
 
-  for (const folder of albumFolders) {
+  const { data: albums } = filterAlbumId
+    ? await query.eq('id', filterAlbumId)
+    : await query;
+
+  for (const album of albums ?? []) {
+    if (!album.drive_folder_id) continue;
     try {
-      // 2. Upsert album row
-      const { data: album } = await supabase
-        .from('albums')
-        .upsert(
-          { name: folder.name, source_type: 'drive', drive_folder_id: folder.id },
-          { onConflict: 'drive_folder_id' }
-        )
-        .select()
-        .single();
-
-      if (!album) continue;
-      if (filterAlbumId && album.id !== filterAlbumId) continue;
-
-      // 3. List photos in this folder
-      const files = await listFolderFiles(folder.id);
-
-      for (const file of files) {
-        try {
-          // Skip if already tracked
-          const { data: existing } = await supabase
-            .from('photos')
-            .select('id')
-            .eq('source_type', 'drive')
-            .eq('source_id', file.id)
-            .maybeSingle();
-
-          if (existing) continue;
-
-          const width = file.imageMediaMetadata?.width ?? null;
-          const height = file.imageMediaMetadata?.height ?? null;
-          const aspect = width && height ? `${width}:${height}` : null;
-          const isCover = file.name.toLowerCase().startsWith('cover.');
-
-          await supabase.from('photos').insert({
-            album_id: album.id,
-            source_type: 'drive',
-            source_id: file.id,
-            // Use Drive CDN directly — no Supabase Storage needed
-            storage_path: getImageUrl(file.id),
-            thumbnail_path: getThumbnailUrl(file.id, 800),
-            width,
-            height,
-            aspect_ratio: aspect,
-            mime_type: file.mimeType,
-            bytes: file.size ? parseInt(file.size) : null,
-            taken_at: file.imageMediaMetadata?.time ?? null,
-            metadata: { originalName: file.name },
-          });
-
-          // If this is the cover photo, update album
-          if (isCover) {
-            const { data: inserted } = await supabase
-              .from('photos')
-              .select('id')
-              .eq('source_id', file.id)
-              .single();
-            if (inserted) {
-              await supabase.from('albums').update({ cover_photo_id: inserted.id }).eq('id', album.id);
-            }
-          }
-
-          synced++;
-        } catch (fileErr: unknown) {
-          errors.push(`File ${file.id} (${file.name}): ${fileErr instanceof Error ? fileErr.message : String(fileErr)}`);
-        }
-      }
-    } catch (folderErr: unknown) {
-      errors.push(`Folder ${folder.id} (${folder.name}): ${folderErr instanceof Error ? folderErr.message : String(folderErr)}`);
+      const folderUrl = `https://drive.google.com/drive/folders/${album.drive_folder_id}`;
+      const result = await syncFolderByUrl(folderUrl);
+      synced += result.synced;
+      errors.push(...result.errors);
+    } catch (err: unknown) {
+      errors.push(`Album ${album.name}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   return { synced, errors };
-}
-
-// Sync a single folder given its Drive folder URL (for manual "Add from Drive")
-export async function syncFolderByUrl(folderUrl: string): Promise<{ synced: number; albumId: string; errors: string[] }> {
-  const { extractFolderId, getFolderName } = await import('./files');
-  const folderId = extractFolderId(folderUrl);
-  if (!folderId) throw new Error('Invalid Drive folder URL');
-
-  const supabase = createServiceClient();
-
-  // Get folder name — falls back to "Album (XXXXXXXX)" if no API key yet
-  const name = await getFolderName(folderId);
-
-  // Upsert the album row. This works with anon key once migration 002 is applied.
-  const { data: album, error: albumError } = await supabase
-    .from('albums')
-    .upsert(
-      { name, source_type: 'drive', drive_folder_id: folderId },
-      { onConflict: 'drive_folder_id' }
-    )
-    .select()
-    .single();
-
-  if (!album) {
-    const msg = albumError?.message ?? 'unknown database error';
-    throw new Error(
-      `Failed to create album: ${msg}. ` +
-      'Make sure migration 002_anon_write.sql has been run in your Supabase SQL editor.'
-    );
-  }
-
-  // Sync photos — may fail if API key not set yet; that's OK, album still exists.
-  const errors: string[] = [];
-  let synced = 0;
-  try {
-    ({ synced } = await syncDrive(album.id));
-  } catch (err: unknown) {
-    errors.push(err instanceof Error ? err.message : String(err));
-  }
-
-  return { synced, albumId: album.id, errors };
 }

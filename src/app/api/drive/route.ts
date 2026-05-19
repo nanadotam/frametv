@@ -4,8 +4,7 @@ import { syncFolderByUrl } from '@/lib/drive/sync';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { folderUrl } = body;
+    const { folderUrl } = await request.json();
 
     if (!folderUrl) {
       return NextResponse.json({ error: 'folderUrl is required' }, { status: 400 });
@@ -14,7 +13,7 @@ export async function POST(request: NextRequest) {
     const folderId = extractFolderId(folderUrl);
     if (!folderId) {
       return NextResponse.json(
-        { error: 'Could not extract folder ID. Paste a full Google Drive folder URL.' },
+        { error: 'Could not find a folder ID in that URL. Paste a full Google Drive folder link.' },
         { status: 400 }
       );
     }
@@ -25,12 +24,12 @@ export async function POST(request: NextRequest) {
       albumId,
       synced,
       errors,
-      // Surface any non-fatal errors (e.g. missing API key) to the UI
       warning: errors.length > 0 ? errors[0] : undefined,
     }, { status: 201 });
+
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[drive/route] POST error:', message);
+    console.error('[/api/drive] POST error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

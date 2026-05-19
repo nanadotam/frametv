@@ -60,11 +60,14 @@ export default function AlbumsPage() {
         return;
       }
       const json = await res.json();
-      setDriveUrl('');
-      setDriveModalOpen(false);
       await fetchAlbums();
-      // Surface non-fatal warnings (e.g. API key not configured → no photos yet)
-      if (json.warning) setDriveError(`Album created. Note: ${json.warning}`);
+      if (json.warning) {
+        // Album was created but photos couldn't be synced — stay in modal, show why
+        setDriveError(`Album "${json.albumId ? 'created' : ''}" but no photos synced: ${json.warning}`);
+      } else {
+        setDriveUrl('');
+        setDriveModalOpen(false);
+      }
     } catch {
       setDriveError('Network error');
     } finally {
