@@ -12,9 +12,9 @@ interface UnsplashMoodConfig {
 interface UnsplashPhoto {
   id: string;
   urls: { full: string; regular: string; small: string };
-  user: { name: string };
-  links: { html: string };
-  alt_description?: string;
+  user: { name: string; links: { html: string } };
+  links: { html: string; download_location: string };
+  alt_description?: string | null;
 }
 
 export default function UnsplashMoodMode({
@@ -40,11 +40,11 @@ export default function UnsplashMoodMode({
     setPhotos([]);
     setCurrentIndex(0);
 
-    fetch(`/api/unsplash/mood?query=${encodeURIComponent(mood)}`)
+    fetch(`/api/unsplash?mood=${encodeURIComponent(mood)}`)
       .then((r) => r.json())
-      .then((data: UnsplashPhoto[]) => {
-        if (Array.isArray(data)) {
-          setPhotos(data);
+      .then((data: { photos?: UnsplashPhoto[]; error?: string }) => {
+        if (Array.isArray(data.photos) && data.photos.length > 0) {
+          setPhotos(data.photos);
           onReady?.();
         }
       })
@@ -111,7 +111,7 @@ export default function UnsplashMoodMode({
             >
               Photo by{' '}
               <a
-                href={photo.links.html}
+                href={photo.user.links.html}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: 'inherit', textDecoration: 'underline' }}
