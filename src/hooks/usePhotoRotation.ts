@@ -62,6 +62,17 @@ export function usePhotoRotation({
     );
   }, []);
 
+  // Listen for remote skip signals dispatched by the display page
+  useEffect(() => {
+    const onSkip = (e: Event) => {
+      const dir = (e as CustomEvent<{ direction: 'next' | 'prev' }>).detail?.direction;
+      if (dir === 'next') advance();
+      else if (dir === 'prev') previous();
+    };
+    window.addEventListener('frametv:skip', onSkip);
+    return () => window.removeEventListener('frametv:skip', onSkip);
+  }, [advance, previous]);
+
   const currentPhoto = ordered.length > 0 ? (ordered[index] ?? null) : null;
 
   return { photos: ordered, currentIndex: index, currentPhoto, advance, previous };

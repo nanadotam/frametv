@@ -59,6 +59,7 @@ export interface DisplayState {
   is_paused: boolean;
   brightness: number; // 5–100
   override_until: string | null;
+  photo_skip: number;
   updated_at: string;
 }
 

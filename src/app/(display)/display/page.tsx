@@ -1,11 +1,14 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { useDisplayStateRealtime } from '@/hooks/useDisplayStateRealtime';
 import { useActiveMode } from '@/hooks/useActiveMode';
 import { useAutoTheme } from '@/hooks/useAutoTheme';
 import { useAutoDim } from '@/hooks/useAutoDim';
+import { useClockOverlayConfig } from '@/hooks/useClockOverlayConfig';
 import { MODES } from '@/modes/index';
 import type { ModeId } from '@/modes/types';
+import ClockOverlay from '@/components/display/ClockOverlay';
 
 function LoadingSkeleton() {
   return (
@@ -23,6 +26,25 @@ export default function DisplayPage() {
   const activeMode = useActiveMode();
   const theme = useAutoTheme();
   const dim = useAutoDim();
+  const clockConfig = useClockOverlayConfig();
+
+  // Dispatch skip events when photo_skip changes in DB
+  const prevSkipRef = useRef<number | null>(null);
+  useEffect(() => {
+    const skip = displayState?.photo_skip ?? 0;
+    if (prevSkipRef.current === null) {
+      prevSkipRef.current = skip;
+      return;
+    }
+    const delta = skip - prevSkipRef.current;
+    prevSkipRef.current = skip;
+    if (delta === 0) return;
+    const direction = delta > 0 ? 'next' : 'prev';
+    const steps = Math.abs(delta);
+    for (let i = 0; i < steps; i++) {
+      window.dispatchEvent(new CustomEvent('frametv:skip', { detail: { direction } }));
+    }
+  }, [displayState?.photo_skip]);
 
   if (!displayState) {
     return (
@@ -37,12 +59,13 @@ export default function DisplayPage() {
 
   const brightness: number = (displayState.brightness as number) ?? 100;
   const isPaused: boolean = (displayState.is_paused as boolean) ?? false;
+  const config: Record<string, unknown> = (activeMode as { config?: Record<string, unknown> }).config ?? {};
 
   return (
     <div className="w-screen h-screen bg-black overflow-hidden relative">
       {ModeComponent ? (
         <ModeComponent
-          config={{}}
+          config={config}
           theme={theme}
           brightness={brightness}
           isPaused={isPaused}
@@ -50,6 +73,9 @@ export default function DisplayPage() {
       ) : (
         <LoadingSkeleton />
       )}
+
+      {/* Clock overlay */}
+      <ClockOverlay config={clockConfig} />
 
       {/* Dim overlay */}
       {dim && (

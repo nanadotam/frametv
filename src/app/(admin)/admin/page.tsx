@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { SkipForward, Pause, Play, Tv, Sun, Radio, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { SkipForward, SkipBack, Pause, Play, Tv, Sun, Radio, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -91,6 +91,10 @@ export default function NowPlayingPage() {
 
   const nextPhoto = async () => {
     await fetch('/api/display-state/next', { method: 'POST' });
+  };
+
+  const prevPhoto = async () => {
+    await fetch('/api/display-state/prev', { method: 'POST' });
   };
 
   const commitBrightness = async (val: number) => {
@@ -248,16 +252,28 @@ export default function NowPlayingPage() {
             >
               {isPaused ? <><Play size={18} /> Resume</> : <><Pause size={18} /> Pause</>}
             </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full h-12 gap-2"
-              onClick={nextPhoto}
-              disabled={!displayState || isPaused}
-            >
-              <SkipForward size={16} />
-              Next Photo
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-12 gap-2"
+                onClick={prevPhoto}
+                disabled={!displayState || isPaused}
+              >
+                <SkipBack size={16} />
+                Prev
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-12 gap-2"
+                onClick={nextPhoto}
+                disabled={!displayState || isPaused}
+              >
+                <SkipForward size={16} />
+                Next
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
