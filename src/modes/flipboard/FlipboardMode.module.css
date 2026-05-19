@@ -1,0 +1,171 @@
+/* ─── Wrapper: fills the entire TV display ─── */
+.wrapper {
+  width: 100%;
+  height: 100%;
+  background: #111111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+/* ─── Board: the dark bezel that holds all tiles ─── */
+.board {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #1A1A1A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Tile grid ─── */
+.tileGrid {
+  display: grid;
+  /* cols/rows injected via inline style */
+  gap: 3px;
+  align-content: center;
+  justify-content: center;
+}
+
+/* ─── Accent bars (small colored corner squares) ─── */
+.accentBar {
+  position: absolute;
+  top: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 5;
+}
+
+.accentBarLeft  { left: 20px; }
+.accentBarRight { right: 20px; }
+
+.accentSegment {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #00FF7F;
+  transition: background-color 0.5s ease;
+}
+
+/* ─── Keyboard hint badge ─── */
+.keyboardHint {
+  position: absolute;
+  bottom: 14px;
+  left: 18px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: background 0.2s;
+  user-select: none;
+}
+.keyboardHint:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* Bottom scroll indicator */
+.board::after {
+  content: '';
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ─── Individual Tile ─── */
+.tile {
+  background: #111111;
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+  /* width/height set via inline style */
+}
+
+.tileInner {
+  position: absolute;
+  inset: 1px;
+  background: #222222;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+  transition: background-color 0.04s linear;
+}
+
+/* Metallic sheen (always present, opacity controlled) */
+.tileInner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.07) 45%,
+    rgba(255, 255, 255, 0.13) 50%,
+    rgba(255, 255, 255, 0.07) 55%,
+    transparent 100%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 3;
+}
+
+/* Horizontal split seam */
+.tileInner::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.tileChar {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 700;
+  color: #FFFFFF;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  line-height: 1;
+  position: relative;
+  z-index: 2;
+  user-select: none;
+  /* font-size set via inline style relative to tile size */
+}
+
+/* While scrambling: show sheen + GPU hint */
+.scrambling .tileInner::before { opacity: 1; }
+.scrambling .tileInner { will-change: background-color; }
+
+/* Settle micro-bounce */
+.settling .tileInner {
+  animation: settle 180ms ease-out forwards;
+}
+
+@keyframes settle {
+  0%   { transform: perspective(400px) rotateX(-6deg); }
+  60%  { transform: perspective(400px) rotateX(2deg); }
+  100% { transform: none; }
+}

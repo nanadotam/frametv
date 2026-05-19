@@ -12,14 +12,21 @@ interface CoverFlowCarouselProps {
   dominantColor: string;
 }
 
-const COVER_SIZE = 240;
-const FLANK_COUNT = 4;
+// Reference: ipod-classic-js AlbumCover.tsx
+// Cover size: 8em. At 28px base the covers are ~224px. We use px so the math is explicit.
+const COVER_PX = 224;
+const HALF_COVER = COVER_PX / 2;
 
-// Ported from ipod-classic-js AlbumCover.tsx getOffsetPx
+// Spacing matches reference: midpoint - 46 + offset * 48 (then ±half adjustment)
+// We scale those magic numbers to our cover size: 46/128 * COVER_PX ≈ 80, 48/128 * COVER_PX ≈ 84
+const SPACING = Math.round((48 / 128) * COVER_PX); // ~84px between cover centers
+const ANCHOR = Math.round((46 / 128) * COVER_PX);  // ~80px — left-anchor offset from midpoint
+
+// Ported directly from ipod-classic-js AlbumCover.tsx getOffsetPx
 function getOffsetPx(offset: number, midpointX: number): number {
   if (offset === 0) return 0;
-  const val = midpointX - COVER_SIZE / 2 + offset * (COVER_SIZE / 2);
-  return val + (offset < 0 ? -COVER_SIZE / 2 : COVER_SIZE / 4);
+  const val = midpointX - ANCHOR + offset * SPACING;
+  return val + (offset < 0 ? -SPACING : Math.round(SPACING / 2));
 }
 
 export default function CoverFlowCarousel({
@@ -37,17 +44,11 @@ export default function CoverFlowCarousel({
       }
     };
     update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = globalThis as any;
+    w.addEventListener('resize', update);
+    return () => w.removeEventListener('resize', update);
   }, []);
-
-  const visibleTracks: { track: Track; index: number; offset: number }[] = [];
-  for (let o = -FLANK_COUNT; o <= FLANK_COUNT; o++) {
-    const idx = currentIndex + o;
-    if (idx >= 0 && idx < tracks.length) {
-      visibleTracks.push({ track: tracks[idx], index: idx, offset: o });
-    }
-  }
 
   return (
     <div
@@ -55,37 +56,39 @@ export default function CoverFlowCarousel({
       style={{
         position: 'relative',
         width: '100%',
-        height: `${COVER_SIZE + 80}px`,
+        height: `${COVER_PX + 16}px`,
         perspective: '500px',
-        transformStyle: 'preserve-3d',
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
         paddingTop: '20px',
       }}
     >
-      {visibleTracks.map(({ track, index, offset }) => {
+      {tracks.map((track, index) => {
+        const offset = index - currentIndex;
+        // Only render covers within ±15 (matches reference isVisible check)
+        if (Math.abs(offset) > 15) return null;
+
         const isActive = offset === 0;
-        const offsetPx = getOffsetPx(offset, midpointX);
+        const isHidden = !isActive && Math.abs(offset) > 8;
         const zIndex = 1 - Math.abs(offset);
 
-        // CSS transform matching ipod-classic-js patterns exactly
         const transform = isActive
-          ? `translate3d(0, 4px, 20px)`
-          : `translateX(${offsetPx}px) scale(1.1) translateZ(-65px) rotateY(${offset < 0 ? '70deg' : '-70deg'})`;
+          // Reference: translate3d(midpoint.x - 60px, 4px, 20px) — 60 ≈ HALF_COVER * 0.54
+          ? `translate3d(${midpointX - Math.round(HALF_COVER * 0.54)}px, 4px, 20px)`
+          : `translateX(${getOffsetPx(offset, midpointX)}px) scale(1.1) translateZ(-65px) rotateY(${offset < 0 ? '70deg' : '-70deg'})`;
 
         return (
           <div
             key={`cf-${index}`}
             style={{
               position: 'absolute',
-              width: `${COVER_SIZE}px`,
-              height: `${COVER_SIZE}px`,
+              top: 0,
+              left: 0,
+              width: `${COVER_PX}px`,
+              height: `${COVER_PX}px`,
               zIndex,
+              opacity: isHidden ? 0 : 1,
               transition: 'transform 0.25s ease, opacity 0.35s ease',
               transform,
               transformStyle: 'preserve-3d',
-              // Reflection matching ipod-classic-js -webkit-box-reflect
               WebkitBoxReflect:
                 'below 0px -webkit-gradient(linear, left top, left bottom, from(transparent), color-stop(70%, transparent), to(rgba(240,240,240,0.2)))',
             }}
@@ -96,31 +99,33 @@ export default function CoverFlowCarousel({
                 src={track.albumArtUrl}
                 alt={track.name}
                 style={{
-                  width: '100%',
-                  height: '100%',
+                  position: 'absolute',
+                  width: `${COVER_PX}px`,
+                  height: `${COVER_PX}px`,
                   objectFit: 'cover',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(255,255,255,0.12)',
                   boxShadow: isActive
-                    ? `0 24px 80px rgba(0,0,0,0.8), 0 0 40px ${dominantColor}66`
-                    : '0 8px 32px rgba(0,0,0,0.6)',
+                    ? `0 24px 80px rgba(0,0,0,0.85), 0 0 48px ${dominantColor}55`
+                    : '0 8px 32px rgba(0,0,0,0.7)',
                 }}
               />
             ) : (
               <div
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  borderRadius: '4px',
+                  position: 'absolute',
+                  width: `${COVER_PX}px`,
+                  height: `${COVER_PX}px`,
+                  borderRadius: '6px',
                   background: `linear-gradient(135deg, ${dominantColor}88, #1a1a1a)`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '48px',
+                  fontSize: '64px',
                   border: '1px solid rgba(255,255,255,0.1)',
                 }}
               >
-                🎵
+                ♪
               </div>
             )}
           </div>

@@ -12,7 +12,6 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  /* The animation is applied via inline style so we can use CSS vars */
   animation: scroll var(--duration) linear infinite;
   animation-direction: var(--direction);
   will-change: transform;
@@ -23,19 +22,12 @@
 }
 
 @keyframes scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 }
 
+/* Individual photos: all sizing is handled inline to support per-image aspect ratios */
 .photo {
   flex-shrink: 0;
-  height: 100%;
-  width: auto;
-  object-fit: contain;
-  display: block;
   image-orientation: from-image;
 }

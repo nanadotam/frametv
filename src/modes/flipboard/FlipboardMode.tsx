@@ -4,15 +4,15 @@ import { useEffect } from 'react';
 import type { ModeProps } from '@/modes/types';
 import Board from './Board';
 import { useFlipboardMessages } from './useFlipboardMessages';
+import s from './FlipboardMode.module.css';
 
-type Source = 'reminders' | 'quotes' | 'time';
+type Source = 'reminders' | 'calendar' | 'weather' | 'quotes';
 
 interface FlipboardConfig {
   sources?: Source[];
-  secondsPerMessage?: number;
-  showSound?: boolean;
-  cols?: number;
-  rows?: number;
+  seconds_per_message?: number;
+  secondsPerMessage?: number; // legacy
+  sound?: boolean;
 }
 
 export default function FlipboardMode({
@@ -22,34 +22,23 @@ export default function FlipboardMode({
   onReady,
 }: ModeProps) {
   const cfg = config as FlipboardConfig;
-  const sources = cfg.sources ?? ['reminders', 'quotes', 'time'];
-  const secondsPerMessage = cfg.secondsPerMessage ?? 12;
-  const cols = cfg.cols ?? 22;
-  const rows = cfg.rows ?? 6;
+  const sources = cfg.sources ?? ['reminders', 'quotes'];
+  const secondsPerMessage = cfg.seconds_per_message ?? cfg.secondsPerMessage ?? 8;
+  const soundEnabled = cfg.sound ?? false;
 
   const { current } = useFlipboardMessages({
     sources,
     secondsPerMessage: isPaused ? 999999 : secondsPerMessage,
   });
 
-  useEffect(() => {
-    onReady?.();
-  }, [onReady]);
+  useEffect(() => { onReady?.(); }, [onReady]);
 
   return (
     <div
-      className="w-full h-full bg-black flex items-center justify-center"
+      className={s.wrapper}
       style={{ opacity: brightness / 100 }}
     >
-      <div
-        style={{
-          width: '90vw',
-          height: '60vh',
-          maxWidth: '1400px',
-        }}
-      >
-        <Board cols={cols} rows={rows} message={current} />
-      </div>
+      <Board message={current} soundEnabled={soundEnabled} />
     </div>
   );
 }

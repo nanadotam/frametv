@@ -1,116 +1,95 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import s from './FlipboardMode.module.css';
 
 interface TileProps {
   char: string;
-  bgColor?: string;
-  delay?: number;
+  tileSize: number;
+  delay?: number; // ms
 }
 
-const CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,!?-: ';
+const CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,-!?\'/: ';
 const SCRAMBLE_COLORS = ['#00AAFF', '#00FFCC', '#AA00FF', '#FF2D00', '#FFCC00', '#FFFFFF'];
-const MAX_SCRAMBLES = 12;
-const SCRAMBLE_INTERVAL_MS = 55;
+const SCRAMBLE_INTERVAL = 65; // ms between each random char
+const MAX_SCRAMBLES = 11;
 
-const TILE_BG = '#111111';
-const CHAR_COLOR = '#f5c518';
-
-export default function Tile({ char, bgColor, delay = 0 }: TileProps) {
+export default function Tile({ char, tileSize, delay = 0 }: TileProps) {
   const [displayed, setDisplayed] = useState(char);
-  const [tileBg, setTileBg] = useState(bgColor ?? TILE_BG);
-  const [charColor, setCharColor] = useState(CHAR_COLOR);
+  const [bg, setBg] = useState<string>('');
+  const [textColor, setTextColor] = useState('');
+  const [phase, setPhase] = useState<'idle' | 'scrambling' | 'settling'>('idle');
   const prevCharRef = useRef(char);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (char === prevCharRef.current) return;
     const target = char;
     prevCharRef.current = char;
 
-    // Clear any in-progress animation
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (delayRef.current) clearTimeout(delayRef.current);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (delayRef.current) { clearTimeout(delayRef.current); delayRef.current = null; }
+    if (settleRef.current) { clearTimeout(settleRef.current); settleRef.current = null; }
 
     delayRef.current = setTimeout(() => {
+      setPhase('scrambling');
       let count = 0;
+      const maxScrambles = MAX_SCRAMBLES + Math.floor(Math.random() * 4);
 
       timerRef.current = setInterval(() => {
-        if (count >= MAX_SCRAMBLES) {
+        if (count >= maxScrambles) {
           clearInterval(timerRef.current!);
           timerRef.current = null;
+          setBg('');
+          setTextColor('');
           setDisplayed(target);
-          setTileBg(bgColor ?? TILE_BG);
-          setCharColor(CHAR_COLOR);
+          setPhase('settling');
+          settleRef.current = setTimeout(() => setPhase('idle'), 200);
           return;
         }
-
         const randChar = CHARSET[Math.floor(Math.random() * CHARSET.length)];
-        const scrambleColor = SCRAMBLE_COLORS[count % SCRAMBLE_COLORS.length];
+        const color = SCRAMBLE_COLORS[count % SCRAMBLE_COLORS.length];
         setDisplayed(randChar);
-        setTileBg(scrambleColor);
-        // Invert text for light backgrounds
-        setCharColor(scrambleColor === '#FFFFFF' || scrambleColor === '#FFCC00' ? '#111' : CHAR_COLOR);
+        setBg(color);
+        setTextColor(color === '#FFFFFF' || color === '#FFCC00' ? '#111111' : '#FFFFFF');
         count++;
-      }, SCRAMBLE_INTERVAL_MS);
+      }, SCRAMBLE_INTERVAL);
     }, delay);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (delayRef.current) clearTimeout(delayRef.current);
+      if (settleRef.current) clearTimeout(settleRef.current);
     };
-  }, [char, bgColor, delay]);
+  }, [char, delay]);
 
-  // Keep in sync when bgColor changes without char change
-  useEffect(() => {
-    if (char === prevCharRef.current) {
-      setTileBg(bgColor ?? TILE_BG);
-    }
-  }, [bgColor, char]);
+  const classNames = [
+    s.tile,
+    phase === 'scrambling' ? s.scrambling : '',
+    phase === 'settling'   ? s.settling   : '',
+  ].filter(Boolean).join(' ');
 
   return (
     <div
-      style={{
-        width: '100%',
-        height: '100%',
-        position: 'relative',
-        backgroundColor: tileBg,
-        borderRadius: '3px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        transition: 'background-color 0.04s linear',
-        overflow: 'hidden',
-      }}
+      className={classNames}
+      style={{ width: tileSize, height: tileSize }}
     >
-      {/* Center divider line (split-flap aesthetic) */}
       <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '50%',
-          height: '1px',
-          backgroundColor: 'rgba(0,0,0,0.35)',
-          pointerEvents: 'none',
-          zIndex: 2,
-        }}
-      />
-      <span
-        style={{
-          color: charColor,
-          fontFamily: '"Courier New", Courier, monospace',
-          fontWeight: 700,
-          fontSize: '0.82em',
-          lineHeight: 1,
-          userSelect: 'none',
-          zIndex: 1,
-          transition: 'color 0.04s linear',
-        }}
+        className={s.tileInner}
+        style={bg ? { backgroundColor: bg } : undefined}
       >
-        {displayed === ' ' ? ' ' : displayed}
-      </span>
+        <span
+          className={s.tileChar}
+          style={{
+            fontSize: Math.round(tileSize * 0.52),
+            color: textColor || undefined,
+          }}
+        >
+          {displayed === ' ' ? '' : displayed}
+        </span>
+      </div>
     </div>
   );
 }

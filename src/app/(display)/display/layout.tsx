@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
+import Head from 'next/head';
 
 export default function DisplayLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
@@ -42,8 +43,19 @@ export default function DisplayLayout({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div className="bg-black overflow-hidden w-screen h-screen">
-      {children}
-    </div>
+    <>
+      {/* Google Fonts for clock overlay */}
+      <Head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&family=Oswald:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Pacifico&family=Playfair+Display:wght@400;700&family=Dancing+Script:wght@700&family=Bebas+Neue&family=Syne:wght@400;700&display=swap"
+          rel="stylesheet"
+        />
+      </Head>
+      <div className="bg-black overflow-hidden w-screen h-screen">
+        {children}
+      </div>
+    </>
   );
 }

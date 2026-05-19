@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
@@ -8,62 +8,75 @@ import { pickLayout, type Layout } from './layout';
 import type { Photo } from '@/types/db';
 
 interface SlideshowGridConfig {
-  intervalSeconds?: number;
-  transition?: 'blur' | 'fade';
+  cellIntervalSeconds?: number;
 }
 
-function GridSet({
-  photos,
-  layout,
-}: {
-  photos: Photo[];
-  layout: Layout;
-}) {
+interface CellState {
+  photo: Photo | null;
+  flipKey: number;
+}
+
+// Shared image style: fills the cell, respects EXIF orientation
+const FILL: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+  imageOrientation: 'from-image',
+  display: 'block',
+};
+
+/** Progressive-load: thumb first, hi-res swapped in once fetched */
+function useProgressiveSrc(photoId: string | undefined) {
+  const thumb = photoId ? `/api/photos/${photoId}/thumbnail?size=800` : null;
+  const hires = photoId ? `/api/photos/${photoId}/thumbnail?size=2000` : null;
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!thumb || !hires) { setSrc(null); return; }
+    setSrc(thumb);
+    let dead = false;
+    fetch(hires).then((r) => { if (!dead && r.ok) setSrc(hires); }).catch(() => {});
+    return () => { dead = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photoId]);
+
+  return src;
+}
+
+function PhotoCell({ photo }: { photo: Photo | null }) {
+  const src = useProgressiveSrc(photo?.id);
+  if (!src) return <div style={{ position: 'absolute', inset: 0, background: '#111' }} />;
   return (
-    <div
-      className="w-full h-full"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(12, 1fr)',
-        gridTemplateRows: 'repeat(6, 1fr)',
-        gap: '2px',
-      }}
-    >
-      {layout.areas.map((area, i) => {
-        const photo = photos[i];
-        return (
-          <div
-            key={i}
-            style={{
-              gridColumn: `${area.colStart} / ${area.colEnd}`,
-              gridRow: `${area.rowStart} / ${area.rowEnd}`,
-              overflow: 'hidden',
-              position: 'relative',
-              background: '#000',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {photo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={`/api/photos/${photo.id}/thumbnail`}
-                alt=""
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  display: 'block',
-                  imageOrientation: 'from-image',
-                }}
-              />
-            ) : (
-              <div className="w-full h-full bg-white/5 animate-pulse" />
-            )}
-          </div>
-        );
-      })}
+    <>
+      {/* Blurred backdrop fills any corner gaps when aspect ratios differ */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} aria-hidden alt=""
+        style={{ ...FILL, filter: 'blur(24px) brightness(0.55)', transform: 'scale(1.15)' }} />
+      {/* Main image — cover fills the cell, crops to fit */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" style={{ ...FILL, zIndex: 1 }} />
+    </>
+  );
+}
+
+/** Single grid cell with cross-fade when its photo changes */
+function GridCell({ cell }: { cell: CellState }) {
+  return (
+    <div style={{ position: 'absolute', inset: 0 }}>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={cell.flipKey}
+          style={{ position: 'absolute', inset: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.75 }}
+        >
+          <PhotoCell photo={cell.photo} />
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -75,60 +88,90 @@ export default function SlideshowGridMode({
   onReady,
 }: ModeProps) {
   const cfg = config as SlideshowGridConfig;
-  const intervalSeconds = cfg.intervalSeconds ?? 12;
+  // Each cell changes once per this interval; cells fire one-by-one staggered
+  const cellInterval = (cfg.cellIntervalSeconds ?? 3) * 1000;
 
-  const { photos, currentIndex, advance } = usePhotoRotation({ shuffle: true });
-  const [setKey, setSetKey] = useState(0);
+  const { photos } = usePhotoRotation({ shuffle: true });
+  const [layout, setLayout] = useState<Layout | null>(null);
+  const [cells, setCells] = useState<CellState[]>([]);
+  const photoIdxRef = useRef(0);
+  const initialized = useRef(false);
 
+  // One-time init once photos are ready
   useEffect(() => {
-    if (photos.length > 0) onReady?.();
-  }, [photos.length, onReady]);
+    if (photos.length === 0 || initialized.current) return;
+    const l = pickLayout(photos);
+    if (!l) return;
+    initialized.current = true;
+    setLayout(l);
+    setCells(
+      l.areas.map((_, i) => ({
+        photo: photos[i % photos.length],
+        flipKey: i,
+      }))
+    );
+    photoIdxRef.current = l.areas.length % photos.length;
+    onReady?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos.length]);
 
+  // Staggered animation: change ONE random cell per interval
   useEffect(() => {
-    if (isPaused || photos.length === 0) return;
+    if (isPaused || photos.length === 0 || cells.length === 0) return;
+
     const id = setInterval(() => {
-      advance();
-      setSetKey((k) => k + 1);
-    }, intervalSeconds * 1000);
+      const cellIdx = Math.floor(Math.random() * cells.length);
+      const nextPhoto = photos[photoIdxRef.current];
+      photoIdxRef.current = (photoIdxRef.current + 1) % photos.length;
+
+      setCells((prev) => {
+        const next = [...prev];
+        next[cellIdx] = { photo: nextPhoto, flipKey: prev[cellIdx].flipKey + 100 };
+        return next;
+      });
+    }, cellInterval);
+
     return () => clearInterval(id);
-  }, [isPaused, intervalSeconds, photos.length, advance]);
+  }, [isPaused, photos, cells.length, cellInterval]);
 
-  // Slice up to 5 photos starting at currentIndex
-  const count = Math.min(5, photos.length);
-  const slice: Photo[] = [];
-  for (let i = 0; i < count; i++) {
-    slice.push(photos[(currentIndex + i) % photos.length]);
+  if (!layout || cells.length === 0) {
+    return (
+      <div className="flex items-center justify-center w-full h-full bg-black">
+        <div className="w-32 h-32 rounded-full bg-white/10 animate-pulse" />
+      </div>
+    );
   }
-
-  const layout = pickLayout(slice);
-
-  const motionProps = {
-    initial: { opacity: 0, filter: 'blur(16px) saturate(0.3)' },
-    animate: { opacity: 1, filter: 'blur(0px) saturate(1)' },
-    exit: { opacity: 0, filter: 'blur(16px) saturate(0.3)' },
-    transition: { duration: 1.0 },
-  };
 
   return (
     <div
       className="relative w-full h-full overflow-hidden bg-black"
       style={{ opacity: brightness / 100 }}
     >
-      <AnimatePresence mode="wait">
-        {layout && slice.length >= 3 ? (
-          <motion.div
-            key={setKey}
-            className="absolute inset-0"
-            {...motionProps}
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(12, 1fr)',
+          gridTemplateRows: 'repeat(6, 1fr)',
+          gap: '2px',
+        }}
+      >
+        {layout.areas.map((area, i) => (
+          <div
+            key={i}
+            style={{
+              gridColumn: `${area.colStart} / ${area.colEnd}`,
+              gridRow: `${area.rowStart} / ${area.rowEnd}`,
+              position: 'relative',
+              overflow: 'hidden',
+              background: '#000',
+            }}
           >
-            <GridSet photos={slice} layout={layout} />
-          </motion.div>
-        ) : (
-          <div className="flex items-center justify-center w-full h-full">
-            <div className="w-32 h-32 rounded-full bg-white/10 animate-pulse" />
+            {cells[i] && <GridCell cell={cells[i]} />}
           </div>
-        )}
-      </AnimatePresence>
+        ))}
+      </div>
     </div>
   );
 }
