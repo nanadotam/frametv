@@ -8,22 +8,26 @@ const SCOPES = [
   'user-read-recently-played',
 ].join(' ');
 
-export function getSpotifyAuthUrl(): string {
+export function buildRedirectUri(origin: string): string {
+  return `${origin}/api/auth/spotify/callback`;
+}
+
+export function getSpotifyAuthUrl(origin: string): string {
   const params = new URLSearchParams({
     client_id: process.env.SPOTIFY_CLIENT_ID!,
     response_type: 'code',
-    redirect_uri: process.env.SPOTIFY_REDIRECT_URI!,
+    redirect_uri: buildRedirectUri(origin),
     scope: SCOPES,
     show_dialog: 'true',
   });
   return `${SPOTIFY_ACCOUNTS_BASE}/authorize?${params.toString()}`;
 }
 
-export async function exchangeCode(code: string): Promise<void> {
+export async function exchangeCode(code: string, origin: string): Promise<void> {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
-    redirect_uri: process.env.SPOTIFY_REDIRECT_URI!,
+    redirect_uri: buildRedirectUri(origin),
   });
 
   const res = await fetch(`${SPOTIFY_ACCOUNTS_BASE}/api/token`, {

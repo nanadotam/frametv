@@ -19,7 +19,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await exchangeCode(code);
+    const origin = new URL(request.url).origin;
+    await exchangeCode(code, origin);
     return NextResponse.redirect(
       new URL('/admin/settings?spotify=connected', request.url)
     );
