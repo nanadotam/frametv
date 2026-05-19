@@ -319,7 +319,7 @@ export default function SchedulePage() {
 
             <div className="space-y-1.5">
               <Label>Mode</Label>
-              <Select value={form.mode_id} onValueChange={(v) => setForm({ ...form, mode_id: v })}>
+              <Select value={form.mode_id ?? ''} onValueChange={(v) => setForm({ ...form, mode_id: v ?? '' })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

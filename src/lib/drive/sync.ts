@@ -99,17 +99,17 @@ export async function syncDrive(filterAlbumId?: string): Promise<{ synced: numbe
 
 // Sync a single folder given its Drive folder URL (for manual "Add from Drive")
 export async function syncFolderByUrl(folderUrl: string): Promise<{ synced: number; albumId: string; errors: string[] }> {
-  const { extractFolderId } = await import('./files');
+  const { extractFolderId, getFolderName } = await import('./files');
   const folderId = extractFolderId(folderUrl);
   if (!folderId) throw new Error('Invalid Drive folder URL');
 
   const supabase = createServiceClient();
 
-  // Get folder name from Drive
-  const { getFolderName } = await import('./files');
+  // Get folder name — falls back to "Album (XXXXXXXX)" if no API key yet
   const name = await getFolderName(folderId);
 
-  const { data: album } = await supabase
+  // Upsert the album row. This works with anon key once migration 002 is applied.
+  const { data: album, error: albumError } = await supabase
     .from('albums')
     .upsert(
       { name, source_type: 'drive', drive_folder_id: folderId },
@@ -118,8 +118,22 @@ export async function syncFolderByUrl(folderUrl: string): Promise<{ synced: numb
     .select()
     .single();
 
-  if (!album) throw new Error('Failed to create album');
+  if (!album) {
+    const msg = albumError?.message ?? 'unknown database error';
+    throw new Error(
+      `Failed to create album: ${msg}. ` +
+      'Make sure migration 002_anon_write.sql has been run in your Supabase SQL editor.'
+    );
+  }
 
-  const { synced, errors } = await syncDrive(album.id);
+  // Sync photos — may fail if API key not set yet; that's OK, album still exists.
+  const errors: string[] = [];
+  let synced = 0;
+  try {
+    ({ synced } = await syncDrive(album.id));
+  } catch (err: unknown) {
+    errors.push(err instanceof Error ? err.message : String(err));
+  }
+
   return { synced, albumId: album.id, errors };
 }

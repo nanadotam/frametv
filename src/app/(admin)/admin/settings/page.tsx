@@ -26,6 +26,7 @@ interface Integrations {
   google_connected: boolean;
   unsplash_key_set: boolean;
   display_token: string;
+  google_api_key?: string;
 }
 
 const defaultSettings: Settings = {
@@ -42,6 +43,7 @@ const defaultIntegrations: Integrations = {
   google_connected: false,
   unsplash_key_set: false,
   display_token: '',
+  google_api_key: '',
 };
 
 function maskToken(token: string) {
@@ -55,15 +57,23 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [googleApiKey, setGoogleApiKey] = useState('');
+  const [savingApiKey, setSavingApiKey] = useState(false);
+  const [apiKeySaved, setApiKeySaved] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     try {
-      const [sRes, iRes] = await Promise.all([
+      const [sRes, iRes, apiKeyRes] = await Promise.all([
         fetch('/api/settings'),
         fetch('/api/settings/integrations'),
+        fetch('/api/settings?key=google_api_key'),
       ]);
       if (sRes.ok) setSettings(await sRes.json());
       if (iRes.ok) setIntegrations(await iRes.json());
+      if (apiKeyRes.ok) {
+        const json = await apiKeyRes.json();
+        if (json.setting?.value) setGoogleApiKey(json.setting.value);
+      }
     } finally {
       setLoading(false);
     }
@@ -83,6 +93,22 @@ export default function SettingsPage() {
       setTimeout(() => setSaved(false), 2000);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveGoogleApiKey = async () => {
+    if (!googleApiKey.trim()) return;
+    setSavingApiKey(true);
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'google_api_key', value: googleApiKey.trim() }),
+      });
+      setApiKeySaved(true);
+      setTimeout(() => setApiKeySaved(false), 2000);
+    } finally {
+      setSavingApiKey(false);
     }
   };
 
@@ -234,22 +260,58 @@ export default function SettingsPage() {
 
           <Separator />
 
-          <div className="flex items-center justify-between gap-3 min-h-[48px]">
-            <div>
-              <p className="text-sm font-medium">Google Drive</p>
-              <p className="text-xs text-muted-foreground">Import photo albums (public folders via API key)</p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Google Drive</p>
+                <p className="text-xs text-muted-foreground">Import public photo folders via API key</p>
+              </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  'text-xs shrink-0',
+                  googleApiKey
+                    ? 'border-green-500/40 text-green-400 bg-green-500/10'
+                    : 'border-yellow-500/40 text-yellow-400 bg-yellow-500/10'
+                )}
+              >
+                {googleApiKey ? 'Key set' : 'Key missing'}
+              </Badge>
             </div>
-            <Badge
-              variant="outline"
-              className={cn(
-                'text-xs',
-                integrations.google_connected
-                  ? 'border-green-500/40 text-green-400 bg-green-500/10'
-                  : 'border-border text-muted-foreground'
-              )}
-            >
-              {integrations.google_connected ? 'Active' : 'API key mode'}
-            </Badge>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">
+                Google API Key{' '}
+                <a
+                  href="https://console.cloud.google.com/apis/credentials"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  (get one ↗)
+                </a>
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  placeholder="AIza…"
+                  value={googleApiKey}
+                  onChange={(e) => setGoogleApiKey(e.target.value)}
+                  className="font-mono text-xs"
+                />
+                <Button
+                  size="sm"
+                  variant={apiKeySaved ? 'default' : 'outline'}
+                  className={cn('shrink-0', apiKeySaved && 'bg-green-600 hover:bg-green-500 text-white')}
+                  onClick={saveGoogleApiKey}
+                  disabled={savingApiKey || !googleApiKey.trim()}
+                >
+                  {apiKeySaved ? <CheckCircle2 size={14} /> : 'Save'}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground/60">
+                Enable Drive API v3 in Google Cloud Console, then create an API key. No OAuth needed.
+              </p>
+            </div>
           </div>
 
           <Separator />

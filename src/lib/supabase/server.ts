@@ -29,13 +29,16 @@ export async function createClient() {
 
 /**
  * Service-role client for use in API routes.
- * Bypasses RLS — never expose to the browser.
+ * Falls back to anon/publishable key when SUPABASE_SERVICE_ROLE_KEY is not set
+ * (development or single-user deployments with permissive RLS).
  */
 export function createServiceClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    '';
+  return createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key);
 }
 
 // Named alias used by some modules

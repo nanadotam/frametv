@@ -21,11 +21,16 @@ export async function POST(request: NextRequest) {
 
     const { synced, albumId, errors } = await syncFolderByUrl(folderUrl);
 
-    return NextResponse.json({ albumId, synced, errors }, { status: 201 });
+    return NextResponse.json({
+      albumId,
+      synced,
+      errors,
+      // Surface any non-fatal errors (e.g. missing API key) to the UI
+      warning: errors.length > 0 ? errors[0] : undefined,
+    }, { status: 201 });
   } catch (err: unknown) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Unknown error' },
-      { status: 500 }
-    );
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[drive/route] POST error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

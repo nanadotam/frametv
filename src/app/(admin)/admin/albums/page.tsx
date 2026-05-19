@@ -59,9 +59,12 @@ export default function AlbumsPage() {
         setDriveError(err.error ?? 'Failed to import folder');
         return;
       }
+      const json = await res.json();
       setDriveUrl('');
       setDriveModalOpen(false);
       await fetchAlbums();
+      // Surface non-fatal warnings (e.g. API key not configured → no photos yet)
+      if (json.warning) setDriveError(`Album created. Note: ${json.warning}`);
     } catch {
       setDriveError('Network error');
     } finally {
