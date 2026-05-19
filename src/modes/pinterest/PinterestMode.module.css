@@ -1,0 +1,39 @@
+/* ─── Pinterest infinite-scroll rows ───────────────────────────────────────── */
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.track {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  /* The animation is applied via inline style so we can use CSS vars */
+  animation: scroll var(--duration) linear infinite;
+  animation-direction: var(--direction);
+  will-change: transform;
+}
+
+.track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.photo {
+  flex-shrink: 0;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
