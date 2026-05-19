@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, KeyRound } from 'lucide-react';
-import { Button } from '@/components/admin/Button';
-import { Card } from '@/components/admin/Card';
-import { Toggle } from '@/components/admin/Toggle';
-import { Badge } from '@/components/admin/Badge';
-import { TimeField, Label, DateInput, DateSegment } from 'react-aria-components';
-import { parseTime } from '@internationalized/date';
+import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 interface Settings {
   latitude: number;
@@ -84,217 +86,221 @@ export default function SettingsPage() {
     }
   };
 
-  const connectSpotify = async () => {
-    const res = await fetch('/api/auth/spotify');
-    if (res.ok) {
-      const { url } = await res.json();
-      if (url) window.location.href = url;
-    }
-  };
-
-  const connectGoogle = async () => {
-    const res = await fetch('/api/auth/google');
-    if (res.ok) {
-      const { url } = await res.json();
-      if (url) window.location.href = url;
-    }
-  };
-
   if (loading) {
     return (
-      <div className="p-4 md:p-6 max-w-2xl mx-auto text-fg-muted text-sm text-center py-12">Loading…</div>
+      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-4">
+        {[1,2,3].map((i) => (
+          <div key={i} className="rounded-xl border border-border bg-card animate-pulse h-32" />
+        ))}
+      </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-5">
+    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6">
       <div className="pt-2">
-        <h1 className="text-2xl font-semibold font-display text-fg">System Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight">System Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">Configure display behavior and integrations</p>
       </div>
 
       {/* Location */}
-      <Card title="Location">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-fg-muted block mb-1.5">Latitude</label>
-            <input
-              type="number"
-              step="0.0001"
-              value={settings.latitude}
-              onChange={(e) => setSettings({ ...settings, latitude: Number(e.target.value) })}
-              className="w-full px-3 py-2.5 rounded-xl bg-bg-soft border border-fg/15 text-fg text-sm focus:outline-none focus:border-accent"
-            />
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MapPin size={15} className="text-primary" /> Location
+          </CardTitle>
+          <CardDescription>Used for sunrise/sunset auto-theme</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Latitude</Label>
+              <Input
+                type="number"
+                step="0.0001"
+                value={settings.latitude}
+                onChange={(e) => setSettings({ ...settings, latitude: Number(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Longitude</Label>
+              <Input
+                type="number"
+                step="0.0001"
+                value={settings.longitude}
+                onChange={(e) => setSettings({ ...settings, longitude: Number(e.target.value) })}
+              />
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-fg-muted block mb-1.5">Longitude</label>
-            <input
-              type="number"
-              step="0.0001"
-              value={settings.longitude}
-              onChange={(e) => setSettings({ ...settings, longitude: Number(e.target.value) })}
-              className="w-full px-3 py-2.5 rounded-xl bg-bg-soft border border-fg/15 text-fg text-sm focus:outline-none focus:border-accent"
-            />
-          </div>
-        </div>
-        <p className="text-xs text-fg-dim mt-2">Default: Accra, Ghana (5.6037, -0.1870)</p>
+          <p className="text-xs text-muted-foreground">Default: Accra, Ghana (5.6037, -0.1870)</p>
+        </CardContent>
       </Card>
 
       {/* Auto Theme */}
-      <Card title="Auto Theme">
-        <Toggle
-          checked={settings.auto_theme}
-          onChange={(v) => setSettings({ ...settings, auto_theme: v })}
-          label="Switch theme automatically at sunrise/sunset"
-        />
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Zap size={15} className="text-primary" /> Auto Theme
+          </CardTitle>
+          <CardDescription>Switch light/dark theme automatically at sunrise/sunset</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="auto-theme">Enable auto theme switching</Label>
+            <Switch
+              id="auto-theme"
+              checked={settings.auto_theme}
+              onCheckedChange={(v) => setSettings({ ...settings, auto_theme: v })}
+            />
+          </div>
+        </CardContent>
       </Card>
 
       {/* Night Dim */}
-      <Card title="Night Dim">
-        <div className="space-y-4">
-          <Toggle
-            checked={settings.night_dim_enabled}
-            onChange={(v) => setSettings({ ...settings, night_dim_enabled: v })}
-            label="Dim display at night"
-          />
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Moon size={15} className="text-primary" /> Night Dim
+          </CardTitle>
+          <CardDescription>Automatically dim the display at night</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="night-dim">Dim display at night</Label>
+            <Switch
+              id="night-dim"
+              checked={settings.night_dim_enabled}
+              onCheckedChange={(v) => setSettings({ ...settings, night_dim_enabled: v })}
+            />
+          </div>
           {settings.night_dim_enabled && (
             <div className="grid grid-cols-2 gap-4 pt-1">
-              <div>
-                <label className="text-xs text-fg-muted block mb-1.5">Dim start</label>
-                <TimeField
-                  value={parseTime(settings.night_dim_start)}
-                  onChange={(t) =>
-                    setSettings({
-                      ...settings,
-                      night_dim_start: t
-                        ? `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`
-                        : settings.night_dim_start,
-                    })
-                  }
-                  aria-label="Dim start"
-                >
-                  <Label className="sr-only">Dim start</Label>
-                  <DateInput className="flex gap-0.5 px-3 py-2.5 rounded-xl bg-bg-soft border border-fg/15 text-fg text-sm focus-within:border-accent">
-                    {(segment) => (
-                      <DateSegment segment={segment} className="outline-none focus:text-accent rounded px-0.5" />
-                    )}
-                  </DateInput>
-                </TimeField>
+              <div className="space-y-1.5">
+                <Label>Dim start</Label>
+                <Input
+                  type="time"
+                  value={settings.night_dim_start}
+                  onChange={(e) => setSettings({ ...settings, night_dim_start: e.target.value })}
+                />
               </div>
-              <div>
-                <label className="text-xs text-fg-muted block mb-1.5">Dim end</label>
-                <TimeField
-                  value={parseTime(settings.night_dim_end)}
-                  onChange={(t) =>
-                    setSettings({
-                      ...settings,
-                      night_dim_end: t
-                        ? `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`
-                        : settings.night_dim_end,
-                    })
-                  }
-                  aria-label="Dim end"
-                >
-                  <Label className="sr-only">Dim end</Label>
-                  <DateInput className="flex gap-0.5 px-3 py-2.5 rounded-xl bg-bg-soft border border-fg/15 text-fg text-sm focus-within:border-accent">
-                    {(segment) => (
-                      <DateSegment segment={segment} className="outline-none focus:text-accent rounded px-0.5" />
-                    )}
-                  </DateInput>
-                </TimeField>
+              <div className="space-y-1.5">
+                <Label>Dim end</Label>
+                <Input
+                  type="time"
+                  value={settings.night_dim_end}
+                  onChange={(e) => setSettings({ ...settings, night_dim_end: e.target.value })}
+                />
               </div>
             </div>
           )}
-        </div>
+        </CardContent>
       </Card>
 
-      {/* Save settings */}
       <Button
         size="lg"
-        className="w-full h-14"
+        className={cn('w-full h-12', saved && 'bg-green-600 hover:bg-green-500')}
         onClick={saveSettings}
-        loading={saving}
-        variant={saved ? 'secondary' : 'primary'}
+        disabled={saving}
       >
-        {saved ? '✓ Saved' : 'Save Settings'}
+        {saved ? <><CheckCircle2 size={16} /> Saved</> : saving ? 'Saving…' : 'Save Settings'}
       </Button>
 
+      <Separator />
+
       {/* Integrations */}
-      <Card title="Integrations">
-        <div className="space-y-4">
-          {/* Spotify */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Integrations</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div className="flex items-center justify-between gap-3 min-h-[48px]">
             <div>
-              <p className="text-sm font-medium text-fg">Spotify</p>
-              <p className="text-xs text-fg-muted">Play current song on display</p>
+              <p className="text-sm font-medium">Spotify</p>
+              <p className="text-xs text-muted-foreground">Show currently playing song</p>
             </div>
             {integrations.spotify_connected ? (
-              <Badge variant="success">Connected</Badge>
+              <Badge variant="outline" className="border-green-500/40 text-green-400 bg-green-500/10">
+                <CheckCircle2 size={10} className="mr-1" /> Connected
+              </Badge>
             ) : (
-              <Button size="sm" variant="secondary" onClick={connectSpotify}>
-                Connect Spotify
+              <Button size="sm" variant="outline" onClick={async () => {
+                const res = await fetch('/api/auth/spotify');
+                if (res.ok) { const { url } = await res.json(); if (url) window.location.href = url; }
+              }}>
+                Connect
               </Button>
             )}
           </div>
 
-          <div className="h-px bg-fg/10" />
+          <Separator />
 
-          {/* Google Drive */}
           <div className="flex items-center justify-between gap-3 min-h-[48px]">
             <div>
-              <p className="text-sm font-medium text-fg">Google Drive</p>
-              <p className="text-xs text-fg-muted">Import photo albums from Drive</p>
+              <p className="text-sm font-medium">Google Drive</p>
+              <p className="text-xs text-muted-foreground">Import photo albums (public folders via API key)</p>
             </div>
-            {integrations.google_connected ? (
-              <Badge variant="success">Connected</Badge>
-            ) : (
-              <Button size="sm" variant="secondary" onClick={connectGoogle}>
-                Connect Google Drive
-              </Button>
-            )}
+            <Badge
+              variant="outline"
+              className={cn(
+                'text-xs',
+                integrations.google_connected
+                  ? 'border-green-500/40 text-green-400 bg-green-500/10'
+                  : 'border-border text-muted-foreground'
+              )}
+            >
+              {integrations.google_connected ? 'Active' : 'API key mode'}
+            </Badge>
           </div>
 
-          <div className="h-px bg-fg/10" />
+          <Separator />
 
-          {/* Unsplash */}
           <div className="flex items-center justify-between gap-3 min-h-[48px]">
             <div>
-              <p className="text-sm font-medium text-fg">Unsplash</p>
-              <p className="text-xs text-fg-muted">
-                Access key:{' '}
-                <span className="font-mono text-fg-dim">
-                  {integrations.unsplash_key_set ? '••••••••••••••••' : 'Not set'}
-                </span>
+              <p className="text-sm font-medium">Unsplash</p>
+              <p className="text-xs text-muted-foreground">
+                Access key: <span className="font-mono">{integrations.unsplash_key_set ? '••••••••••••••••' : 'Not set'}</span>
               </p>
             </div>
-            <Badge variant={integrations.unsplash_key_set ? 'success' : 'muted'}>
+            <Badge
+              variant="outline"
+              className={cn(
+                'text-xs',
+                integrations.unsplash_key_set
+                  ? 'border-green-500/40 text-green-400 bg-green-500/10'
+                  : 'border-border text-muted-foreground'
+              )}
+            >
               {integrations.unsplash_key_set ? 'Key set' : 'No key'}
             </Badge>
           </div>
-        </div>
+        </CardContent>
       </Card>
 
       {/* Display */}
-      <Card title="Display">
-        <div className="space-y-4">
-          <div className="min-h-[48px]">
-            <p className="text-xs text-fg-muted uppercase tracking-wider mb-1.5">Display token</p>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Tv size={15} className="text-primary" /> Display
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Display token</p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 px-3 py-2.5 rounded-xl bg-bg-soft border border-fg/15 text-fg text-sm font-mono truncate">
+              <code className="flex-1 px-3 py-2.5 rounded-lg bg-muted border border-border text-sm font-mono truncate">
                 {integrations.display_token ? maskToken(integrations.display_token) : '—'}
               </code>
-              <KeyRound size={16} className="text-fg-muted flex-shrink-0" />
+              <KeyRound size={15} className="text-muted-foreground shrink-0" />
             </div>
           </div>
-          <div className="min-h-[48px] flex items-center">
-            <Link
-              href="/display"
-              target="_blank"
-              className="inline-flex items-center gap-2 text-sm text-accent hover:text-accent-hover transition-colors"
-            >
-              Open display <ExternalLink size={14} />
-            </Link>
-          </div>
-        </div>
+          <Link
+            href="/display"
+            target="_blank"
+            className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
+          >
+            Open display <ExternalLink size={13} />
+          </Link>
+        </CardContent>
       </Card>
     </div>
   );

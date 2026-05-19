@@ -1,20 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
-import {
-  TimeField,
-  Label,
-  DateInput,
-  DateSegment,
-} from 'react-aria-components';
-import { parseTime } from '@internationalized/date';
-import { Button } from '@/components/admin/Button';
-import { Card } from '@/components/admin/Card';
-import { Modal } from '@/components/admin/Modal';
-import { Toggle } from '@/components/admin/Toggle';
-import { Badge } from '@/components/admin/Badge';
-import type { Schedule, Album, Mode } from '@/types/db';
+import { Plus, Pencil, Trash2, CalendarDays, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
+import type { Schedule, Album } from '@/types/db';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -160,210 +158,229 @@ export default function SchedulePage() {
     MODES_LIST.find((m) => m.id === modeId)?.label ?? modeId;
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-5 pt-2">
-        <h1 className="text-2xl font-semibold font-display text-fg">Schedule</h1>
-        <Button size="sm" onClick={openAdd}>
-          <Plus size={16} /> Add schedule
+    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6">
+      <div className="flex items-start justify-between pt-2">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Schedule</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Auto-switch modes at specific times · {schedules.filter(s => s.is_enabled).length} active
+          </p>
+        </div>
+        <Button size="sm" onClick={openAdd} className="gap-1.5">
+          <Plus size={14} /> Add schedule
         </Button>
       </div>
 
       {loading ? (
-        <div className="text-fg-muted text-sm text-center py-12">Loading…</div>
+        <div className="space-y-3">
+          {[1, 2].map((i) => (
+            <div key={i} className="rounded-xl border border-border bg-card animate-pulse h-24" />
+          ))}
+        </div>
       ) : schedules.length === 0 ? (
-        <div className="text-fg-muted text-sm text-center py-12">
-          No schedules yet. Add one to auto-switch modes at specific times.
+        <div className="text-center py-16 text-muted-foreground">
+          <CalendarDays size={40} className="mx-auto mb-3 opacity-40" />
+          <p className="font-medium">No schedules yet</p>
+          <p className="text-sm mt-1">Add one to auto-switch modes at specific times</p>
         </div>
       ) : (
         <div className="space-y-3">
           {schedules.map((s) => (
-            <Card key={s.id} className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-medium text-fg">{s.name}</h3>
-                    <Badge variant={s.is_enabled ? 'success' : 'muted'}>
-                      {s.is_enabled ? 'Enabled' : 'Disabled'}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {DAY_LABELS.map((d, i) => (
-                      <span
-                        key={i}
-                        className={`text-xs px-2 py-0.5 rounded-pill ${
-                          s.days_of_week.includes(i)
-                            ? 'bg-accent/20 text-accent'
-                            : 'bg-fg/5 text-fg-dim'
-                        }`}
+            <Card key={s.id}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-sm">{s.name}</h3>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-xs',
+                          s.is_enabled
+                            ? 'border-green-500/40 text-green-400 bg-green-500/10'
+                            : 'border-border text-muted-foreground'
+                        )}
                       >
-                        {d}
-                      </span>
-                    ))}
+                        {s.is_enabled ? 'Enabled' : 'Disabled'}
+                      </Badge>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1">
+                      {DAY_LABELS.map((d, i) => (
+                        <span
+                          key={i}
+                          className={cn(
+                            'text-xs px-2 py-0.5 rounded-full font-medium',
+                            s.days_of_week.includes(i)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted text-muted-foreground'
+                          )}
+                        >
+                          {d}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Clock size={11} />
+                      <span>{s.start_time} – {s.end_time}</span>
+                      <span className="text-border">·</span>
+                      <span>{modeLabel(s.mode_id)}</span>
+                      <span className="text-border">·</span>
+                      <span>Priority {s.priority}</span>
+                    </div>
                   </div>
-                  <div className="mt-2 text-sm text-fg-muted space-y-0.5">
-                    <p>{s.start_time} – {s.end_time} · {modeLabel(s.mode_id)}</p>
-                    <p className="text-xs">Priority {s.priority}</p>
+
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Switch
+                      checked={s.is_enabled}
+                      onCheckedChange={() => toggleEnabled(s)}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0"
+                      onClick={() => openEdit(s)}
+                    >
+                      <Pencil size={14} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 hover:text-destructive"
+                      onClick={() => deleteSchedule(s.id)}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <Toggle checked={s.is_enabled} onChange={() => toggleEnabled(s)} />
-                  <button
-                    onClick={() => openEdit(s)}
-                    className="w-10 h-10 rounded-lg bg-fg/10 flex items-center justify-center text-fg-muted hover:text-fg hover:bg-fg/15 transition-colors"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => deleteSchedule(s.id)}
-                    className="w-10 h-10 rounded-lg bg-fg/5 flex items-center justify-center text-fg-muted hover:text-danger hover:bg-danger/10 transition-colors"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
+              </CardContent>
             </Card>
           ))}
         </div>
       )}
 
-      <Modal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        title={editingId ? 'Edit schedule' : 'Add schedule'}
-        className="max-h-[90vh] overflow-y-auto"
-      >
-        <div className="space-y-5">
-          {/* Name */}
-          <div>
-            <label className="text-xs text-fg-muted uppercase tracking-wider block mb-1.5">Name</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Morning routine"
-              className="w-full px-4 py-3 rounded-xl bg-bg-soft border border-fg/15 text-fg text-sm placeholder:text-fg-dim focus:outline-none focus:border-accent"
-            />
-          </div>
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingId ? 'Edit schedule' : 'Add schedule'}</DialogTitle>
+            <DialogDescription>Configure when and what to show on the TV.</DialogDescription>
+          </DialogHeader>
 
-          {/* Days */}
-          <div>
-            <label className="text-xs text-fg-muted uppercase tracking-wider block mb-2">Days</label>
-            <div className="flex gap-1.5 flex-wrap">
-              {DAY_LABELS.map((d, i) => (
-                <button
-                  key={i}
-                  onClick={() => toggleDay(i)}
-                  className={`px-3 py-1.5 rounded-pill text-sm font-medium transition-colors min-h-[40px] ${
-                    form.days_of_week.includes(i)
-                      ? 'bg-accent text-bg'
-                      : 'bg-fg/10 text-fg hover:bg-fg/15'
-                  }`}
-                >
-                  {d}
-                </button>
-              ))}
+          <div className="space-y-5 py-2">
+            <div className="space-y-1.5">
+              <Label>Name</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Morning routine"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Days</Label>
+              <div className="flex gap-1.5 flex-wrap">
+                {DAY_LABELS.map((d, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => toggleDay(i)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-full text-sm font-medium transition-all border',
+                      form.days_of_week.includes(i)
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-card border-border text-muted-foreground hover:border-primary/50'
+                    )}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Start time</Label>
+                <Input
+                  type="time"
+                  value={form.start_time}
+                  onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>End time</Label>
+                <Input
+                  type="time"
+                  value={form.end_time}
+                  onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Mode</Label>
+              <Select value={form.mode_id} onValueChange={(v) => setForm({ ...form, mode_id: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MODES_LIST.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {albums.length > 0 && (
+              <div className="space-y-2">
+                <Label>Albums</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {albums.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => toggleAlbum(a.id)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-sm font-medium transition-all border',
+                        form.album_ids.includes(a.id)
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-card border-border text-muted-foreground hover:border-primary/50'
+                      )}
+                    >
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Priority</Label>
+                <span className="text-sm font-semibold text-primary">{form.priority}</span>
+              </div>
+              <Slider
+                min={1}
+                max={10}
+                step={1}
+                value={[form.priority]}
+                onValueChange={(vals) => setForm({ ...form, priority: Number(Array.isArray(vals) ? vals[0] : vals) })}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Low (1)</span>
+                <span>High (10)</span>
+              </div>
             </div>
           </div>
 
-          {/* Time range */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-fg-muted uppercase tracking-wider block mb-1.5">Start time</label>
-              <TimeField
-                value={parseTime(form.start_time)}
-                onChange={(t) => setForm({ ...form, start_time: t ? `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}` : form.start_time })}
-                aria-label="Start time"
-              >
-                <Label className="sr-only">Start time</Label>
-                <DateInput className="flex gap-0.5 px-4 py-3 rounded-xl bg-bg-soft border border-fg/15 text-fg text-sm focus-within:border-accent">
-                  {(segment) => (
-                    <DateSegment
-                      segment={segment}
-                      className="outline-none focus:text-accent rounded px-0.5"
-                    />
-                  )}
-                </DateInput>
-              </TimeField>
-            </div>
-            <div>
-              <label className="text-xs text-fg-muted uppercase tracking-wider block mb-1.5">End time</label>
-              <TimeField
-                value={parseTime(form.end_time)}
-                onChange={(t) => setForm({ ...form, end_time: t ? `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}` : form.end_time })}
-                aria-label="End time"
-              >
-                <Label className="sr-only">End time</Label>
-                <DateInput className="flex gap-0.5 px-4 py-3 rounded-xl bg-bg-soft border border-fg/15 text-fg text-sm focus-within:border-accent">
-                  {(segment) => (
-                    <DateSegment
-                      segment={segment}
-                      className="outline-none focus:text-accent rounded px-0.5"
-                    />
-                  )}
-                </DateInput>
-              </TimeField>
-            </div>
-          </div>
-
-          {/* Mode */}
-          <div>
-            <label className="text-xs text-fg-muted uppercase tracking-wider block mb-1.5">Mode</label>
-            <select
-              value={form.mode_id}
-              onChange={(e) => setForm({ ...form, mode_id: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl bg-bg-soft border border-fg/15 text-fg text-sm focus:outline-none focus:border-accent appearance-none"
-            >
-              {MODES_LIST.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Albums */}
-          <div>
-            <label className="text-xs text-fg-muted uppercase tracking-wider block mb-2">Albums</label>
-            <div className="flex flex-wrap gap-1.5">
-              {albums.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => toggleAlbum(a.id)}
-                  className={`px-3 py-1.5 rounded-pill text-sm transition-colors min-h-[40px] ${
-                    form.album_ids.includes(a.id)
-                      ? 'bg-accent text-bg'
-                      : 'bg-fg/10 text-fg hover:bg-fg/15'
-                  }`}
-                >
-                  {a.name}
-                </button>
-              ))}
-              {albums.length === 0 && (
-                <span className="text-sm text-fg-muted">No albums available</span>
-              )}
-            </div>
-          </div>
-
-          {/* Priority */}
-          <div>
-            <label className="text-xs text-fg-muted uppercase tracking-wider block mb-1.5">
-              Priority: <span className="text-accent">{form.priority}</span>
-            </label>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              value={form.priority}
-              onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}
-              className="w-full accent-accent h-2 rounded-full cursor-pointer"
-            />
-          </div>
-
-          <div className="flex gap-3 justify-end pt-2">
-            <Button variant="secondary" size="md" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button size="md" onClick={saveSchedule} loading={saving}>
-              {editingId ? 'Save changes' : 'Add schedule'}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button onClick={saveSchedule} disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add schedule'}
             </Button>
-          </div>
-        </div>
-      </Modal>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

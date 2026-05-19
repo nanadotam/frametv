@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
-import { DM_Sans, Syne, JetBrains_Mono } from 'next/font/google';
+import { DM_Sans, Syne, JetBrains_Mono, Geist } from 'next/font/google';
 import { Providers } from '@/components/providers';
 import './globals.css';
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const dmSans = DM_Sans({
   variable: '--font-dm-sans',
@@ -33,7 +36,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${syne.variable} ${jetbrainsMono.variable} h-full antialiased dark`}
+      className={cn("h-full", "antialiased", "dark", dmSans.variable, syne.variable, jetbrainsMono.variable, "font-sans", geist.variable)}
     >
       <body className="min-h-full bg-bg text-fg font-sans">
         <Providers>{children}</Providers>
