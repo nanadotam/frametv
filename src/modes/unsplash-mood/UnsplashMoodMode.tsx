@@ -25,7 +25,7 @@ export default function UnsplashMoodMode({
 }: ModeProps) {
   const cfg = config as UnsplashMoodConfig;
   const mood = cfg.mood ?? 'mountains';
-  const intervalSeconds = cfg.intervalSeconds ?? 10;
+  const intervalSeconds = cfg.intervalSeconds ?? 120;
 
   const [photos, setPhotos] = useState<UnsplashPhoto[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);

@@ -182,6 +182,8 @@ function FlipboardConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
 }
 
 function UnsplashConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
+  const intervalSeconds = (cfg.intervalSeconds as number) ?? 120;
+  const intervalMins = Math.round(intervalSeconds / 60);
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
@@ -194,14 +196,17 @@ function UnsplashConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCha
       </div>
       <div className="space-y-2">
         <div className="flex justify-between">
-          <Label>Interval</Label>
-          <span className="text-sm font-semibold text-primary">{(cfg.interval as number) ?? 30}s</span>
+          <Label>Photo interval</Label>
+          <span className="text-sm font-semibold text-primary">{intervalMins} min</span>
         </div>
         <Slider
-          min={10} max={120} step={5}
-          value={[(cfg.interval as number) ?? 30]}
-          onValueChange={(v) => onChange({ ...cfg, interval: Number(Array.isArray(v) ? v[0] : v) })}
+          min={120} max={1800} step={60}
+          value={[intervalSeconds]}
+          onValueChange={(v) => onChange({ ...cfg, intervalSeconds: Number(Array.isArray(v) ? v[0] : v) })}
         />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>2 min</span><span>30 min</span>
+        </div>
       </div>
     </div>
   );
