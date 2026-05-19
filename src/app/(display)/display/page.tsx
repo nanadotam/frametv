@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useDisplayStateRealtime } from '@/hooks/useDisplayStateRealtime';
 import { useActiveMode } from '@/hooks/useActiveMode';
+import { useModes } from '@/hooks/useModes';
 import { useAutoTheme } from '@/hooks/useAutoTheme';
 import { useAutoDim } from '@/hooks/useAutoDim';
 import { useClockOverlayConfig } from '@/hooks/useClockOverlayConfig';
@@ -13,10 +14,12 @@ import ClockOverlay from '@/components/display/ClockOverlay';
 function LoadingSkeleton() {
   return (
     <div className="w-full h-full bg-black flex items-center justify-center">
-      <div className="flex flex-col items-center gap-6">
-        <div className="w-16 h-16 rounded-full bg-white/10 animate-pulse" />
-        <div className="w-32 h-3 rounded bg-white/10 animate-pulse" />
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/icon.svg"
+        alt="FrameTV"
+        style={{ width: 96, height: 96, opacity: 0.18, animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' }}
+      />
     </div>
   );
 }
@@ -24,6 +27,7 @@ function LoadingSkeleton() {
 export default function DisplayPage() {
   const displayState = useDisplayStateRealtime();
   const activeMode = useActiveMode();
+  const modes = useModes();
   const theme = useAutoTheme();
   const dim = useAutoDim();
   const clockConfig = useClockOverlayConfig();
@@ -59,7 +63,9 @@ export default function DisplayPage() {
 
   const brightness: number = (displayState.brightness as number) ?? 100;
   const isPaused: boolean = (displayState.is_paused as boolean) ?? false;
-  const config: Record<string, unknown> = (activeMode as { config?: Record<string, unknown> }).config ?? {};
+  // Look up the mode's config from the modes table (keyed by modeId)
+  const modeRow = modes.find((m) => m.id === modeId);
+  const config: Record<string, unknown> = (modeRow?.config as Record<string, unknown>) ?? {};
 
   return (
     <div className="w-screen h-screen bg-black overflow-hidden relative">

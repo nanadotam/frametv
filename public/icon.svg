@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Dark background with rounded corners -->
+  <rect width="200" height="200" rx="44" ry="44" fill="#161616"/>
+  <!-- Light pill background -->
+  <rect x="28" y="28" width="144" height="144" rx="32" ry="32" fill="#e8e8e8"/>
+  <!-- TV antennas -->
+  <line x1="83" y1="72" x2="72" y2="58" stroke="#1a1a1a" stroke-width="9" stroke-linecap="round"/>
+  <line x1="117" y1="72" x2="128" y2="58" stroke="#1a1a1a" stroke-width="9" stroke-linecap="round"/>
+  <!-- TV body -->
+  <rect x="56" y="74" width="88" height="68" rx="10" ry="10" fill="none" stroke="#1a1a1a" stroke-width="9" stroke-linejoin="round"/>
+</svg>
