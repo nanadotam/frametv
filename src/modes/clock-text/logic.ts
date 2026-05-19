@@ -10,7 +10,7 @@ const HOUR_IDS: Record<number, string> = {
   7:  'seven',
   8:  'eight',
   9:  'nine',
-  10: 'ten-hr',
+  10: 'ten-min', // grid only has one TEN — shares with minute marker
   11: 'eleven',
   12: 'twelve',
 };
