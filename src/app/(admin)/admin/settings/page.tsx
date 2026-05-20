@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Head from 'next/head';
-import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv, Clock } from 'lucide-react';
+import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv, Clock, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -92,6 +92,12 @@ export default function SettingsPage() {
   const [savingClock, setSavingClock] = useState(false);
   const [clockSaved, setClockSaved] = useState(false);
   const [spotifyBanner, setSpotifyBanner] = useState<'connected' | 'error' | null>(null);
+  const [displayPin, setDisplayPin] = useState<string | null>(null);
+  const [showPin, setShowPin] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [savingPin, setSavingPin] = useState(false);
+  const [pinSaved, setPinSaved] = useState(false);
+  const [pinError, setPinError] = useState('');
 
   // Read ?spotify= query param set by OAuth callback
   useEffect(() => {
@@ -109,11 +115,12 @@ export default function SettingsPage() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const [sRes, iRes, apiKeyRes, clockRes] = await Promise.all([
+      const [sRes, iRes, apiKeyRes, clockRes, pinRes] = await Promise.all([
         fetch('/api/settings?key=app_settings'),
         fetch('/api/settings/integrations'),
         fetch('/api/settings?key=google_api_key'),
         fetch('/api/settings?key=clock_overlay'),
+        fetch('/api/auth/pin-manage'),
       ]);
       if (sRes.ok) {
         const json = await sRes.json();
@@ -127,6 +134,10 @@ export default function SettingsPage() {
       if (clockRes.ok) {
         const json = await clockRes.json();
         if (json.setting?.value) setClock((prev) => ({ ...prev, ...json.setting.value }));
+      }
+      if (pinRes.ok) {
+        const json = await pinRes.json();
+        setDisplayPin(json.pin ?? null);
       }
     } finally {
       setLoading(false);
@@ -145,6 +156,30 @@ export default function SettingsPage() {
       setTimeout(() => setClockSaved(false), 2000);
     } finally {
       setSavingClock(false);
+    }
+  };
+
+  const savePin = async () => {
+    if (!/^\d{6}$/.test(newPin)) {
+      setPinError('PIN must be exactly 6 digits.');
+      return;
+    }
+    setPinError('');
+    setSavingPin(true);
+    try {
+      const res = await fetch('/api/auth/pin-manage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: newPin }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setPinError(json.error ?? 'Failed to save PIN.'); return; }
+      setDisplayPin(newPin);
+      setNewPin('');
+      setPinSaved(true);
+      setTimeout(() => setPinSaved(false), 2500);
+    } finally {
+      setSavingPin(false);
     }
   };
 
@@ -511,30 +546,119 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Display */}
+      {/* Display Access */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <Tv size={15} className="text-primary" /> Display
+            <Tv size={15} className="text-primary" /> Display Access
           </CardTitle>
+          <CardDescription>Your PIN lets anyone open your display on any TV</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Display token</p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 px-3 py-2.5 rounded-lg bg-muted border border-border text-sm font-mono truncate">
-                {integrations.display_token ? maskToken(integrations.display_token) : '—'}
-              </code>
-              <KeyRound size={15} className="text-muted-foreground shrink-0" />
+        <CardContent className="space-y-5">
+
+          {/* PIN display */}
+          <div className="rounded-xl border border-border bg-muted/40 p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Your Display PIN</p>
+              <button
+                onClick={() => setShowPin((v) => !v)}
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+              >
+                {showPin ? <EyeOff size={13} /> : <Eye size={13} />}
+                {showPin ? 'Hide' : 'Reveal'}
+              </button>
             </div>
+            {displayPin ? (
+              <div className="flex items-center gap-3">
+                <span
+                  className="font-mono text-5xl font-bold tracking-[0.35em] select-all"
+                  style={{
+                    background: showPin
+                      ? 'linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899)'
+                      : undefined,
+                    WebkitBackgroundClip: showPin ? 'text' : undefined,
+                    WebkitTextFillColor: showPin ? 'transparent' : undefined,
+                    color: showPin ? undefined : 'var(--muted-foreground)',
+                    letterSpacing: '0.3em',
+                  }}
+                >
+                  {showPin ? displayPin : '••••••'}
+                </span>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">No PIN stored — set one below.</p>
+            )}
           </div>
-          <Link
-            href="/display"
-            target="_blank"
-            className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
-          >
-            Open display <ExternalLink size={13} />
+
+          {/* Change PIN */}
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium flex items-center gap-1.5">
+              <RefreshCw size={11} /> Change PIN
+            </p>
+            <div className="flex gap-2">
+              <Input
+                className="font-mono tracking-[0.4em] text-xl text-center h-12"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="6 digits"
+                value={newPin}
+                onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setPinError(''); }}
+              />
+              <Button
+                size="lg"
+                className={cn('shrink-0 h-12 px-5', pinSaved && 'bg-green-600 hover:bg-green-500 text-white')}
+                onClick={savePin}
+                disabled={savingPin || newPin.length !== 6}
+              >
+                {pinSaved ? <><CheckCircle2 size={15} /> Saved</> : savingPin ? 'Saving…' : 'Set PIN'}
+              </Button>
+            </div>
+            {pinError && <p className="text-xs text-destructive">{pinError}</p>}
+          </div>
+
+          {/* Display token (collapsed/secondary) */}
+          {integrations.display_token && (
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Display token</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 px-3 py-2.5 rounded-lg bg-muted border border-border text-xs font-mono truncate">
+                  {maskToken(integrations.display_token)}
+                </code>
+                <KeyRound size={15} className="text-muted-foreground shrink-0" />
+              </div>
+            </div>
+          )}
+
+          {/* Big colorful View Display button */}
+          <Link href="/display" target="_blank">
+            <button
+              style={{
+                width: '100%',
+                height: '64px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)',
+                border: 'none',
+                color: '#fff',
+                fontSize: '1.1rem',
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                transition: 'opacity 0.2s ease, transform 0.15s ease',
+                boxShadow: '0 6px 24px rgba(139,92,246,0.35)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.92'; e.currentTarget.style.transform = 'scale(1.01)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; }}
+            >
+              <Tv size={20} />
+              View Display
+              <ExternalLink size={16} style={{ opacity: 0.7 }} />
+            </button>
           </Link>
+
         </CardContent>
       </Card>
     </div>

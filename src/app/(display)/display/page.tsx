@@ -12,7 +12,6 @@ import { MODES } from '@/modes/index';
 import type { ModeId } from '@/modes/types';
 import ClockOverlay from '@/components/display/ClockOverlay';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 
 function LoadingSkeleton() {
   return (
@@ -30,7 +29,6 @@ function LoadingSkeleton() {
 function DisplayPinGate({ onUnlock }: { onUnlock: () => void }) {
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [pin, setPin] = useState('');
-  const [deviceName, setDeviceName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +40,7 @@ function DisplayPinGate({ onUnlock }: { onUnlock: () => void }) {
       const res = await fetch('/api/auth/pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailOrUsername, pin, device_name: deviceName }),
+        body: JSON.stringify({ emailOrUsername, pin }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Unable to unlock display.');
@@ -55,39 +53,62 @@ function DisplayPinGate({ onUnlock }: { onUnlock: () => void }) {
   };
 
   return (
-    <div className="w-screen h-screen bg-black text-white flex items-center justify-center px-6">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4">
-        <div className="text-center space-y-2">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-2xl">📺</div>
-          <h1 className="text-2xl font-semibold">Unlock FrameTV</h1>
-          <p className="text-sm text-white/60">Enter your account and six-digit display PIN.</p>
+    <div className="w-screen h-screen bg-black text-white flex items-center justify-center px-8">
+      <form onSubmit={submit} className="w-full max-w-lg space-y-6">
+        <div className="text-center space-y-4">
+          <div className="mx-auto w-20 h-20 rounded-3xl bg-white/10 flex items-center justify-center text-4xl">📺</div>
+          <h1 className="text-5xl font-bold tracking-tight">FrameTV</h1>
+          <p className="text-xl text-white/50">Enter your username and display PIN</p>
         </div>
-        <Input
-          className="bg-white/10 border-white/15 text-white placeholder:text-white/35"
-          value={emailOrUsername}
-          onChange={(e) => setEmailOrUsername(e.target.value)}
-          placeholder="Email or username"
-          required
-        />
-        <Input
-          className="bg-white/10 border-white/15 text-white text-center tracking-[0.5em] text-xl placeholder:text-white/35"
-          inputMode="numeric"
-          maxLength={6}
-          value={pin}
-          onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          placeholder="••••••"
-          required
-        />
-        <Input
-          className="bg-white/10 border-white/15 text-white placeholder:text-white/35"
-          value={deviceName}
-          onChange={(e) => setDeviceName(e.target.value)}
-          placeholder="Device name, e.g. Living room TV"
-        />
-        {error && <p className="text-sm text-red-300 text-center">{error}</p>}
-        <Button className="w-full" type="submit" disabled={loading}>
-          {loading ? 'Unlocking…' : 'Unlock display'}
-        </Button>
+
+        <div className="space-y-4">
+          <Input
+            className="bg-white/10 border-white/15 text-white placeholder:text-white/35 h-16 text-2xl px-6 rounded-2xl focus:border-white/40"
+            value={emailOrUsername}
+            onChange={(e) => setEmailOrUsername(e.target.value)}
+            placeholder="Username or email"
+            autoComplete="off"
+            required
+          />
+          <Input
+            className="bg-white/10 border-white/15 text-white text-center tracking-[0.6em] text-4xl placeholder:text-white/25 h-20 rounded-2xl focus:border-white/40"
+            inputMode="numeric"
+            maxLength={6}
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="——————"
+            required
+          />
+        </div>
+
+        {error && (
+          <p className="text-lg text-red-300 text-center font-medium">{error}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            width: '100%',
+            height: '72px',
+            borderRadius: '16px',
+            background: loading
+              ? 'rgba(255,255,255,0.15)'
+              : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)',
+            border: 'none',
+            color: '#fff',
+            fontSize: '1.5rem',
+            fontWeight: 700,
+            letterSpacing: '0.03em',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            transition: 'opacity 0.2s ease, transform 0.1s ease',
+            boxShadow: loading ? 'none' : '0 8px 32px rgba(139,92,246,0.4)',
+          }}
+          onMouseEnter={(e) => { if (!loading) e.currentTarget.style.transform = 'scale(1.02)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+        >
+          {loading ? 'Unlocking…' : '▶  View Display'}
+        </button>
       </form>
     </div>
   );
@@ -148,6 +169,17 @@ export default function DisplayPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [locked, setLocked] = useState(false);
   const [clockOn, setClockOn] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const logoutDisplay = useCallback(async () => {
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/display-logout', { method: 'POST' });
+    } finally {
+      setLoggingOut(false);
+      setLocked(true);
+    }
+  }, []);
   const displayState = useDisplayStateRealtime();
   const activeMode = useActiveMode();
   const modes = useModes();
@@ -238,12 +270,9 @@ export default function DisplayPage() {
         <div className="fixed inset-0 bg-black/40 pointer-events-none" />
       )}
 
-      {/* Floating clock toggle — bottom-left, hidden in cinema mode */}
+      {/* Floating controls — bottom-left, hidden in cinema mode */}
       {!cinema && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setClockOn((v) => !v); }}
-          onDoubleClick={(e) => e.stopPropagation()}
-          title={clockOn ? 'Hide clock' : 'Show clock'}
+        <div
           style={{
             position: 'fixed',
             bottom: '28px',
@@ -251,32 +280,80 @@ export default function DisplayPage() {
             zIndex: 60,
             display: 'flex',
             alignItems: 'center',
-            gap: '7px',
-            padding: '8px 16px',
-            borderRadius: '999px',
-            background: 'rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            color: clockOn ? '#fff' : 'rgba(255,255,255,0.35)',
-            fontSize: '0.78rem',
-            fontWeight: 500,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            cursor: 'pointer',
-            opacity: 0.35,
-            transition: 'opacity 0.2s ease, color 0.2s ease',
+            gap: '10px',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
         >
-          {/* Clock icon */}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-          {clockOn ? 'Clock on' : 'Clock off'}
-        </button>
+          {/* Clock toggle */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setClockOn((v) => !v); }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            title={clockOn ? 'Hide clock' : 'Show clock'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '8px 16px',
+              borderRadius: '999px',
+              background: 'rgba(0,0,0,0.45)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              color: clockOn ? '#fff' : 'rgba(255,255,255,0.35)',
+              fontSize: '0.78rem',
+              fontWeight: 500,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              opacity: 0.35,
+              transition: 'opacity 0.2s ease, color 0.2s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            {clockOn ? 'Clock on' : 'Clock off'}
+          </button>
+
+          {/* Log out of display */}
+          <button
+            onClick={(e) => { e.stopPropagation(); logoutDisplay(); }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            disabled={loggingOut}
+            title="Log out of display"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '8px 16px',
+              borderRadius: '999px',
+              background: 'rgba(0,0,0,0.45)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              color: '#fff',
+              fontSize: '0.78rem',
+              fontWeight: 500,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              cursor: loggingOut ? 'wait' : 'pointer',
+              opacity: 0.35,
+              transition: 'opacity 0.2s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
+          >
+            {/* Door/exit icon */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            {loggingOut ? 'Logging out…' : 'Log out of display'}
+          </button>
+        </div>
       )}
 
       {/* Cinema mode toast */}

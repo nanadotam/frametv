@@ -11,7 +11,7 @@ import {
   recordAuthEvent,
   setSessionCookie,
 } from '@/lib/auth';
-import { ensureUserDefaults } from '@/lib/userData';
+import { ensureUserDefaults, userSettingKey } from '@/lib/userData';
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,6 +61,14 @@ export async function POST(request: NextRequest) {
     }
 
     await ensureUserDefaults(user.id);
+
+    // Store plaintext PIN so admin can see it on the settings page
+    await supabase.from('settings').upsert({
+      key: userSettingKey(user.id, 'display_pin_plain'),
+      user_id: user.id,
+      value: pin,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
 
     const token = createSessionToken();
     const expires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
