@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { FastAverageColor } from 'fast-average-color';
 import type { ModeProps } from '@/modes/types';
-import { useSpotifyNowPlaying, type SpotifyTrack } from '@/hooks/useSpotifyNowPlaying';
+import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
 import CoverFlowCarousel from './CoverFlowCarousel';
 
 function NoSpotify() {
@@ -31,26 +31,21 @@ function NoSpotify() {
   );
 }
 
-export default function CoverFlowMode({
-  brightness,
-  onReady,
-}: ModeProps) {
-  const spotifyResult = useSpotifyNowPlaying();
-  const nowPlaying: SpotifyTrack | null = spotifyResult.current;
-  const queue: SpotifyTrack[] = spotifyResult.queue;
+export default function CoverFlowMode({ brightness, onReady }: ModeProps) {
+  const { current, queue, history } = useSpotifyNowPlaying();
   const [dominantColor, setDominantColor] = useState('#1db954');
-  const imgRef = useRef<string | null>(null);
+  const lastArtRef = useRef<string | null>(null);
   const fac = useRef(new FastAverageColor());
 
   useEffect(() => {
     onReady?.();
   }, [onReady]);
 
-  // Extract dominant color from album art
+  // Extract dominant color from album art whenever the track changes
   useEffect(() => {
-    const albumArt = nowPlaying?.albumArtUrl;
-    if (!albumArt || albumArt === imgRef.current) return;
-    imgRef.current = albumArt;
+    const albumArt = current?.albumArtUrl;
+    if (!albumArt || albumArt === lastArtRef.current) return;
+    lastArtRef.current = albumArt;
 
     const img = document.createElement('img');
     img.crossOrigin = 'anonymous';
@@ -61,72 +56,94 @@ export default function CoverFlowMode({
         .then((color) => setDominantColor(color.hex))
         .catch(() => setDominantColor('#1db954'));
     };
-  }, [nowPlaying?.albumArtUrl]);
-
-  // Build track list: queue + current
-  const tracks = [
-    ...(queue ?? []),
-    ...(nowPlaying ? [nowPlaying] : []),
-  ];
-  const currentIndex = tracks.length - 1;
-
-  const isPlaying = !!nowPlaying;
+  }, [current?.albumArtUrl]);
 
   return (
     <motion.div
       className="w-full h-full flex flex-col items-center justify-center"
       style={{ opacity: brightness / 100 }}
       animate={{
-        background: isPlaying
+        background: current
           ? `radial-gradient(ellipse at center, ${dominantColor}33 0%, #000 70%)`
           : '#000',
       }}
       transition={{ duration: 1.5, ease: 'easeInOut' }}
     >
-      {!isPlaying ? (
+      {!current ? (
         <NoSpotify />
       ) : (
         <>
           <CoverFlowCarousel
-            tracks={tracks}
-            currentIndex={currentIndex}
+            history={history}
+            current={current}
+            queue={queue}
             dominantColor={dominantColor}
           />
 
           {/* Track info */}
-          <motion.div
-            key={nowPlaying.name}
-            className="text-center mt-12 px-8"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            <div
-              style={{
-                color: '#ffffff',
-                fontSize: 'clamp(1.5rem, 3vw, 2.5rem)',
-                fontWeight: 700,
-                letterSpacing: '-0.01em',
-                lineHeight: 1.2,
-                maxWidth: '700px',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={current.id}
+              className="text-center px-8"
+              style={{ marginTop: '24px' }}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
             >
-              {nowPlaying.name}
-            </div>
-            <div
-              style={{
-                color: 'rgba(255,255,255,0.55)',
-                fontSize: 'clamp(1rem, 1.8vw, 1.5rem)',
-                marginTop: '0.5rem',
-                letterSpacing: '0.02em',
-              }}
-            >
-              {nowPlaying.artists?.join(', ')}
-            </div>
-          </motion.div>
+              {/* Song name */}
+              <div
+                style={{
+                  color: '#ffffff',
+                  fontSize: 'clamp(1.6rem, 2.8vw, 2.6rem)',
+                  fontWeight: 700,
+                  letterSpacing: '-0.02em',
+                  lineHeight: 1.15,
+                  maxWidth: '800px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {current.name}
+              </div>
+
+              {/* Artist names */}
+              <div
+                style={{
+                  color: 'rgba(255,255,255,0.6)',
+                  fontSize: 'clamp(1rem, 1.8vw, 1.5rem)',
+                  marginTop: '6px',
+                  letterSpacing: '0.01em',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '800px',
+                }}
+              >
+                {current.artists.join(', ')}
+              </div>
+
+              {/* Album name */}
+              {current.albumName && (
+                <div
+                  style={{
+                    color: 'rgba(255,255,255,0.35)',
+                    fontSize: 'clamp(0.8rem, 1.3vw, 1.1rem)',
+                    marginTop: '4px',
+                    letterSpacing: '0.03em',
+                    fontStyle: 'italic',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: '800px',
+                  }}
+                >
+                  {current.albumName}
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
         </>
       )}
     </motion.div>

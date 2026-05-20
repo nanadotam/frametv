@@ -1,7 +1,8 @@
-// Spotify now-playing + queue resolver — PRD §10.3
+// Spotify now-playing + queue resolver
 import { spotifyFetch } from './client';
 
-export interface SpotifyTrack {
+// Raw shape returned by Spotify Web API
+interface RawSpotifyTrack {
   id: string;
   name: string;
   artists: { id: string; name: string }[];
@@ -14,6 +15,29 @@ export interface SpotifyTrack {
   uri: string;
 }
 
+// Mapped shape consumed by the client hook and UI
+export interface SpotifyTrack {
+  id: string;
+  name: string;
+  artists: string[];
+  albumArtUrl: string;
+  albumName: string;
+  durationMs: number;
+  progressMs: number;
+}
+
+function mapTrack(raw: RawSpotifyTrack, progressMs = 0): SpotifyTrack {
+  return {
+    id: raw.id,
+    name: raw.name,
+    artists: raw.artists.map((a) => a.name),
+    albumArtUrl: raw.album?.images?.[0]?.url ?? '',
+    albumName: raw.album?.name ?? '',
+    durationMs: raw.duration_ms,
+    progressMs,
+  };
+}
+
 export interface NowPlayingResult {
   current: SpotifyTrack;
   queue: SpotifyTrack[];
@@ -24,72 +48,31 @@ export interface NowPlayingResult {
 interface PlaybackState {
   is_playing: boolean;
   progress_ms: number | null;
-  item: SpotifyTrack | null;
-  context?: {
-    type: 'album' | 'playlist' | 'artist' | 'show';
-    uri: string;
-    href: string;
-  } | null;
+  item: RawSpotifyTrack | null;
 }
 
-interface AlbumTracksResponse {
-  items: SpotifyTrack[];
-  next: string | null;
-}
-
-interface PlaylistTracksResponse {
-  items: { track: SpotifyTrack }[];
-  next: string | null;
+interface QueueResponse {
+  currently_playing: RawSpotifyTrack | null;
+  queue: RawSpotifyTrack[];
 }
 
 export async function getNowPlayingWithQueue(
   accessToken: string
 ): Promise<NowPlayingResult | null> {
-  const playback = await spotifyFetch<PlaybackState | null>(
-    '/me/player',
-    accessToken
-  );
+  // Fetch playback state and queue in parallel
+  const [playback, queueData] = await Promise.all([
+    spotifyFetch<PlaybackState | null>('/me/player', accessToken),
+    spotifyFetch<QueueResponse | null>('/me/player/queue', accessToken).catch(() => null),
+  ]);
 
   if (!playback?.item) return null;
 
-  const current = playback.item;
-  let queue: SpotifyTrack[] = [];
-
-  if (playback.context?.type === 'album') {
-    try {
-      const albumId = playback.context.uri.split(':').pop();
-      const albumTracks = await spotifyFetch<AlbumTracksResponse>(
-        `/albums/${albumId}/tracks?limit=50`,
-        accessToken
-      );
-      const idx = albumTracks.items.findIndex((t) => t.id === current.id);
-      queue = albumTracks.items.slice(idx + 1, idx + 6);
-    } catch {
-      // Queue resolution is best-effort — don't fail the whole request
-      queue = [];
-    }
-  } else if (playback.context?.type === 'playlist') {
-    try {
-      const playlistId = playback.context.uri.split(':').pop();
-      const playlistTracks = await spotifyFetch<PlaylistTracksResponse>(
-        `/playlists/${playlistId}/tracks?limit=50&fields=items(track(id,name,artists,album,duration_ms,uri))`,
-        accessToken
-      );
-      const idx = playlistTracks.items.findIndex(
-        (it) => it.track?.id === current.id
-      );
-      queue = playlistTracks.items
-        .slice(idx + 1, idx + 6)
-        .map((it) => it.track)
-        .filter(Boolean);
-    } catch {
-      queue = [];
-    }
-  }
+  // Use up to 10 upcoming tracks from the real queue endpoint
+  const rawQueue: RawSpotifyTrack[] = queueData?.queue?.slice(0, 10) ?? [];
 
   return {
-    current,
-    queue,
+    current: mapTrack(playback.item, playback.progress_ms ?? 0),
+    queue: rawQueue.map((t) => mapTrack(t)),
     isPlaying: playback.is_playing,
     progressMs: playback.progress_ms,
   };
