@@ -17,7 +17,7 @@ interface CellState {
   flipKey: number;
 }
 
-// Module-level AR cache — persists for page lifetime, shared across re-renders
+// Module-level AR cache — persists for page lifetime
 const AR_CACHE = new Map<string, number>();
 
 function measureAR(photoId: string): void {
@@ -32,7 +32,7 @@ function measureAR(photoId: string): void {
 }
 
 function getAR(photoId: string): number {
-  return AR_CACHE.get(photoId) ?? 1; // default square until measured
+  return AR_CACHE.get(photoId) ?? 1;
 }
 
 const FILL: React.CSSProperties = {
@@ -47,7 +47,7 @@ const FILL: React.CSSProperties = {
 
 function useProgressiveSrc(photoId: string | undefined) {
   const thumb = photoId ? `/api/photos/${photoId}/thumbnail?size=800` : null;
-  const hires = photoId ? `/api/photos/${photoId}/thumbnail?size=2000` : null;
+  const hires  = photoId ? `/api/photos/${photoId}/thumbnail?size=2000` : null;
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,17 +78,21 @@ function PhotoCell({ photo }: { photo: Photo | null }) {
   );
 }
 
+// Apple-style zoom + fade for each photo swap
 function GridCell({ cell }: { cell: CellState }) {
   return (
-    <div style={{ position: 'absolute', inset: 0 }}>
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
       <AnimatePresence mode="wait">
         <motion.div
           key={cell.flipKey}
           style={{ position: 'absolute', inset: 0 }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.75 }}
+          initial={{ opacity: 0, scale: 1.06 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.96 }}
+          transition={{
+            duration: 0.85,
+            ease: [0.25, 0.46, 0.45, 0.94],
+          }}
         >
           <PhotoCell photo={cell.photo} />
         </motion.div>
@@ -106,26 +110,32 @@ export default function SlideshowGridMode({
 }: ModeProps) {
   const cfg = config as SlideshowGridConfig;
   const cellInterval =
-    ((cfg.cellIntervalSeconds ?? (config as Record<string, unknown>).intervalSeconds as number) ?? 300) * 1000;
+    ((cfg.cellIntervalSeconds ??
+      (config as Record<string, unknown>).intervalSeconds as number) ?? 300) * 1000;
 
   const { photos } = usePhotoRotation({ albumIds, shuffle: true });
   const [layout, setLayout] = useState<Layout | null>(null);
-  const [cells, setCells] = useState<CellState[]>([]);
+  const [cells,  setCells]  = useState<CellState[]>([]);
+  // isReady gates the cascade effect without putting `layout` in its deps
+  const [isReady, setIsReady] = useState(false);
 
   const photoIdxRef  = useRef(0);
   const prevCountRef = useRef<number | null>(null);
+  // Mirror of layout state — lets cascade read current layout without being
+  // in the effect's dep array (which would cancel pending timeouts on every setLayout call)
+  const layoutRef    = useRef<Layout | null>(null);
   const initialized  = useRef(false);
 
-  // One-time init: pick initial layout, populate cells, kick off AR measurement
+  // ── One-time init ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (photos.length === 0 || initialized.current) return;
     initialized.current = true;
 
-    // Start measuring ARs in background for the first 30 photos
     photos.slice(0, 30).forEach((p) => measureAR(p.id));
 
     const initial = pickLayout(1, null, Math.min(photos.length, 6));
     prevCountRef.current = initial.count;
+    layoutRef.current    = initial;
     setLayout(initial);
     setCells(
       initial.areas.map((_, i) => ({
@@ -135,27 +145,31 @@ export default function SlideshowGridMode({
     );
     photoIdxRef.current = initial.count % photos.length;
     onReady?.();
+    setIsReady(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photos.length]);
 
-  // Cascade + layout change cycle
+  // ── Cascade + layout cycle ────────────────────────────────────────────────
+  // IMPORTANT: `layout` is intentionally NOT in the dep array.
+  // We use layoutRef so that calling setLayout() inside runCycle does NOT
+  // trigger the cleanup → cancel-all-timeouts → restart loop.
   useEffect(() => {
-    if (isPaused || photos.length < 3 || !layout) return;
+    if (!isReady || isPaused || photos.length < 3) return;
 
     const STAGGER_MS = 1_000;
     const pending: ReturnType<typeof setTimeout>[] = [];
     let cancelled = false;
 
-    // Kick off AR measurement for upcoming photos so future cycles have better data
-    const preload = (start: number) => {
+    function preload(start: number) {
       for (let i = 0; i < 12; i++) {
         measureAR(photos[(start + i) % photos.length].id);
       }
-    };
+    }
 
     function runCycle() {
-      // Look at the next batch of up to 6 photos and compute avg AR
       const maxCells = Math.min(photos.length, 6);
+
+      // Peek at upcoming photos for AR calculation
       const peekPhotos = Array.from({ length: maxCells }, (_, i) =>
         photos[(photoIdxRef.current + i) % photos.length]
       );
@@ -163,31 +177,31 @@ export default function SlideshowGridMode({
       const avgRatio =
         peekPhotos.reduce((sum, p) => sum + getAR(p.id), 0) / peekPhotos.length;
 
-      // Pick a new layout (prefers different count than last cycle)
+      // Pick new layout (prefer different count than last cycle)
       const newLayout = pickLayout(avgRatio, prevCountRef.current, maxCells);
       prevCountRef.current = newLayout.count;
 
-      // Pre-allocate the exact photos this cycle will use (in order)
+      // Pre-allocate exactly the right number of photos for this cycle
       const batch = Array.from({ length: newLayout.count }, () => {
         const p = photos[photoIdxRef.current];
         photoIdxRef.current = (photoIdxRef.current + 1) % photos.length;
         return p;
       });
 
-      // Preload ARs for the cycle after this one
       preload(photoIdxRef.current);
 
-      // Update layout immediately — grid structure re-flows
+      // Update layout ref + state (state for rendering, ref for the effect)
+      layoutRef.current = newLayout;
       setLayout(newLayout);
 
-      // Ensure cells array length matches new layout (carry over or pad with null)
+      // Ensure cells array is the right length before the cascade starts
       setCells((prev) =>
         Array.from({ length: newLayout.count }, (_, i) =>
-          prev[i] ?? { photo: null, flipKey: -(i + 1) }
+          prev[i] ?? { photo: null, flipKey: -(Date.now() + i) }
         )
       );
 
-      // Stagger photo updates in random order across all cells
+      // Cascade: update each cell in random order, 1 s apart
       const order = Array.from({ length: newLayout.count }, (_, i) => i)
         .sort(() => Math.random() - 0.5);
 
@@ -195,7 +209,9 @@ export default function SlideshowGridMode({
         const t = setTimeout(() => {
           if (cancelled) return;
           setCells((prev) => {
-            if (prev.length !== newLayout.count) return prev;
+            // Guard: only update if the array is still the right length
+            // (handles edge case where another setLayout already ran)
+            if (cellIdx >= prev.length) return prev;
             const next = [...prev];
             next[cellIdx] = {
               photo: batch[cellIdx],
@@ -207,15 +223,15 @@ export default function SlideshowGridMode({
         pending.push(t);
       });
 
-      // Schedule the next cycle
-      const cascadeDuration = (newLayout.count - 1) * STAGGER_MS;
+      // Next cycle fires after cascade finishes + the configured interval
+      const cascadeDone = (newLayout.count - 1) * STAGGER_MS;
       const t = setTimeout(() => {
         if (!cancelled) runCycle();
-      }, cascadeDuration + cellInterval);
+      }, cascadeDone + cellInterval);
       pending.push(t);
     }
 
-    // First cycle fires after the initial interval
+    // First cycle starts after the initial interval
     const first = setTimeout(() => { if (!cancelled) runCycle(); }, cellInterval);
     pending.push(first);
 
@@ -223,7 +239,9 @@ export default function SlideshowGridMode({
       cancelled = true;
       pending.forEach(clearTimeout);
     };
-  }, [isPaused, photos, cellInterval, layout]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, isPaused, photos, cellInterval]);
+  // ↑ `layout` is deliberately excluded — see comment above
 
   if (!layout || cells.length === 0) {
     return (
@@ -248,20 +266,29 @@ export default function SlideshowGridMode({
           gap: '2px',
         }}
       >
-        {layout.areas.map((area, i) => (
-          <div
-            key={i}
-            style={{
-              gridColumn: `${area.colStart} / ${area.colEnd}`,
-              gridRow: `${area.rowStart} / ${area.rowEnd}`,
-              position: 'relative',
-              overflow: 'hidden',
-              background: '#000',
-            }}
-          >
-            {cells[i] && <GridCell cell={cells[i]} />}
-          </div>
-        ))}
+        {/* Use position-based keys so AnimatePresence fades cells in/out
+            when the layout changes — cells that stay in the same grid area
+            persist; cells that move or appear/disappear cross-fade. */}
+        <AnimatePresence>
+          {layout.areas.map((area, i) => (
+            <motion.div
+              key={`${area.colStart}-${area.colEnd}-${area.rowStart}-${area.rowEnd}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease: 'easeInOut' }}
+              style={{
+                gridColumn: `${area.colStart} / ${area.colEnd}`,
+                gridRow: `${area.rowStart} / ${area.rowEnd}`,
+                position: 'relative',
+                overflow: 'hidden',
+                background: '#000',
+              }}
+            >
+              {cells[i] && <GridCell cell={cells[i]} />}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );
