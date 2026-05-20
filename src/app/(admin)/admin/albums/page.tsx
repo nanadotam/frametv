@@ -9,21 +9,23 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import type { Album } from '@/types/db';
 
 export default function AlbumsPage() {
-  const [albums, setAlbums] = useState<Album[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [albums, setAlbums]               = useState<Album[]>([]);
+  const [loading, setLoading]             = useState(true);
   const [driveModalOpen, setDriveModalOpen] = useState(false);
-  const [driveUrl, setDriveUrl] = useState('');
-  const [driveLoading, setDriveLoading] = useState(false);
-  const [driveError, setDriveError] = useState('');
+  const [driveUrl, setDriveUrl]           = useState('');
+  const [driveLoading, setDriveLoading]   = useState(false);
+  const [driveError, setDriveError]       = useState('');
   const [uploadLoading, setUploadLoading] = useState(false);
   const [activeAlbumIds, setActiveAlbumIds] = useState<string[]>([]);
-  const [syncing, setSyncing] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [syncing, setSyncing]             = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const fileInputRef    = useRef<HTMLInputElement>(null);
+  const confirmTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchAlbums = useCallback(async () => {
     try {
@@ -62,8 +64,7 @@ export default function AlbumsPage() {
       const json = await res.json();
       await fetchAlbums();
       if (json.warning) {
-        // Album was created but photos couldn't be synced — stay in modal, show why
-        setDriveError(`Album "${json.albumId ? 'created' : ''}" but no photos synced: ${json.warning}`);
+        setDriveError(`Album created but no photos synced: ${json.warning}`);
       } else {
         setDriveUrl('');
         setDriveModalOpen(false);
@@ -95,9 +96,19 @@ export default function AlbumsPage() {
     await fetchAlbums();
   };
 
-  const deleteAlbum = async (id: string) => {
-    await fetch(`/api/albums/${id}`, { method: 'DELETE' });
-    setAlbums((prev) => prev.filter((a) => a.id !== id));
+  const handleDeleteClick = (id: string) => {
+    if (confirmDelete === id) {
+      // Second tap — confirm delete
+      fetch(`/api/albums/${id}`, { method: 'DELETE' });
+      setAlbums((prev) => prev.filter((a) => a.id !== id));
+      setConfirmDelete(null);
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    } else {
+      // First tap — arm confirm, auto-cancel after 3s
+      setConfirmDelete(id);
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+      confirmTimer.current = setTimeout(() => setConfirmDelete(null), 3000);
+    }
   };
 
   const toggleActive = async (id: string) => {
@@ -119,20 +130,26 @@ export default function AlbumsPage() {
       {/* Header */}
       <div className="flex items-start justify-between pt-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Albums</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-xl font-bold tracking-tight">Albums</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {visible.length} album{visible.length !== 1 ? 's' : ''} · {activeAlbumIds.length} active on TV
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setDriveModalOpen(true)} className="gap-1.5">
-            <HardDrive size={14} /> Add from Drive
+            <HardDrive size={14} /> Drive
           </Button>
           <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadLoading} className="gap-1.5">
             <CloudUpload size={14} /> {uploadLoading ? 'Uploading…' : 'Upload'}
           </Button>
-          <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden"
-            onChange={(e) => handleUpload(e.target.files)} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => handleUpload(e.target.files)}
+          />
         </div>
       </div>
 
@@ -160,7 +177,7 @@ export default function AlbumsPage() {
       {/* Album grid */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1,2,3].map((i) => (
+          {[1, 2, 3].map((i) => (
             <div key={i} className="rounded-xl border border-border bg-card animate-pulse h-52" />
           ))}
         </div>
@@ -173,26 +190,26 @@ export default function AlbumsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {visible.sort((a, b) => a.display_order - b.display_order).map((album) => {
-            const isActive = activeAlbumIds.includes(album.id);
-            const isSyncing = syncing === album.id;
+            const isActive   = activeAlbumIds.includes(album.id);
+            const isSyncing  = syncing === album.id;
+            const isArming   = confirmDelete === album.id;
             return (
               <Card
                 key={album.id}
-                className={cn(
-                  'overflow-hidden transition-all',
-                  isActive && 'ring-2 ring-primary border-primary'
-                )}
+                className={cn('overflow-hidden transition-all', isActive && 'ring-2 ring-primary border-primary')}
               >
                 {/* Cover */}
                 <div className="aspect-video bg-muted relative flex items-center justify-center">
                   {album.cover_photo_id ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={`/api/photos/${album.cover_photo_id}/thumbnail`} alt={album.name}
-                      className="w-full h-full object-cover" />
+                    <img
+                      src={`/api/photos/${album.cover_photo_id}/thumbnail`}
+                      alt={album.name}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <ImageIcon size={28} className="text-muted-foreground/40" />
                   )}
-                  {/* Badges */}
                   <div className="absolute top-2 left-2 flex gap-1">
                     {isActive && (
                       <Badge className="bg-primary text-primary-foreground text-xs gap-1 shadow">
@@ -201,9 +218,7 @@ export default function AlbumsPage() {
                     )}
                   </div>
                   <div className="absolute top-2 right-2">
-                    <Badge variant="secondary" className="text-xs capitalize">
-                      {album.source_type}
-                    </Badge>
+                    <Badge variant="secondary" className="text-xs capitalize">{album.source_type}</Badge>
                   </div>
                 </div>
 
@@ -213,24 +228,41 @@ export default function AlbumsPage() {
                     <Button
                       size="sm"
                       variant={isActive ? 'default' : 'outline'}
-                      className={cn('flex-1 h-9 text-xs gap-1', isActive && 'bg-primary')}
+                      className={cn('flex-1 h-10 text-xs gap-1', isActive && 'bg-primary')}
                       onClick={() => toggleActive(album.id)}
                     >
                       <Star size={11} fill={isActive ? 'currentColor' : 'none'} />
                       {isActive ? 'Active' : 'Set active'}
                     </Button>
                     <Link href={`/admin/albums/${album.id}`}>
-                      <Button size="sm" variant="outline" className="h-9 text-xs">View</Button>
+                      <Button size="sm" variant="outline" className="h-10 text-xs">View</Button>
                     </Link>
                     {album.source_type === 'drive' && (
-                      <Button size="sm" variant="ghost" className="h-9 w-9 p-0" onClick={() => syncAlbum(album.id)}
-                        disabled={isSyncing} title="Sync from Drive">
-                        <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-10 w-10 p-0"
+                        onClick={() => syncAlbum(album.id)}
+                        disabled={isSyncing}
+                        title="Sync from Drive"
+                      >
+                        <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" className="h-9 w-9 p-0 hover:text-destructive"
-                      onClick={() => deleteAlbum(album.id)} title="Delete album">
-                      <Trash2 size={13} />
+                    {/* Two-tap delete */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className={cn(
+                        'h-10 p-0 transition-all',
+                        isArming
+                          ? 'w-16 text-[10px] font-bold text-destructive bg-destructive/10 hover:bg-destructive/20 px-2'
+                          : 'w-10 hover:text-destructive'
+                      )}
+                      onClick={() => handleDeleteClick(album.id)}
+                      title={isArming ? 'Tap again to confirm' : 'Delete album'}
+                    >
+                      {isArming ? 'Sure?' : <Trash2 size={14} />}
                     </Button>
                   </div>
                 </CardContent>
@@ -260,9 +292,7 @@ export default function AlbumsPage() {
                 className="mt-1.5"
               />
             </div>
-            {driveError && (
-              <p className="text-sm text-destructive">{driveError}</p>
-            )}
+            {driveError && <p className="text-sm text-destructive">{driveError}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDriveModalOpen(false)}>Cancel</Button>

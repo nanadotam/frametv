@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Pencil, Trash2, CalendarDays, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,13 +48,15 @@ const defaultForm: FormState = {
 };
 
 export default function SchedulePage() {
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [albums, setAlbums] = useState<Album[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(defaultForm);
-  const [saving, setSaving] = useState(false);
+  const [schedules, setSchedules]     = useState<Schedule[]>([]);
+  const [albums, setAlbums]           = useState<Album[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [modalOpen, setModalOpen]     = useState(false);
+  const [editingId, setEditingId]     = useState<string | null>(null);
+  const [form, setForm]               = useState<FormState>(defaultForm);
+  const [saving, setSaving]           = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -121,9 +123,17 @@ export default function SchedulePage() {
     }
   };
 
-  const deleteSchedule = async (id: string) => {
-    await fetch(`/api/schedules/${id}`, { method: 'DELETE' });
-    setSchedules((prev) => prev.filter((s) => s.id !== id));
+  const handleDeleteClick = (id: string) => {
+    if (confirmDelete === id) {
+      fetch(`/api/schedules/${id}`, { method: 'DELETE' });
+      setSchedules((prev) => prev.filter((s) => s.id !== id));
+      setConfirmDelete(null);
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    } else {
+      setConfirmDelete(id);
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+      confirmTimer.current = setTimeout(() => setConfirmDelete(null), 3000);
+    }
   };
 
   const toggleEnabled = async (s: Schedule) => {
@@ -161,7 +171,7 @@ export default function SchedulePage() {
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6">
       <div className="flex items-start justify-between pt-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Schedule</h1>
+          <h1 className="text-xl font-bold tracking-tight">Schedule</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Auto-switch modes at specific times · {schedules.filter(s => s.is_enabled).length} active
           </p>
@@ -239,18 +249,23 @@ export default function SchedulePage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-8 w-8 p-0"
+                      className="h-10 w-10 p-0"
                       onClick={() => openEdit(s)}
                     >
-                      <Pencil size={14} />
+                      <Pencil size={15} />
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-8 w-8 p-0 hover:text-destructive"
-                      onClick={() => deleteSchedule(s.id)}
+                      className={cn(
+                        'h-10 p-0 transition-all',
+                        confirmDelete === s.id
+                          ? 'w-16 text-[10px] font-bold text-destructive bg-destructive/10 hover:bg-destructive/20 px-2'
+                          : 'w-10 hover:text-destructive'
+                      )}
+                      onClick={() => handleDeleteClick(s.id)}
                     >
-                      <Trash2 size={14} />
+                      {confirmDelete === s.id ? 'Sure?' : <Trash2 size={15} />}
                     </Button>
                   </div>
                 </div>

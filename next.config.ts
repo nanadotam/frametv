@@ -18,6 +18,15 @@ const withPWA = withPWAInit({
         },
       },
       {
+        // Uploaded-photo thumbnail proxy (same-origin, safe to cache)
+        urlPattern: ({ url }: { url: URL }) => /^\/api\/photos\/[^/]+\/thumbnail/.test(url.pathname),
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'photo-thumbs',
+          expiration: { maxEntries: 1000, maxAgeSeconds: 60 * 60 * 24 },
+        },
+      },
+      {
         urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith('/api/photos'),
         handler: 'StaleWhileRevalidate',
         options: {

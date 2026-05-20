@@ -73,7 +73,7 @@ function InfoModal({ photo, onClose }: { photo: Photo; onClose: () => void }) {
         <div className="h-36 bg-bg overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/api/photos/${photo.id}/thumbnail`}
+            src={`/api/photos/${photo.id}/thumbnail?size=200`}
             alt=""
             className="w-full h-full object-cover"
             style={{ transform: `rotate(${rotation}deg)` }}
@@ -208,7 +208,7 @@ export default function AlbumPhotosPage() {
                 {photo.thumbnail_path || photo.storage_path ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={`/api/photos/${photo.id}/thumbnail`}
+                    src={`/api/photos/${photo.id}/thumbnail?size=200`}
                     alt=""
                     className="w-full h-full object-cover transition-transform duration-300"
                     style={{ transform: `rotate(${rotation}deg)` }}

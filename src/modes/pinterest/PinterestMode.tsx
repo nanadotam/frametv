@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { SyntheticEvent } from 'react';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { getPhotoRotation } from '@/lib/photoRotation';
 import type { Photo } from '@/types/db';
+import { photoThumbUrl, getConnectionSpeed, IMG_SIZES } from '@/lib/image-urls';
 
 interface PinterestConfig {
   rows?: number;
@@ -24,9 +24,8 @@ function getViewportHeight() {
 
 /**
  * Single photo in the scrolling track.
- * For 90/270° rotations, wraps the image in a container that matches the post-rotation
- * visual dimensions so there are no black bars — uses the photo's stored W×H to derive
- * the correct container width at the given row height.
+ * Loads a small thumbnail immediately, upgrades to display-quality in background.
+ * Shows a blurred LQIP placeholder until the first thumb paints.
  */
 function TrackPhoto({
   photo,
@@ -37,11 +36,26 @@ function TrackPhoto({
   rowHeightPx: number;
   cornerRadius: number;
 }) {
-  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [naturalWidth, setNaturalWidth] = useState<number | null>(photo.width ?? null);
+  const [naturalHeight, setNaturalHeight] = useState<number | null>(photo.height ?? null);
+  const [mainLoaded, setMainLoaded] = useState(false);
+  const [displaySrc, setDisplaySrc] = useState<string>(() => photoThumbUrl(photo, IMG_SIZES.thumb_small));
+
   const rotation = getPhotoRotation(photo);
-  const src = `/api/photos/${photo.id}/thumbnail?size=1200`;
-  const naturalWidth = photo.width ?? naturalSize?.width ?? null;
-  const naturalHeight = photo.height ?? naturalSize?.height ?? null;
+  const lqipSrc = photoThumbUrl(photo, IMG_SIZES.lqip);
+
+  // Upgrade to display-quality in background once mounted
+  useEffect(() => {
+    const isSlow = getConnectionSpeed() === 'slow';
+    const targetSize = isSlow ? IMG_SIZES.thumb_medium : IMG_SIZES.thumb_large;
+    const upgradeSrc = photoThumbUrl(photo, targetSize);
+    const img = new Image();
+    img.onload = () => setDisplaySrc(upgradeSrc);
+    img.src = upgradeSrc;
+    return () => { img.onload = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photo.id]);
+
   const isSideways = rotation === 90 || rotation === 270;
   const visualWidth = isSideways ? naturalHeight : naturalWidth;
   const visualHeight = isSideways ? naturalWidth : naturalHeight;
@@ -50,12 +64,6 @@ function TrackPhoto({
     Math.round(rowHeightPx * 0.4),
     Math.min(Math.round(rowHeightPx * ratio), Math.round(rowHeightPx * 2.5))
   );
-  const handleLoad = (event: SyntheticEvent<HTMLImageElement>) => {
-    const img = event.currentTarget;
-    if (img.naturalWidth && img.naturalHeight) {
-      setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
-    }
-  };
 
   return (
     <div
@@ -66,14 +74,35 @@ function TrackPhoto({
         position: 'relative',
         overflow: 'hidden',
         borderRadius: `${cornerRadius}px`,
+        background: '#111',
       }}
     >
+      {/* LQIP blurred fill — shows immediately */}
+      {!mainLoaded && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={lqipSrc}
+          aria-hidden
+          alt=""
+          style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            objectFit: 'cover', filter: 'blur(12px)', transform: 'scale(1.1)',
+          }}
+        />
+      )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
+        src={displaySrc}
         alt=""
-        loading="eager"
-        onLoad={handleLoad}
+        loading="lazy"
+        onLoad={(e) => {
+          const img = e.currentTarget;
+          if (img.naturalWidth && img.naturalHeight) {
+            setNaturalWidth(img.naturalWidth);
+            setNaturalHeight(img.naturalHeight);
+          }
+          setMainLoaded(true);
+        }}
         style={{
           position: 'absolute',
           width: isSideways ? `${rowHeightPx}px` : '100%',
@@ -85,6 +114,8 @@ function TrackPhoto({
           imageOrientation: 'from-image',
           maxWidth: 'none',
           display: 'block',
+          opacity: mainLoaded ? 1 : 0,
+          transition: 'opacity 0.4s ease',
         }}
       />
     </div>

@@ -198,6 +198,117 @@ Note: `text-2xl` on mobile is large — `text-xl` is more appropriate for mobile
 
 ---
 
+## Now Playing — Shortcut Surface (Remote Control Shortcuts)
+
+The Now Playing page is open most of the time when someone is using the admin as a remote. But the most common follow-up actions after switching a mode require navigating away entirely. Every nav-away is friction — especially if you're standing, phone in one hand, trying to tweak the TV.
+
+The fix: a **contextual shortcut drawer** that appears below the active mode card showing the 2-3 most relevant controls for whatever mode is currently active. No navigation, no modal hunting.
+
+### Shortcut Map by Mode
+
+| Active Mode | Shortcut Controls to Surface |
+|-------------|-------------------------------|
+| **Slideshow** | Interval (30s/1m/2m/5m/10m chip row) · Transition (fade/slide/blur) · Shuffle toggle |
+| **Grid** | Interval chip row · Shuffle toggle |
+| **Pinterest** | Scroll speed (0.25×/0.5×/1×/2× chips) · Rows (2/3/4 chips) · Direction toggle |
+| **Clock** | Theme (dark/light/nude/cream chips) · Font size slider |
+| **FlipBoard** | Quick message input (send directly to board) · Sources summary |
+| **Mood (Unsplash)** | Mood/keyword input · Interval slider |
+| **Easel** | Interval slider |
+| **Cover Flow** | No runtime config — show "no settings" gracefully |
+| **Eisenhower** | No runtime config — link to Reminders |
+
+### Album Quick-Toggle (All Modes)
+
+Below the status card, always show a horizontal scrollable row of album pills:
+
+```
+[ Family Photos ✓ ]  [ Holidays ]  [ Architecture ]  [ + Add Album ]
+```
+
+Active albums are filled (bg-primary), inactive are outlined. Tapping toggles instantly and patches `active_album_ids` — same API call that the Albums page already makes. This is the #1 most common remote action that currently requires a full page switch.
+
+### Shortcut Drawer — Interaction Pattern
+
+The drawer should be:
+- **Collapsed by default** when the mode has no live config (Cover Flow, Eisenhower)
+- **Expanded by default** when the mode has quick-tweakable settings
+- A single `<details>` / accordion section directly under the Status Card, labeled "Quick Settings" with the active mode name
+- Changes apply immediately (optimistic update → PATCH `modes/{id}/config`) — no Save button
+- On mobile: the controls stack vertically with large tap targets; on desktop: they can go horizontal
+
+### What Belongs in the Shortcut Drawer vs the Modes Page
+
+The line is: **runtime tweaks** (things you change while watching) go in the drawer; **setup-time config** (things you set once) stays in Modes.
+
+| Control | Where |
+|---------|-------|
+| Interval (how fast photos change) | **Drawer** — you tune this while watching |
+| Transition style | **Drawer** — quick vibe change |
+| Shuffle | **Drawer** — toggle on the fly |
+| Scroll speed (Pinterest) | **Drawer** — tune while watching |
+| Clock font size | **Drawer** — aesthetic tweak while watching |
+| Clock position | Modes page — set-and-forget |
+| Easel texts (edit the messages) | Modes page — content editing |
+| FlipBoard sources on/off | Modes page — configuration |
+| Quick FlipBoard message send | **Drawer** — live action |
+| Unsplash mood keyword | **Drawer** — often changed per session |
+
+### Schedule Shortcut
+
+Add a single "Schedule" row in the status card area showing the next active schedule (if any):
+
+```
+[Clock icon]  Morning Routine  08:00–10:00  [toggle on/off]
+```
+
+This lets someone instantly disable a schedule that kicked in unexpectedly without navigating to the Schedule page. Just a PATCH `schedules/{id}` with `is_enabled: false`.
+
+### Clock Overlay Shortcut
+
+The clock overlay (show/hide clock on display) is buried in Settings > Clock Overlay. It's something people toggle often ("turning off for a movie night"). Add a single toggle row to the bottom of the Status Card:
+
+```
+[Clock icon]  Clock overlay  [switch]
+```
+
+One PATCH to `/api/settings` with `key: clock_overlay, value: { ...current, enabled: !current.enabled }`.
+
+### FlipBoard Message Shortcut (When FlipBoard Mode is Active)
+
+When the active mode is FlipBoard, surface a minimal compose input directly on the Now Playing page:
+
+```
+[  Type a message…  ]  [Send ↑]
+```
+
+This is the most action-oriented thing on the FlipBoard page (sending a message to the TV right now) and it currently requires a full tab switch. It's a single POST to `/api/flipboard/messages`.
+
+### Now Playing Page Layout — Proposed Order After Shortcuts
+
+```
+1. Header (Now Playing · Live indicator)
+2. ──── Status Card ────
+     Mode + Albums grid
+     Clock overlay toggle row
+     Next schedule row (if any)
+3. ──── Album Quick-Toggle ────
+     Horizontal scroll of album pills
+4. ──── Mode Switcher Grid ────
+     3 cols mobile / 4 cols md+
+5. ──── Quick Settings Drawer ────  ← NEW
+     Contextual controls for active mode
+     (FlipBoard: compose input)
+6. ──── Playback Controls ────
+     Play/Pause · Prev · Next
+7. ──── Brightness ────
+     Slider
+```
+
+This ordering puts the most-used remote actions (mode switch, album toggle) near the top, with contextual settings for the current mode right below before less-common playback controls.
+
+---
+
 ## Quick Wins (Low-Effort, High-Impact)
 
 1. **Increase ghost button size** — `h-8 w-8` → `h-10 w-10` on all icon-only buttons. One class change per instance.

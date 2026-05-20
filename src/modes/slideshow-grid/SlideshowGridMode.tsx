@@ -7,6 +7,7 @@ import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { pickLayout, computeCellAR, type Layout } from './layout';
 import { getPhotoRotation, cellRotationStyle } from '@/lib/photoRotation';
 import type { Photo } from '@/types/db';
+import { photoThumbUrl, photoFullUrl, getConnectionSpeed, IMG_SIZES } from '@/lib/image-urls';
 
 interface SlideshowGridConfig {
   cellIntervalSeconds?: number;
@@ -20,13 +21,13 @@ interface CellState {
 // Module-level AR cache — persists for page lifetime
 const AR_CACHE = new Map<string, number>();
 
-function measureAR(photoId: string): void {
-  if (AR_CACHE.has(photoId)) return;
+function measureAR(photo: Photo): void {
+  if (AR_CACHE.has(photo.id)) return;
   const img = new Image();
-  img.src = `/api/photos/${photoId}/thumbnail?size=200`;
+  img.src = photoThumbUrl(photo, IMG_SIZES.ar);
   img.onload = () => {
     if (img.naturalWidth && img.naturalHeight) {
-      AR_CACHE.set(photoId, img.naturalWidth / img.naturalHeight);
+      AR_CACHE.set(photo.id, img.naturalWidth / img.naturalHeight);
     }
   };
 }
@@ -45,36 +46,58 @@ const FILL: React.CSSProperties = {
   display: 'block',
 };
 
-function useProgressiveSrc(photoId: string | undefined) {
-  const thumb = photoId ? `/api/photos/${photoId}/thumbnail?size=800` : null;
-  const hires  = photoId ? `/api/photos/${photoId}/thumbnail?size=2000` : null;
+function useProgressiveSrc(photo: Photo | undefined) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!thumb || !hires) { setSrc(null); return; }
-    setSrc(thumb);
+    if (!photo) { setSrc(null); return; }
+    const isSlow = getConnectionSpeed() === 'slow';
+    setSrc(photoThumbUrl(photo, isSlow ? IMG_SIZES.thumb_medium : IMG_SIZES.thumb_large));
+    if (isSlow) return;
+
     let dead = false;
-    fetch(hires).then((r) => { if (!dead && r.ok) setSrc(hires); }).catch(() => {});
-    return () => { dead = true; };
+    const full = photoFullUrl(photo);
+    const img = new Image();
+    img.onload = () => { if (!dead) setSrc(full); };
+    img.src = full;
+    return () => { dead = true; img.onload = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photoId]);
+  }, [photo?.id]);
 
   return src;
 }
 
 function PhotoCell({ photo }: { photo: Photo | null }) {
-  const src = useProgressiveSrc(photo?.id);
+  const src = useProgressiveSrc(photo ?? undefined);
+  const [mainLoaded, setMainLoaded] = useState(false);
   const rotation = getPhotoRotation(photo);
   const rotStyle = cellRotationStyle(rotation);
-  if (!src) return <div style={{ position: 'absolute', inset: 0, background: '#111' }} />;
+
+  useEffect(() => { setMainLoaded(false); }, [photo?.id]);
+
+  // 200px AR image is already in cache from measureAR() — reuse as LQIP
+  const lqipSrc = photo ? photoThumbUrl(photo, IMG_SIZES.ar) : null;
+
   return (
-    <>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} aria-hidden alt=""
-        style={{ ...FILL, filter: 'blur(24px) brightness(0.55)', transform: `scale(1.15)${rotation ? ` rotate(${rotation}deg)` : ''}` }} />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="" style={{ ...FILL, zIndex: 1, ...rotStyle }} />
-    </>
+    <div style={{ position: 'absolute', inset: 0, background: '#111' }}>
+      {/* LQIP: blurred 200px fill, already cached from AR measurement */}
+      {lqipSrc && !mainLoaded && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={lqipSrc} aria-hidden alt=""
+          style={{ ...FILL, filter: 'blur(20px)', transform: 'scale(1.1)' }} />
+      )}
+      {src && (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} aria-hidden alt=""
+            style={{ ...FILL, filter: 'blur(24px) brightness(0.55)', transform: `scale(1.15)${rotation ? ` rotate(${rotation}deg)` : ''}` }} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt=""
+            style={{ ...FILL, zIndex: 1, ...rotStyle, opacity: mainLoaded ? 1 : 0, transition: 'opacity 0.4s ease' }}
+            onLoad={() => setMainLoaded(true)} />
+        </>
+      )}
+    </div>
   );
 }
 
@@ -133,7 +156,7 @@ export default function SlideshowGridMode({
     if (photos.length === 0 || initialized.current) return;
     initialized.current = true;
 
-    photos.slice(0, 30).forEach((p) => measureAR(p.id));
+    photos.slice(0, 30).forEach(measureAR);
 
     const initial = pickLayout(1, null, Math.min(photos.length, 6));
     prevCountRef.current = initial.count;
@@ -164,7 +187,7 @@ export default function SlideshowGridMode({
 
     function preload(start: number) {
       for (let i = 0; i < 12; i++) {
-        measureAR(photos[(start + i) % photos.length].id);
+        measureAR(photos[(start + i) % photos.length]);
       }
     }
 
@@ -175,7 +198,7 @@ export default function SlideshowGridMode({
       const peekPhotos = Array.from({ length: maxCells }, (_, i) =>
         photos[(photoIdxRef.current + i) % photos.length]
       );
-      peekPhotos.forEach((p) => measureAR(p.id));
+      peekPhotos.forEach(measureAR);
       const avgRatio =
         peekPhotos.reduce((sum, p) => sum + getAR(p.id), 0) / peekPhotos.length;
 

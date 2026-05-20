@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { getPhotoRotation, fullscreenRotationStyle } from '@/lib/photoRotation';
+import { photoThumbUrl, photoFullUrl, getConnectionSpeed, IMG_SIZES } from '@/lib/image-urls';
+import type { Photo } from '@/types/db';
 
 interface SlideshowSingleConfig {
   intervalSeconds?: number;
@@ -29,20 +31,24 @@ const IMG_STYLE: React.CSSProperties = {
   imageOrientation: 'from-image',
 };
 
-/** Loads a thumbnail immediately then upgrades to high-res in background */
-function useProgressiveSrc(photoId: string | undefined) {
-  const thumbUrl = photoId ? `/api/photos/${photoId}/thumbnail?size=800` : null;
-  const hiResUrl = photoId ? `/api/photos/${photoId}/thumbnail?size=2000` : null;
-  const [src, setSrc] = useState<string | null>(thumbUrl);
+/** Loads thumbnail immediately; upgrades to full-res on fast connections */
+function useProgressiveSrc(photo: Photo | null) {
+  const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!thumbUrl || !hiResUrl) { setSrc(null); return; }
-    setSrc(thumbUrl);
+    if (!photo) { setSrc(null); return; }
+    const isSlow = getConnectionSpeed() === 'slow';
+    setSrc(photoThumbUrl(photo, isSlow ? IMG_SIZES.thumb_medium : IMG_SIZES.thumb_large));
+    if (isSlow) return;
+
     let cancelled = false;
-    fetch(hiResUrl).then((r) => { if (!cancelled && r.ok) setSrc(hiResUrl); }).catch(() => {});
-    return () => { cancelled = true; };
+    const full = photoFullUrl(photo);
+    const img = new Image();
+    img.onload = () => { if (!cancelled) setSrc(full); };
+    img.src = full;
+    return () => { cancelled = true; img.onload = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photoId]);
+  }, [photo?.id]);
 
   return src;
 }
@@ -64,7 +70,7 @@ export default function SlideshowSingleMode({
   const [key, setKey] = useState(0);
 
   const photo = photos[currentIndex] ?? null;
-  const src = useProgressiveSrc(photo?.id);
+  const src = useProgressiveSrc(photo);
   const rotation = getPhotoRotation(photo);
   const rotStyle = fullscreenRotationStyle(rotation);
 
@@ -73,6 +79,19 @@ export default function SlideshowSingleMode({
   useEffect(() => {
     if (photos.length > 0) onReady?.();
   }, [photos.length, onReady]);
+
+  // Preload the next 3 photos whenever the current index changes
+  useEffect(() => {
+    if (photos.length === 0) return;
+    const size = getConnectionSpeed() === 'slow' ? IMG_SIZES.thumb_medium : IMG_SIZES.thumb_large;
+    for (let i = 1; i <= 3; i++) {
+      const next = photos[(currentIndex + i) % photos.length];
+      if (next) {
+        const img = new Image();
+        img.src = photoThumbUrl(next, size);
+      }
+    }
+  }, [photos, currentIndex]);
 
   useEffect(() => {
     if (isPaused || photos.length === 0) return;

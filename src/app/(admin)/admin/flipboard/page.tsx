@@ -245,7 +245,7 @@ export default function BoardPage() {
 
       {/* ── Header ── */}
       <div className="pt-2">
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
           <Radio size={20} className="text-primary" />
           FlipBoard
         </h1>

@@ -395,7 +395,7 @@ export default function ModesPage() {
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6">
       <div className="pt-2">
-        <h1 className="text-2xl font-bold tracking-tight">Modes</h1>
+        <h1 className="text-xl font-bold tracking-tight">Modes</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {displayModes.filter(m => m.is_enabled).length} of {displayModes.length} modes enabled
         </p>

@@ -28,27 +28,10 @@ export async function GET(
       return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
     }
 
-    // Drive photos: proxy through Drive's thumbnail endpoint
+    // Drive photos: redirect directly to Google's CDN — no buffer needed
     if (photo.source_type === 'drive' && photo.source_id) {
       const driveUrl = `https://drive.google.com/thumbnail?id=${photo.source_id}&sz=w${size}`;
-      const res = await fetch(driveUrl);
-
-      if (!res.ok) {
-        return NextResponse.redirect(driveUrl, { status: 302 });
-      }
-
-      const contentType = res.headers.get('content-type') ?? 'image/jpeg';
-      if (!contentType.startsWith('image/')) {
-        return NextResponse.redirect(driveUrl, { status: 302 });
-      }
-
-      const buffer = await res.arrayBuffer();
-      return new Response(buffer, {
-        headers: {
-          'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=86400',
-        },
-      });
+      return NextResponse.redirect(driveUrl, { status: 302 });
     }
 
     // Uploaded photos: redirect to storage URL
