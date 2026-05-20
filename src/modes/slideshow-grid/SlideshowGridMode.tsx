@@ -17,7 +17,24 @@ interface CellState {
   flipKey: number;
 }
 
-// Shared image style: fills the cell, respects EXIF orientation
+// Module-level AR cache — persists for page lifetime, shared across re-renders
+const AR_CACHE = new Map<string, number>();
+
+function measureAR(photoId: string): void {
+  if (AR_CACHE.has(photoId)) return;
+  const img = new Image();
+  img.src = `/api/photos/${photoId}/thumbnail?size=200`;
+  img.onload = () => {
+    if (img.naturalWidth && img.naturalHeight) {
+      AR_CACHE.set(photoId, img.naturalWidth / img.naturalHeight);
+    }
+  };
+}
+
+function getAR(photoId: string): number {
+  return AR_CACHE.get(photoId) ?? 1; // default square until measured
+}
+
 const FILL: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
@@ -28,7 +45,6 @@ const FILL: React.CSSProperties = {
   display: 'block',
 };
 
-/** Progressive-load: thumb first, hi-res swapped in once fetched */
 function useProgressiveSrc(photoId: string | undefined) {
   const thumb = photoId ? `/api/photos/${photoId}/thumbnail?size=800` : null;
   const hires = photoId ? `/api/photos/${photoId}/thumbnail?size=2000` : null;
@@ -62,7 +78,6 @@ function PhotoCell({ photo }: { photo: Photo | null }) {
   );
 }
 
-/** Single grid cell with cross-fade when its photo changes */
 function GridCell({ cell }: { cell: CellState }) {
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
@@ -90,75 +105,125 @@ export default function SlideshowGridMode({
   albumIds,
 }: ModeProps) {
   const cfg = config as SlideshowGridConfig;
-  // intervalSeconds is the canonical key; cellIntervalSeconds is the legacy key
-  const cellInterval = ((cfg.cellIntervalSeconds ?? (config as Record<string, unknown>).intervalSeconds as number) ?? 300) * 1000;
+  const cellInterval =
+    ((cfg.cellIntervalSeconds ?? (config as Record<string, unknown>).intervalSeconds as number) ?? 300) * 1000;
 
   const { photos } = usePhotoRotation({ albumIds, shuffle: true });
   const [layout, setLayout] = useState<Layout | null>(null);
   const [cells, setCells] = useState<CellState[]>([]);
-  const photoIdxRef = useRef(0);
-  const initialized = useRef(false);
 
-  // One-time init once photos are ready
+  const photoIdxRef  = useRef(0);
+  const prevCountRef = useRef<number | null>(null);
+  const initialized  = useRef(false);
+
+  // One-time init: pick initial layout, populate cells, kick off AR measurement
   useEffect(() => {
     if (photos.length === 0 || initialized.current) return;
-    const l = pickLayout(photos);
-    if (!l) return;
     initialized.current = true;
-    setLayout(l);
+
+    // Start measuring ARs in background for the first 30 photos
+    photos.slice(0, 30).forEach((p) => measureAR(p.id));
+
+    const initial = pickLayout(1, null, Math.min(photos.length, 6));
+    prevCountRef.current = initial.count;
+    setLayout(initial);
     setCells(
-      l.areas.map((_, i) => ({
+      initial.areas.map((_, i) => ({
         photo: photos[i % photos.length],
         flipKey: i,
       }))
     );
-    photoIdxRef.current = l.areas.length % photos.length;
+    photoIdxRef.current = initial.count % photos.length;
     onReady?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photos.length]);
 
-  // Cascade: when the interval fires, change every cell one-by-one with STAGGER_MS between each.
-  // After the last cell changes, wait another cellInterval before the next cascade.
+  // Cascade + layout change cycle
   useEffect(() => {
-    if (isPaused || photos.length === 0 || cells.length === 0) return;
+    if (isPaused || photos.length < 3 || !layout) return;
 
     const STAGGER_MS = 1_000;
     const pending: ReturnType<typeof setTimeout>[] = [];
     let cancelled = false;
 
-    function runCascade() {
-      // Shuffle cell order so the cascade ripples in a random direction each time
-      const order = [...Array(cells.length).keys()].sort(() => Math.random() - 0.5);
+    // Kick off AR measurement for upcoming photos so future cycles have better data
+    const preload = (start: number) => {
+      for (let i = 0; i < 12; i++) {
+        measureAR(photos[(start + i) % photos.length].id);
+      }
+    };
+
+    function runCycle() {
+      // Look at the next batch of up to 6 photos and compute avg AR
+      const maxCells = Math.min(photos.length, 6);
+      const peekPhotos = Array.from({ length: maxCells }, (_, i) =>
+        photos[(photoIdxRef.current + i) % photos.length]
+      );
+      peekPhotos.forEach((p) => measureAR(p.id));
+      const avgRatio =
+        peekPhotos.reduce((sum, p) => sum + getAR(p.id), 0) / peekPhotos.length;
+
+      // Pick a new layout (prefers different count than last cycle)
+      const newLayout = pickLayout(avgRatio, prevCountRef.current, maxCells);
+      prevCountRef.current = newLayout.count;
+
+      // Pre-allocate the exact photos this cycle will use (in order)
+      const batch = Array.from({ length: newLayout.count }, () => {
+        const p = photos[photoIdxRef.current];
+        photoIdxRef.current = (photoIdxRef.current + 1) % photos.length;
+        return p;
+      });
+
+      // Preload ARs for the cycle after this one
+      preload(photoIdxRef.current);
+
+      // Update layout immediately — grid structure re-flows
+      setLayout(newLayout);
+
+      // Ensure cells array length matches new layout (carry over or pad with null)
+      setCells((prev) =>
+        Array.from({ length: newLayout.count }, (_, i) =>
+          prev[i] ?? { photo: null, flipKey: -(i + 1) }
+        )
+      );
+
+      // Stagger photo updates in random order across all cells
+      const order = Array.from({ length: newLayout.count }, (_, i) => i)
+        .sort(() => Math.random() - 0.5);
 
       order.forEach((cellIdx, step) => {
         const t = setTimeout(() => {
           if (cancelled) return;
-          const photo = photos[photoIdxRef.current];
-          photoIdxRef.current = (photoIdxRef.current + 1) % photos.length;
           setCells((prev) => {
+            if (prev.length !== newLayout.count) return prev;
             const next = [...prev];
-            next[cellIdx] = { photo, flipKey: prev[cellIdx].flipKey + 100 };
+            next[cellIdx] = {
+              photo: batch[cellIdx],
+              flipKey: Date.now() + cellIdx,
+            };
             return next;
           });
         }, step * STAGGER_MS);
         pending.push(t);
       });
 
-      // Schedule the next cascade after this one finishes + the configured interval
-      const nextDelay = (cells.length - 1) * STAGGER_MS + cellInterval;
-      const t = setTimeout(() => { if (!cancelled) runCascade(); }, nextDelay);
+      // Schedule the next cycle
+      const cascadeDuration = (newLayout.count - 1) * STAGGER_MS;
+      const t = setTimeout(() => {
+        if (!cancelled) runCycle();
+      }, cascadeDuration + cellInterval);
       pending.push(t);
     }
 
-    // First cascade starts after the initial interval
-    const first = setTimeout(() => { if (!cancelled) runCascade(); }, cellInterval);
+    // First cycle fires after the initial interval
+    const first = setTimeout(() => { if (!cancelled) runCycle(); }, cellInterval);
     pending.push(first);
 
     return () => {
       cancelled = true;
       pending.forEach(clearTimeout);
     };
-  }, [isPaused, photos, cells.length, cellInterval]);
+  }, [isPaused, photos, cellInterval, layout]);
 
   if (!layout || cells.length === 0) {
     return (

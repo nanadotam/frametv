@@ -1,7 +1,9 @@
-import type { Photo } from '@/types/db';
+// 12-column × 6-row grid layout library
+// Screen AR = 16:9. colUnit = 16/12 ≈ 1.333. rowUnit = 9/6 = 1.5.
+// cellAR = (colSpan * 1.333) / (rowSpan * 1.5) = (colSpan / rowSpan) * 0.889
 
-// 12-column × 6-row grid layout definitions
-// Each area: [colStart, colEnd, rowStart, rowEnd] (1-indexed CSS grid)
+export type LayoutTag = 'portrait' | 'landscape' | 'balanced';
+
 export interface GridArea {
   colStart: number;
   colEnd: number;
@@ -11,88 +13,198 @@ export interface GridArea {
 
 export interface Layout {
   count: number;
+  tag: LayoutTag;
   areas: GridArea[];
 }
 
-// PRD §7.3: layouts for n=3,4,5 photos on a 12-col × 6-row grid
-export const LAYOUTS: Record<number, Layout[]> = {
-  3: [
-    {
-      count: 3,
-      areas: [
-        { colStart: 1, colEnd: 7, rowStart: 1, rowEnd: 7 },   // large left
-        { colStart: 7, colEnd: 13, rowStart: 1, rowEnd: 4 },  // top right
-        { colStart: 7, colEnd: 13, rowStart: 4, rowEnd: 7 },  // bottom right
-      ],
-    },
-    {
-      count: 3,
-      areas: [
-        { colStart: 1, colEnd: 5, rowStart: 1, rowEnd: 7 },   // left third
-        { colStart: 5, colEnd: 9, rowStart: 1, rowEnd: 7 },   // center third
-        { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 7 },  // right third
-      ],
-    },
-  ],
-  4: [
-    {
-      count: 4,
-      areas: [
-        { colStart: 1, colEnd: 7, rowStart: 1, rowEnd: 4 },   // top left
-        { colStart: 7, colEnd: 13, rowStart: 1, rowEnd: 4 },  // top right
-        { colStart: 1, colEnd: 7, rowStart: 4, rowEnd: 7 },   // bottom left
-        { colStart: 7, colEnd: 13, rowStart: 4, rowEnd: 7 },  // bottom right
-      ],
-    },
-    {
-      count: 4,
-      areas: [
-        { colStart: 1, colEnd: 5, rowStart: 1, rowEnd: 7 },   // col 1
-        { colStart: 5, colEnd: 9, rowStart: 1, rowEnd: 4 },   // col 2 top
-        { colStart: 5, colEnd: 9, rowStart: 4, rowEnd: 7 },   // col 2 bottom
-        { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 7 },  // col 3
-      ],
-    },
-  ],
-  5: [
-    {
-      count: 5,
-      areas: [
-        { colStart: 1, colEnd: 7, rowStart: 1, rowEnd: 4 },   // top left large
-        { colStart: 7, colEnd: 10, rowStart: 1, rowEnd: 4 },  // top center-right
-        { colStart: 10, colEnd: 13, rowStart: 1, rowEnd: 4 }, // top right
-        { colStart: 1, colEnd: 5, rowStart: 4, rowEnd: 7 },   // bottom left
-        { colStart: 5, colEnd: 13, rowStart: 4, rowEnd: 7 },  // bottom right large
-      ],
-    },
-    {
-      count: 5,
-      areas: [
-        { colStart: 1, colEnd: 5, rowStart: 1, rowEnd: 4 },
-        { colStart: 5, colEnd: 9, rowStart: 1, rowEnd: 4 },
-        { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 7 },
-        { colStart: 1, colEnd: 5, rowStart: 4, rowEnd: 7 },
-        { colStart: 5, colEnd: 9, rowStart: 4, rowEnd: 7 },
-      ],
-    },
-  ],
-};
+export const ALL_LAYOUTS: Layout[] = [
+  // ── 3-cell ──────────────────────────────────────────────────────────────
+  {
+    count: 3, tag: 'balanced',
+    areas: [
+      { colStart: 1, colEnd: 7,  rowStart: 1, rowEnd: 7 },  // left portrait  AR≈0.89
+      { colStart: 7, colEnd: 13, rowStart: 1, rowEnd: 4 },  // top-right land AR≈1.78
+      { colStart: 7, colEnd: 13, rowStart: 4, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 3, tag: 'balanced',                              // mirrored
+    areas: [
+      { colStart: 1, colEnd: 7,  rowStart: 1, rowEnd: 4 },
+      { colStart: 1, colEnd: 7,  rowStart: 4, rowEnd: 7 },
+      { colStart: 7, colEnd: 13, rowStart: 1, rowEnd: 7 },  // right portrait AR≈0.89
+    ],
+  },
+  {
+    count: 3, tag: 'portrait',
+    areas: [
+      { colStart: 1, colEnd: 5,  rowStart: 1, rowEnd: 7 },  // 3 tall cols AR≈0.59
+      { colStart: 5, colEnd: 9,  rowStart: 1, rowEnd: 7 },
+      { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 3, tag: 'landscape',
+    areas: [
+      { colStart: 1,  colEnd: 7,  rowStart: 1, rowEnd: 4 },
+      { colStart: 7,  colEnd: 13, rowStart: 1, rowEnd: 4 },
+      { colStart: 1,  colEnd: 13, rowStart: 4, rowEnd: 7 }, // full-width bottom AR≈3.56
+    ],
+  },
 
-// Pick a layout appropriate for the number of photos available
-export function pickLayout(photos: Photo[]): Layout | null {
-  const n = photos.length;
-  if (n === 0) return null;
+  // ── 4-cell ──────────────────────────────────────────────────────────────
+  {
+    count: 4, tag: 'landscape',
+    areas: [
+      { colStart: 1, colEnd: 7,  rowStart: 1, rowEnd: 4 },  // 2×2 grid AR≈1.78
+      { colStart: 7, colEnd: 13, rowStart: 1, rowEnd: 4 },
+      { colStart: 1, colEnd: 7,  rowStart: 4, rowEnd: 7 },
+      { colStart: 7, colEnd: 13, rowStart: 4, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 4, tag: 'portrait',
+    areas: [
+      { colStart: 1,  colEnd: 4,  rowStart: 1, rowEnd: 7 }, // 4 tall cols AR≈0.44
+      { colStart: 4,  colEnd: 7,  rowStart: 1, rowEnd: 7 },
+      { colStart: 7,  colEnd: 10, rowStart: 1, rowEnd: 7 },
+      { colStart: 10, colEnd: 13, rowStart: 1, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 4, tag: 'balanced',                              // big left + 3 right stacked
+    areas: [
+      { colStart: 1, colEnd: 7,  rowStart: 1, rowEnd: 7 },  // left hero AR≈0.89
+      { colStart: 7, colEnd: 13, rowStart: 1, rowEnd: 3 },
+      { colStart: 7, colEnd: 13, rowStart: 3, rowEnd: 5 },
+      { colStart: 7, colEnd: 13, rowStart: 5, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 4, tag: 'balanced',                              // 3 left stacked + big right
+    areas: [
+      { colStart: 1, colEnd: 7,  rowStart: 1, rowEnd: 3 },
+      { colStart: 1, colEnd: 7,  rowStart: 3, rowEnd: 5 },
+      { colStart: 1, colEnd: 7,  rowStart: 5, rowEnd: 7 },
+      { colStart: 7, colEnd: 13, rowStart: 1, rowEnd: 7 },  // right hero
+    ],
+  },
 
-  // Find the closest supported count (3, 4, or 5)
-  const supported = [3, 4, 5];
-  const count = supported.reduce((prev, curr) =>
-    Math.abs(curr - n) < Math.abs(prev - n) ? curr : prev
-  );
+  // ── 5-cell ──────────────────────────────────────────────────────────────
+  {
+    count: 5, tag: 'landscape',
+    areas: [
+      { colStart: 1,  colEnd: 7,  rowStart: 1, rowEnd: 4 },
+      { colStart: 7,  colEnd: 10, rowStart: 1, rowEnd: 4 },
+      { colStart: 10, colEnd: 13, rowStart: 1, rowEnd: 4 },
+      { colStart: 1,  colEnd: 5,  rowStart: 4, rowEnd: 7 },
+      { colStart: 5,  colEnd: 13, rowStart: 4, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 5, tag: 'balanced',
+    areas: [
+      { colStart: 1, colEnd: 5, rowStart: 1, rowEnd: 4 },
+      { colStart: 5, colEnd: 9, rowStart: 1, rowEnd: 4 },
+      { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 7 }, // right tall
+      { colStart: 1, colEnd: 5, rowStart: 4, rowEnd: 7 },
+      { colStart: 5, colEnd: 9, rowStart: 4, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 5, tag: 'landscape',                            // wide banner top + 4 portrait cols
+    areas: [
+      { colStart: 1,  colEnd: 13, rowStart: 1, rowEnd: 3 },
+      { colStart: 1,  colEnd: 4,  rowStart: 3, rowEnd: 7 },
+      { colStart: 4,  colEnd: 7,  rowStart: 3, rowEnd: 7 },
+      { colStart: 7,  colEnd: 10, rowStart: 3, rowEnd: 7 },
+      { colStart: 10, colEnd: 13, rowStart: 3, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 5, tag: 'balanced',                            // left portrait + 4 right
+    areas: [
+      { colStart: 1, colEnd: 5, rowStart: 1, rowEnd: 7 }, // left portrait AR≈0.59
+      { colStart: 5, colEnd: 9, rowStart: 1, rowEnd: 4 },
+      { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 4 },
+      { colStart: 5, colEnd: 9, rowStart: 4, rowEnd: 7 },
+      { colStart: 9, colEnd: 13, rowStart: 4, rowEnd: 7 },
+    ],
+  },
 
-  const options = LAYOUTS[count];
-  if (!options || options.length === 0) return null;
+  // ── 6-cell ──────────────────────────────────────────────────────────────
+  {
+    count: 6, tag: 'balanced',                            // 3×2 equal grid
+    areas: [
+      { colStart: 1, colEnd: 5,  rowStart: 1, rowEnd: 4 }, // AR≈1.19
+      { colStart: 5, colEnd: 9,  rowStart: 1, rowEnd: 4 },
+      { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 4 },
+      { colStart: 1, colEnd: 5,  rowStart: 4, rowEnd: 7 },
+      { colStart: 5, colEnd: 9,  rowStart: 4, rowEnd: 7 },
+      { colStart: 9, colEnd: 13, rowStart: 4, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 6, tag: 'landscape',                           // 2 wide top + 4 portrait bottom
+    areas: [
+      { colStart: 1,  colEnd: 7,  rowStart: 1, rowEnd: 3 },
+      { colStart: 7,  colEnd: 13, rowStart: 1, rowEnd: 3 },
+      { colStart: 1,  colEnd: 4,  rowStart: 3, rowEnd: 7 },
+      { colStart: 4,  colEnd: 7,  rowStart: 3, rowEnd: 7 },
+      { colStart: 7,  colEnd: 10, rowStart: 3, rowEnd: 7 },
+      { colStart: 10, colEnd: 13, rowStart: 3, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 6, tag: 'portrait',                            // big portrait hero + 5 mosaic
+    areas: [
+      { colStart: 1, colEnd: 5,  rowStart: 1, rowEnd: 7 }, // left hero portrait AR≈0.59
+      { colStart: 5, colEnd: 9,  rowStart: 1, rowEnd: 3 },
+      { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 3 },
+      { colStart: 5, colEnd: 9,  rowStart: 3, rowEnd: 5 },
+      { colStart: 9, colEnd: 13, rowStart: 3, rowEnd: 5 },
+      { colStart: 5, colEnd: 13, rowStart: 5, rowEnd: 7 }, // wide bottom
+    ],
+  },
+  {
+    count: 6, tag: 'balanced',                            // asymmetric mosaic
+    areas: [
+      { colStart: 1,  colEnd: 5,  rowStart: 1, rowEnd: 3 },
+      { colStart: 5,  colEnd: 13, rowStart: 1, rowEnd: 3 }, // wide center-right
+      { colStart: 1,  colEnd: 5,  rowStart: 3, rowEnd: 7 }, // tall bottom-left
+      { colStart: 5,  colEnd: 9,  rowStart: 3, rowEnd: 5 },
+      { colStart: 9,  colEnd: 13, rowStart: 3, rowEnd: 5 },
+      { colStart: 5,  colEnd: 13, rowStart: 5, rowEnd: 7 }, // wide bottom-right
+    ],
+  },
+];
 
-  // Rotate through layout variants using photo count as a seed
-  const idx = Math.floor(Date.now() / 1000 / 30) % options.length;
-  return options[idx];
+/**
+ * Pick a layout based on the average aspect ratio of incoming photos.
+ * Prefers a different cell count than the previous cycle for visual variety.
+ * Falls back gracefully when photos.length < desired count.
+ */
+export function pickLayout(
+  avgRatio: number,
+  prevCount: number | null,
+  maxCells: number,
+): Layout {
+  // Tag preference driven by photo aspect ratios
+  let preferred: LayoutTag;
+  if (avgRatio < 0.85)      preferred = 'portrait';
+  else if (avgRatio > 1.4)  preferred = 'landscape';
+  else                       preferred = 'balanced';
+
+  // Only use layouts whose count fits available photos
+  const eligible = ALL_LAYOUTS.filter((l) => l.count <= maxCells);
+
+  // Prefer a different count than last cycle
+  const diffCount = eligible.filter((l) => l.count !== prevCount);
+  const pool = diffCount.length ? diffCount : eligible;
+
+  // Within the pool, prefer matching tag; fall back to any
+  const tagged = pool.filter((l) => l.tag === preferred);
+  const final = tagged.length ? tagged : pool;
+
+  return final[Math.floor(Math.random() * final.length)];
 }
