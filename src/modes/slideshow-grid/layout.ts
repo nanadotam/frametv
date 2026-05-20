@@ -18,6 +18,12 @@ export interface Layout {
 }
 
 export const ALL_LAYOUTS: Layout[] = [
+  // ── 1-cell (focus mode) ──────────────────────────────────────────────────
+  {
+    count: 1, tag: 'balanced',
+    areas: [{ colStart: 1, colEnd: 13, rowStart: 1, rowEnd: 7 }],
+  },
+
   // ── 3-cell ──────────────────────────────────────────────────────────────
   {
     count: 3, tag: 'balanced',

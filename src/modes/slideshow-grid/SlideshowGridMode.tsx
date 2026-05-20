@@ -11,6 +11,8 @@ import { photoThumbUrl, photoFullUrl, getConnectionSpeed, IMG_SIZES } from '@/li
 
 interface SlideshowGridConfig {
   cellIntervalSeconds?: number;
+  focusMode?: boolean;
+  staggerMs?: number;
 }
 
 interface CellState {
@@ -24,6 +26,7 @@ const AR_CACHE = new Map<string, number>();
 function measureAR(photo: Photo): void {
   if (AR_CACHE.has(photo.id)) return;
   const img = new Image();
+  (img as HTMLImageElement & { fetchPriority: string }).fetchPriority = 'low';
   img.src = photoThumbUrl(photo, IMG_SIZES.ar);
   img.onload = () => {
     if (img.naturalWidth && img.naturalHeight) {
@@ -46,6 +49,52 @@ const FILL: React.CSSProperties = {
   display: 'block',
 };
 
+// Ken Burns pan directions — cycle through these per cell to avoid monotony
+const KB_VARIANTS = [
+  { scale: 1.06, x: '-1.5%', y: '-1%'   },
+  { scale: 1.06, x: '1.5%',  y: '-1%'   },
+  { scale: 1.06, x: '-1%',   y: '1%'    },
+  { scale: 1.04, x: '0%',    y: '-1.5%' },
+] as const;
+
+// Transition style pool — one is picked per cell flip based on flipKey
+const CELL_TRANSITIONS = [
+  // zoom-fade with spring easing
+  {
+    initial:    { opacity: 0, scale: 1.06 },
+    animate:    { opacity: 1, scale: 1    },
+    exit:       { opacity: 0, scale: 0.96 },
+    transition: {
+      opacity: { duration: 0.8,  ease: [0.25, 0.46, 0.45, 0.94] },
+      scale:   { duration: 0.85, ease: [0.34, 1.20, 0.64, 1]    },
+    },
+  },
+  // slide-up-fade
+  {
+    initial:    { opacity: 0, y: 14  },
+    animate:    { opacity: 1, y: 0   },
+    exit:       { opacity: 0, y: -10 },
+    transition: { duration: 0.75, ease: [0.25, 0.46, 0.45, 0.94] },
+  },
+  // pure dissolve
+  {
+    initial:    { opacity: 0 },
+    animate:    { opacity: 1 },
+    exit:       { opacity: 0 },
+    transition: { duration: 1.0, ease: 'easeInOut' },
+  },
+  // zoom-in with slight overshoot
+  {
+    initial:    { opacity: 0, scale: 1.10 },
+    animate:    { opacity: 1, scale: 1    },
+    exit:       { opacity: 0, scale: 0.92 },
+    transition: {
+      opacity: { duration: 0.9, ease: [0.25, 0.46, 0.45, 0.94] },
+      scale:   { duration: 0.9, ease: [0.34, 1.56, 0.64, 1]    },
+    },
+  },
+] as const;
+
 function useProgressiveSrc(photo: Photo | undefined) {
   const [src, setSrc] = useState<string | null>(null);
 
@@ -58,6 +107,7 @@ function useProgressiveSrc(photo: Photo | undefined) {
     let dead = false;
     const full = photoFullUrl(photo);
     const img = new Image();
+    (img as HTMLImageElement & { fetchPriority: string }).fetchPriority = 'low';
     img.onload = () => { if (!dead) setSrc(full); };
     img.src = full;
     return () => { dead = true; img.onload = null; };
@@ -67,7 +117,11 @@ function useProgressiveSrc(photo: Photo | undefined) {
   return src;
 }
 
-function PhotoCell({ photo }: { photo: Photo | null }) {
+function PhotoCell({ photo, dwellMs, kbIdx }: {
+  photo: Photo | null;
+  dwellMs: number;
+  kbIdx: number;
+}) {
   const src = useProgressiveSrc(photo ?? undefined);
   const [mainLoaded, setMainLoaded] = useState(false);
   const rotation = getPhotoRotation(photo);
@@ -75,49 +129,60 @@ function PhotoCell({ photo }: { photo: Photo | null }) {
 
   useEffect(() => { setMainLoaded(false); }, [photo?.id]);
 
-  // 200px AR image is already in cache from measureAR() — reuse as LQIP
+  // 200px AR image already in cache from measureAR() — reuse as LQIP
   const lqipSrc = photo ? photoThumbUrl(photo, IMG_SIZES.ar) : null;
+  const kb = KB_VARIANTS[kbIdx % KB_VARIANTS.length];
 
   return (
-    <div style={{ position: 'absolute', inset: 0, background: '#111' }}>
-      {/* LQIP: blurred 200px fill, already cached from AR measurement */}
-      {lqipSrc && !mainLoaded && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={lqipSrc} aria-hidden alt=""
-          style={{ ...FILL, filter: 'blur(20px)', transform: 'scale(1.1)' }} />
-      )}
-      {src && (
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} aria-hidden alt=""
-            style={{ ...FILL, filter: 'blur(24px) brightness(0.55)', transform: `scale(1.15)${rotation ? ` rotate(${rotation}deg)` : ''}` }} />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt=""
-            style={{ ...FILL, zIndex: 1, ...rotStyle, opacity: mainLoaded ? 1 : 0, transition: 'opacity 0.4s ease' }}
-            onLoad={() => setMainLoaded(true)} />
-        </>
-      )}
+    <div style={{ position: 'absolute', inset: 0, background: '#111', overflow: 'hidden' }}>
+      {/* Ken Burns wrapper — starts animating once the image is painted */}
+      <motion.div
+        style={{ position: 'absolute', inset: 0 }}
+        initial={{ scale: 1, x: '0%', y: '0%' }}
+        animate={mainLoaded
+          ? { scale: kb.scale, x: kb.x, y: kb.y }
+          : { scale: 1,        x: '0%', y: '0%' }}
+        transition={{ duration: dwellMs / 1000, ease: 'linear' }}
+      >
+        {/* LQIP: blurred 200px fill, already cached from AR measurement */}
+        {lqipSrc && !mainLoaded && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={lqipSrc} aria-hidden alt=""
+            style={{ ...FILL, filter: 'blur(20px)', transform: 'scale(1.1)' }} />
+        )}
+        {src && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} aria-hidden alt=""
+              style={{ ...FILL, filter: 'blur(24px) brightness(0.55)', transform: `scale(1.15)${rotation ? ` rotate(${rotation}deg)` : ''}` }} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt=""
+              style={{ ...FILL, zIndex: 1, ...rotStyle, opacity: mainLoaded ? 1 : 0, transition: 'opacity 0.4s ease' }}
+              onLoad={() => setMainLoaded(true)} />
+          </>
+        )}
+      </motion.div>
     </div>
   );
 }
 
-// Apple-style zoom + fade for each photo swap
-function GridCell({ cell }: { cell: CellState }) {
+// Per-cell transitions — picked from pool using flipKey for variety
+function GridCell({ cell, dwellMs }: { cell: CellState; dwellMs: number }) {
+  const tIdx = Math.abs(cell.flipKey) % CELL_TRANSITIONS.length;
+  const t = CELL_TRANSITIONS[tIdx];
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-      <AnimatePresence mode="wait">
+      {/* mode="sync" (default) — exit and enter cross-fade simultaneously */}
+      <AnimatePresence>
         <motion.div
           key={cell.flipKey}
           style={{ position: 'absolute', inset: 0 }}
-          initial={{ opacity: 0, scale: 1.06 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.96 }}
-          transition={{
-            duration: 0.85,
-            ease: [0.25, 0.46, 0.45, 0.94],
-          }}
+          initial={t.initial as never}
+          animate={t.animate as never}
+          exit={t.exit as never}
+          transition={t.transition as never}
         >
-          <PhotoCell photo={cell.photo} />
+          <PhotoCell photo={cell.photo} dwellMs={dwellMs} kbIdx={tIdx} />
         </motion.div>
       </AnimatePresence>
     </div>
@@ -135,8 +200,11 @@ export default function SlideshowGridMode({
   const cellInterval =
     ((cfg.cellIntervalSeconds ??
       (config as Record<string, unknown>).intervalSeconds as number) ?? 300) * 1000;
+  const focusMode = cfg.focusMode ?? false;
+  const staggerMs = cfg.staggerMs ?? 1000;
 
   const { photos } = usePhotoRotation({ albumIds, shuffle: true });
+  const maxCells  = Math.min(photos.length, focusMode ? 1 : 6);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [cells,  setCells]  = useState<CellState[]>([]);
   // isReady gates the cascade effect without putting `layout` in its deps
@@ -158,7 +226,7 @@ export default function SlideshowGridMode({
 
     photos.slice(0, 30).forEach(measureAR);
 
-    const initial = pickLayout(1, null, Math.min(photos.length, 6));
+    const initial = pickLayout(1, null, maxCells);
     prevCountRef.current = initial.count;
     layoutRef.current    = initial;
     setLayout(initial);
@@ -179,9 +247,9 @@ export default function SlideshowGridMode({
   // We use layoutRef so that calling setLayout() inside runCycle does NOT
   // trigger the cleanup → cancel-all-timeouts → restart loop.
   useEffect(() => {
-    if (!isReady || isPaused || photos.length < 3) return;
+    if (!isReady || isPaused || photos.length < (focusMode ? 1 : 3)) return;
 
-    const STAGGER_MS = 1_000;
+    const STAGGER_MS = staggerMs;
     const pending: ReturnType<typeof setTimeout>[] = [];
     let cancelled = false;
 
@@ -192,7 +260,7 @@ export default function SlideshowGridMode({
     }
 
     function runCycle() {
-      const maxCells = Math.min(photos.length, 6);
+      // maxCells is from the component scope (respects focusMode)
 
       // Peek at upcoming photos for AR calculation
       const peekPhotos = Array.from({ length: maxCells }, (_, i) =>
@@ -301,7 +369,7 @@ export default function SlideshowGridMode({
       pending.forEach(clearTimeout);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, isPaused, photos, cellInterval]);
+  }, [isReady, isPaused, photos, cellInterval, focusMode, staggerMs]);
   // ↑ `layout` is deliberately excluded — see comment above
 
   if (!layout || cells.length === 0) {
@@ -346,7 +414,7 @@ export default function SlideshowGridMode({
                 background: '#000',
               }}
             >
-              {cells[i] && <GridCell cell={cells[i]} />}
+              {cells[i] && <GridCell cell={cells[i]} dwellMs={cellInterval} />}
             </motion.div>
           ))}
         </AnimatePresence>
