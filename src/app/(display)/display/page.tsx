@@ -1,6 +1,7 @@
 'use client';
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useDisplayStateRealtime } from '@/hooks/useDisplayStateRealtime';
 import { useActiveMode } from '@/hooks/useActiveMode';
 import { useModes } from '@/hooks/useModes';
@@ -92,6 +93,57 @@ function DisplayPinGate({ onUnlock }: { onUnlock: () => void }) {
   );
 }
 
+function useCinemaMode() {
+  const [cinema, setCinema] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 1800);
+  }, []);
+
+  const enter = useCallback(() => {
+    document.documentElement.requestFullscreen?.().catch(() => {});
+    setCinema(true);
+    showToast('Cinema Mode');
+  }, [showToast]);
+
+  const exit = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    setCinema(false);
+    showToast('Exiting Cinema Mode');
+  }, [showToast]);
+
+  const toggle = useCallback(() => {
+    if (cinema) exit(); else enter();
+  }, [cinema, enter, exit]);
+
+  // Sync state when the user presses Escape (browser exits fullscreen automatically)
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement && cinema) {
+        setCinema(false);
+        showToast('Exiting Cinema Mode');
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, [cinema, showToast]);
+
+  // F key shortcut
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'f' || e.key === 'F') toggle();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggle]);
+
+  return { cinema, toast, toggle };
+}
+
 export default function DisplayPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -101,6 +153,7 @@ export default function DisplayPage() {
   const theme = useAutoTheme();
   const dim = useAutoDim();
   const clockConfig = useClockOverlayConfig();
+  const { cinema, toast, toggle: toggleCinema } = useCinemaMode();
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -154,7 +207,11 @@ export default function DisplayPage() {
   const config: Record<string, unknown> = (modeRow?.config as Record<string, unknown>) ?? {};
 
   return (
-    <div className="w-screen h-screen bg-black overflow-hidden relative">
+    <div
+      className="w-screen h-screen bg-black overflow-hidden relative"
+      style={{ cursor: cinema ? 'none' : undefined }}
+      onDoubleClick={toggleCinema}
+    >
       {ModeComponent ? (
         <ModeComponent
           config={config}
@@ -167,13 +224,45 @@ export default function DisplayPage() {
         <LoadingSkeleton />
       )}
 
-      {/* Clock overlay */}
-      <ClockOverlay config={clockConfig} />
+      {/* Clock overlay — hidden in cinema mode */}
+      {!cinema && <ClockOverlay config={clockConfig} />}
 
-      {/* Dim overlay */}
-      {dim && (
+      {/* Dim overlay — hidden in cinema mode */}
+      {!cinema && dim && (
         <div className="fixed inset-0 bg-black/40 pointer-events-none" />
       )}
+
+      {/* Cinema mode toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-x-0 top-8 flex justify-center pointer-events-none z-[999]"
+          >
+            <div
+              style={{
+                background: 'rgba(0,0,0,0.65)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '999px',
+                color: '#fff',
+                fontSize: '0.9rem',
+                letterSpacing: '0.08em',
+                padding: '10px 24px',
+                fontWeight: 500,
+                textTransform: 'uppercase',
+              }}
+            >
+              {cinema ? '⬛  Cinema Mode  —  Double-click or F to exit' : toast}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
