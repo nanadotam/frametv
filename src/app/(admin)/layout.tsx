@@ -2,22 +2,30 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Tv, Images, CalendarDays, LayoutGrid, Settings, Home, BellRing } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Tv, Images, CalendarDays, LayoutGrid, Settings, Home, Radio, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 const NAV = [
-  { href: '/admin',            label: 'Now Playing', icon: Home },
-  { href: '/admin/albums',     label: 'Albums',      icon: Images },
-  { href: '/admin/schedule',   label: 'Schedule',    icon: CalendarDays },
-  { href: '/admin/modes',      label: 'Modes',       icon: LayoutGrid },
-  { href: '/admin/reminders',  label: 'Reminders',   icon: BellRing },
-  { href: '/admin/settings',   label: 'System',      icon: Settings },
+  { href: '/admin',             label: 'Now Playing', icon: Home },
+  { href: '/admin/albums',      label: 'Albums',      icon: Images },
+  { href: '/admin/schedule',    label: 'Schedule',    icon: CalendarDays },
+  { href: '/admin/modes',       label: 'Modes',       icon: LayoutGrid },
+  { href: '/admin/flipboard',   label: 'FlipBoard',   icon: Radio },
+  { href: '/admin/settings',    label: 'System',      icon: Settings },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.replace('/login');
+    router.refresh();
+  };
 
   return (
     <TooltipProvider>
@@ -65,6 +73,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Tv size={13} />
               Open Display ↗
             </Link>
+            <button
+              type="button"
+              onClick={logout}
+              className="mt-2 w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <LogOut size={13} />
+              Log out
+            </button>
           </div>
         </aside>
 

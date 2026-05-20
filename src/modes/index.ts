@@ -43,6 +43,11 @@ const EaselMode = dynamic(
   { ssr: true }
 );
 
+const EisenhowerMode = dynamic(
+  () => import('./eisenhower/EisenhowerMode'),
+  { ssr: false }
+);
+
 export const MODES: Record<ModeId, ComponentType<ModeProps>> = {
   'slideshow-single': SlideshowSingleMode,
   'slideshow-grid': SlideshowGridMode,
@@ -52,4 +57,5 @@ export const MODES: Record<ModeId, ComponentType<ModeProps>> = {
   coverflow: CoverFlowMode,
   'unsplash-mood': UnsplashMoodMode,
   easel: EaselMode,
+  eisenhower: EisenhowerMode,
 };

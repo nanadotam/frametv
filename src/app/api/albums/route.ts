@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdminUser } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdminUser(request);
+    if (auth.response) return auth.response;
+
     const supabase = createServiceClient();
     const { data: albums, error } = await supabase
       .from('albums')
       .select('*')
+      .eq('user_id', auth.user.id)
       .eq('is_archived', false)
       .order('display_order', { ascending: true });
 
@@ -25,6 +30,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminUser(request);
+    if (auth.response) return auth.response;
+
     const body = await request.json();
     const { name, source_type, drive_folder_id, display_order } = body;
 
@@ -43,6 +51,7 @@ export async function POST(request: NextRequest) {
       .from('albums')
       .insert({
         name,
+        user_id: auth.user.id,
         source_type,
         drive_folder_id: drive_folder_id ?? null,
         display_order: display_order ?? 0,

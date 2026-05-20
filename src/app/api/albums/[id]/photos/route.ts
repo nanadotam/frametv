@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdminUser } from '@/lib/auth';
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdminUser(_request);
+    if (auth.response) return auth.response;
+
     const { id } = await params;
     const supabase = createServiceClient();
 
@@ -13,6 +17,7 @@ export async function GET(
       .from('photos')
       .select('*')
       .eq('album_id', id)
+      .eq('user_id', auth.user.id)
       .order('metadata->driveIndex', { ascending: true });
 
     if (error) {

@@ -12,6 +12,7 @@ export type ModeId =
 // ─── Albums ───────────────────────────────────────────────────────────────────
 export interface Album {
   id: string;
+  user_id?: string | null;
   name: string;
   source_type: 'drive' | 'picker' | 'upload';
   drive_folder_id: string | null;
@@ -25,6 +26,7 @@ export interface Album {
 // ─── Photos ───────────────────────────────────────────────────────────────────
 export interface Photo {
   id: string;
+  user_id?: string | null;
   album_id: string;
   source_type: 'drive' | 'picker' | 'upload';
   source_id: string | null;
@@ -44,6 +46,7 @@ export interface Photo {
 
 // ─── Modes ────────────────────────────────────────────────────────────────────
 export interface Mode {
+  user_id?: string | null;
   id: string;
   name: string;
   description: string | null;
@@ -53,7 +56,8 @@ export interface Mode {
 
 // ─── Display State ────────────────────────────────────────────────────────────
 export interface DisplayState {
-  id: 1;
+  id: number;
+  user_id?: string | null;
   active_mode_id: string | null;
   active_album_ids: string[];
   is_paused: boolean;
@@ -66,6 +70,7 @@ export interface DisplayState {
 // ─── Schedules ────────────────────────────────────────────────────────────────
 export interface Schedule {
   id: string;
+  user_id?: string | null;
   name: string;
   days_of_week: number[]; // 0=Sun … 6=Sat
   start_time: string; // "HH:MM"
@@ -86,6 +91,7 @@ export type ReminderPriority =
 
 export interface Reminder {
   id: string;
+  user_id?: string | null;
   text: string;
   priority: ReminderPriority;
   is_done: boolean;
@@ -102,6 +108,16 @@ export interface SpotifyAuth {
   expires_at: string;
   scope: string;
   updated_at: string;
+}
+
+// ─── FlipBoard Messages ───────────────────────────────────────────────────────
+export interface FlipboardMessage {
+  id: string;
+  text: string;
+  author: string | null;
+  is_active: boolean;
+  expires_at: string | null;
+  created_at: string;
 }
 
 // ─── Drive Auth ───────────────────────────────────────────────────────────────

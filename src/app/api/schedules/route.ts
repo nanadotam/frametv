@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdminUser, requireDisplayUser } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const auth = await requireDisplayUser(request);
+    if (auth.response) return auth.response;
+
     const supabase = createServiceClient();
     const { data: schedules, error } = await supabase
       .from('schedules')
       .select('*')
+      .eq('user_id', auth.user.id)
       .order('priority', { ascending: false });
 
     if (error) {
@@ -24,6 +29,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminUser(request);
+    if (auth.response) return auth.response;
+
     const body = await request.json();
     const { name, days_of_week, start_time, end_time, mode_id, album_ids, priority, is_enabled } = body;
 
@@ -39,6 +47,7 @@ export async function POST(request: NextRequest) {
       .from('schedules')
       .insert({
         name,
+        user_id: auth.user.id,
         days_of_week: days_of_week ?? [],
         start_time,
         end_time,

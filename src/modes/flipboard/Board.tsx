@@ -11,8 +11,8 @@ interface BoardProps {
 }
 
 const ACCENT_COLORS = ['#00FF7F', '#FF4D00', '#AA00FF', '#00AAFF', '#00FFCC'];
-const STAGGER_MS = 22; // ms between tiles
-const TARGET_TILE_PX = 62;
+const MAX_STAGGER_TOTAL_MS = 2600; // cap so last tile starts within this window
+const TARGET_TILE_PX = 48; // smaller tiles → more cols → better text fit
 const GAP_PX = 3;
 
 function formatToGrid(text: string, cols: number, rows: number): string[][] {
@@ -120,6 +120,8 @@ export default function Board({ message, soundEnabled }: BoardProps) {
 
   const grid = formatToGrid(message?.text ?? '', cols, rows);
   const accentColor = ACCENT_COLORS[accentIdx];
+  const totalTiles = cols * rows;
+  const staggerMs = totalTiles > 1 ? Math.floor(MAX_STAGGER_TOTAL_MS / totalTiles) : 20;
 
   return (
     <div ref={containerRef} className={s.board}>
@@ -143,7 +145,7 @@ export default function Board({ message, soundEnabled }: BoardProps) {
               key={`${ri}-${ci}`}
               char={char}
               tileSize={tileSize}
-              delay={(ri * cols + ci) * STAGGER_MS}
+              delay={(ri * cols + ci) * staggerMs}
             />
           ))
         )}

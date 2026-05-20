@@ -1,19 +1,24 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdminUser } from '@/lib/auth';
+import { userSettingKey } from '@/lib/userData';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireAdminUser(request);
+  if (auth.response) return auth.response;
+
   const supabase = createServiceClient();
 
   const [spotifyRes, googleKeyRes] = await Promise.all([
     supabase
       .from('spotify_auth')
       .select('access_token, expires_at')
-      .eq('id', 1)
+      .eq('user_id', auth.user.id)
       .maybeSingle(),
     supabase
       .from('settings')
       .select('value')
-      .eq('key', 'google_api_key')
+      .eq('key', userSettingKey(auth.user.id, 'google_api_key'))
       .maybeSingle(),
   ]);
 

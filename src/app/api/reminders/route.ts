@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdminUser, requireDisplayUser } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const auth = await requireDisplayUser(request);
+    if (auth.response) return auth.response;
+
     const supabase = createServiceClient();
     const { data: reminders, error } = await supabase
       .from('reminders')
       .select('*')
+      .eq('user_id', auth.user.id)
       .eq('is_done', false)
       .order('created_at', { ascending: false });
 
@@ -25,6 +30,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminUser(request);
+    if (auth.response) return auth.response;
+
     const body = await request.json();
     const { text, priority, show_on_board, due_at } = body;
 
@@ -50,6 +58,7 @@ export async function POST(request: NextRequest) {
       .from('reminders')
       .insert({
         text,
+        user_id: auth.user.id,
         priority,
         show_on_board: show_on_board ?? true,
         due_at: due_at ?? null,

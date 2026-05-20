@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { randomUUID } from 'crypto';
+import { requireAdminUser } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminUser(request);
+    if (auth.response) return auth.response;
+
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
     const albumId = formData.get('albumId') as string | null;
@@ -22,6 +26,7 @@ export async function POST(request: NextRequest) {
       .from('albums')
       .select('id')
       .eq('id', albumId)
+      .eq('user_id', auth.user.id)
       .maybeSingle();
 
     if (albumErr || !album) {
@@ -49,6 +54,7 @@ export async function POST(request: NextRequest) {
       .from('photos')
       .insert({
         album_id: albumId,
+        user_id: auth.user.id,
         source_type: 'upload',
         source_id: null,
         storage_path: storagePath,

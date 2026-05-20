@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { extractFolderId } from '@/lib/drive/files';
 import { syncFolderByUrl } from '@/lib/drive/sync';
+import { requireAdminUser } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminUser(request);
+    if (auth.response) return auth.response;
+
     const { folderUrl } = await request.json();
 
     if (!folderUrl) {
@@ -18,7 +22,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { synced, albumId, errors } = await syncFolderByUrl(folderUrl);
+    const { synced, albumId, errors } = await syncFolderByUrl(folderUrl, auth.user.id);
 
     return NextResponse.json({
       albumId,

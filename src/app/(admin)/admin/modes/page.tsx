@@ -13,24 +13,46 @@ import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { invalidateModes } from '@/hooks/useModes';
 import type { Mode } from '@/types/db';
 
+// Interval options in seconds
+const INTERVAL_OPTIONS: { label: string; value: number }[] = [
+  { label: '30 seconds', value: 30   },
+  { label: '1 minute',   value: 60   },
+  { label: '2 minutes',  value: 120  },
+  { label: '3 minutes',  value: 180  },
+  { label: '5 minutes',  value: 300  },
+  { label: '10 minutes', value: 600  },
+  { label: '12 minutes', value: 720  },
+  { label: '15 minutes', value: 900  },
+  { label: '20 minutes', value: 1200 },
+  { label: '30 minutes', value: 1800 },
+];
+
 function SlideshowConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
+  // Read intervalSeconds; fall back to legacy 'interval' key if present, then default 300s (5 min)
+  const intervalSec = (cfg.intervalSeconds as number) ?? (cfg.interval as number) ?? 300;
+  // Find closest option value
+  const closestOption = INTERVAL_OPTIONS.reduce((prev, cur) =>
+    Math.abs(cur.value - intervalSec) < Math.abs(prev.value - intervalSec) ? cur : prev
+  );
+
   return (
     <div className="space-y-5">
-      <div className="space-y-2">
-        <div className="flex justify-between">
-          <Label>Interval</Label>
-          <span className="text-sm font-semibold text-primary">{(cfg.interval as number) ?? 10}s</span>
-        </div>
-        <Slider
-          min={3} max={60} step={1}
-          value={[(cfg.interval as number) ?? 10]}
-          onValueChange={(v) => onChange({ ...cfg, interval: Number(Array.isArray(v) ? v[0] : v) })}
-        />
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>3s</span><span>60s</span>
-        </div>
+      <div className="space-y-1.5">
+        <Label>Photo interval</Label>
+        <Select
+          value={String(closestOption.value)}
+          onValueChange={(v) => onChange({ ...cfg, intervalSeconds: Number(v), interval: undefined })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {INTERVAL_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="space-y-1.5">
         <Label>Transition</Label>
@@ -40,17 +62,17 @@ function SlideshowConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
         >
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {['fade', 'slide', 'zoom', 'flip', 'crossfade'].map((t) => (
+            {['fade', 'slide', 'blur', 'pixelate'].map((t) => (
               <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
       <div className="flex items-center justify-between">
-        <Label>Blur backdrop</Label>
+        <Label>Shuffle photos</Label>
         <Switch
-          checked={!!(cfg.blur_backdrop)}
-          onCheckedChange={(v) => onChange({ ...cfg, blur_backdrop: v })}
+          checked={(cfg.shuffle as boolean) ?? true}
+          onCheckedChange={(v) => onChange({ ...cfg, shuffle: v })}
         />
       </div>
     </div>
@@ -58,19 +80,31 @@ function SlideshowConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
 }
 
 function PinterestConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
+  // Normalise legacy string speed ("0.5x", "1x", "2x") to number
+  const speedNum = typeof cfg.speed === 'number'
+    ? cfg.speed
+    : typeof cfg.speed === 'string'
+      ? (parseFloat(cfg.speed as string) || 1)
+      : 1;
+  // Normalise legacy reverse_direction boolean to direction string
+  const direction = typeof cfg.direction === 'string'
+    ? cfg.direction
+    : (cfg.reverse_direction ? 'right' : 'left');
+
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
         <Label>Scroll speed</Label>
         <Select
-          value={(cfg.speed as string) ?? '1x'}
-          onValueChange={(v) => onChange({ ...cfg, speed: v })}
+          value={String(speedNum)}
+          onValueChange={(v) => onChange({ ...cfg, speed: Number(v), reverse_direction: undefined })}
         >
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {['0.5x', '1x', '2x'].map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
+            <SelectItem value="0.25">0.25× Very slow</SelectItem>
+            <SelectItem value="0.5">0.5× Slow</SelectItem>
+            <SelectItem value="1">1× Normal</SelectItem>
+            <SelectItem value="2">2× Fast</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -91,8 +125,8 @@ function PinterestConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
       <div className="flex items-center justify-between">
         <Label>Reverse direction</Label>
         <Switch
-          checked={!!(cfg.reverse_direction)}
-          onCheckedChange={(v) => onChange({ ...cfg, reverse_direction: v })}
+          checked={direction === 'right'}
+          onCheckedChange={(v) => onChange({ ...cfg, direction: v ? 'right' : 'left', reverse_direction: undefined })}
         />
       </div>
     </div>
@@ -132,17 +166,22 @@ function ClockConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange
 }
 
 function FlipboardConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
-  const sources = (cfg.sources as string[]) ?? [];
+  const sources = (cfg.sources as string[]) ?? ['messages', 'reminders', 'quotes'];
   const toggleSource = (s: string) => {
     onChange({ ...cfg, sources: sources.includes(s) ? sources.filter((x) => x !== s) : [...sources, s] });
   };
+  // secondsPerMessage — same interval options as slideshow
+  const secondsPerMsg = (cfg.secondsPerMessage as number) ?? (cfg.seconds_per_message as number) ?? 60;
+  const closestOpt = INTERVAL_OPTIONS.reduce((prev, cur) =>
+    Math.abs(cur.value - secondsPerMsg) < Math.abs(prev.value - secondsPerMsg) ? cur : prev
+  );
 
   return (
     <div className="space-y-5">
       <div className="space-y-2">
         <Label>Sources</Label>
         <div className="flex flex-wrap gap-1.5">
-          {['reminders', 'calendar', 'weather', 'quotes'].map((s) => (
+          {['messages', 'reminders', 'quotes', 'calendar', 'weather'].map((s) => (
             <button
               key={s}
               type="button"
@@ -154,21 +193,24 @@ function FlipboardConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
                   : 'bg-card border-border text-muted-foreground hover:border-primary/50'
               )}
             >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {{ messages: 'Live Messages', reminders: 'Reminders', quotes: 'Quotes', calendar: 'Calendar', weather: 'Weather' }[s] ?? s}
             </button>
           ))}
         </div>
       </div>
-      <div className="space-y-2">
-        <div className="flex justify-between">
-          <Label>Seconds per message</Label>
-          <span className="text-sm font-semibold text-primary">{(cfg.seconds_per_message as number) ?? 8}s</span>
-        </div>
-        <Slider
-          min={2} max={30} step={1}
-          value={[(cfg.seconds_per_message as number) ?? 8]}
-          onValueChange={(v) => onChange({ ...cfg, seconds_per_message: Number(Array.isArray(v) ? v[0] : v) })}
-        />
+      <div className="space-y-1.5">
+        <Label>Time per message</Label>
+        <Select
+          value={String(closestOpt.value)}
+          onValueChange={(v) => onChange({ ...cfg, secondsPerMessage: Number(v), seconds_per_message: undefined })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {INTERVAL_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex items-center justify-between">
         <Label>Sound effects</Label>
@@ -256,6 +298,12 @@ function ModeConfigForm({ mode, cfg, onChange }: { mode: Mode; cfg: Record<strin
       return <UnsplashConfig cfg={cfg} onChange={onChange} />;
     case 'easel':
       return <EaselConfig cfg={cfg} onChange={onChange} />;
+    case 'eisenhower':
+      return (
+        <div className="text-sm text-muted-foreground">
+          No configuration needed. Tasks are pulled from the Reminders board.
+        </div>
+      );
     default:
       return (
         <div className="space-y-1.5">
@@ -282,6 +330,7 @@ const MODE_DISPLAY: Record<string, { label: string; description: string; emoji: 
   'coverflow':        { label: 'Cover Flow',description: '3D cover flow carousel', emoji: '🎵' },
   'unsplash-mood':    { label: 'Mood',      description: 'Curated Unsplash photos by mood', emoji: '🌄' },
   'easel':            { label: 'Easel',     description: 'Rotating text messages', emoji: '✍️' },
+  'eisenhower':       { label: 'Eisenhower', description: 'Matrix of tasks in 4 priority quadrants', emoji: '🧩' },
 };
 
 export default function ModesPage() {
@@ -320,6 +369,7 @@ export default function ModesPage() {
       setModes((prev) =>
         prev.map((m) => m.id === configModal.mode.id ? { ...m, config: configModal.cfg } : m)
       );
+      invalidateModes(); // push update to display page cache
       setConfigModal(null);
     } finally {
       setSaving(false);

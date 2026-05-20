@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { syncDrive } from '@/lib/drive/sync';
+import { requireAdminUser } from '@/lib/auth';
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdminUser(request);
+    if (auth.response) return auth.response;
+
     const { id } = await params;
-    const result = await syncDrive(id);
+    const result = await syncDrive(id, auth.user.id);
 
     return NextResponse.json({
       ok: true,

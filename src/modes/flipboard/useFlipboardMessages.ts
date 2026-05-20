@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import type { Reminder, ReminderPriority } from '@/types/db';
+import { getRealtimeClient } from '@/lib/supabase/realtime';
+import type { Reminder, ReminderPriority, FlipboardMessage } from '@/types/db';
 
 export interface FlipMessage {
   text: string;
@@ -27,7 +27,7 @@ const QUOTES: FlipMessage[] = [
   { text: 'FOCUS ON PROGRESS NOT PERFECTION' },
 ];
 
-export type Source = 'reminders' | 'calendar' | 'weather' | 'quotes';
+export type Source = 'reminders' | 'calendar' | 'weather' | 'quotes' | 'messages';
 
 interface UseFlipboardMessagesProps {
   sources: Source[];
@@ -35,21 +35,23 @@ interface UseFlipboardMessagesProps {
 }
 
 export function useFlipboardMessages({ sources, secondsPerMessage }: UseFlipboardMessagesProps) {
-  const [reminders, setReminders] = useState<FlipMessage[]>([]);
-  const [current, setCurrent] = useState<FlipMessage | null>(null);
-  const indexRef = useRef(0);
+  const [reminders, setReminders]     = useState<FlipMessage[]>([]);
+  const [boardMessages, setBoardMessages] = useState<FlipMessage[]>([]);
+  const [current, setCurrent]         = useState<FlipMessage | null>(null);
+  const indexRef                      = useRef(0);
+  const sourceKey                     = sources.join(',');
 
-  // Fetch reminders whenever sources include 'reminders'
+  // Fetch reminders from Supabase
   useEffect(() => {
-    if (!sources.includes('reminders')) { setReminders([]); return; }
-    const supabase = createClient();
-    supabase
-      .from('reminders')
-      .select('*')
-      .eq('show_on_board', true)
-      .eq('is_done', false)
-      .order('created_at', { ascending: true })
-      .then(({ data }: { data: Reminder[] | null }) => {
+    if (!sources.includes('reminders')) {
+      const timeout = window.setTimeout(() => setReminders([]), 0);
+      return () => clearTimeout(timeout);
+    }
+    const fetchReminders = async () => {
+      const res = await fetch('/api/reminders');
+      if (!res.ok) return;
+      const json = await res.json();
+      const data = (json.reminders ?? []) as Reminder[];
         if (data) {
           setReminders(
             data.map((r) => ({
@@ -58,21 +60,63 @@ export function useFlipboardMessages({ sources, secondsPerMessage }: UseFlipboar
             }))
           );
         }
-      });
+    };
+    fetchReminders();
+    const supabase = getRealtimeClient();
+    const channel = supabase
+      .channel('flipboard_reminders_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, fetchReminders)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sources.join(',')]);
+  }, [sourceKey]);
+
+  // Fetch custom flipboard messages from the board messages table
+  useEffect(() => {
+    if (!sources.includes('messages')) {
+      const timeout = window.setTimeout(() => setBoardMessages([]), 0);
+      return () => clearTimeout(timeout);
+    }
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch('/api/flipboard/messages');
+        if (res.ok) {
+          const json = await res.json();
+          setBoardMessages(
+            (json.messages as FlipboardMessage[]).map((m) => ({
+              text: m.author
+                ? `${m.text.toUpperCase()} - ${m.author.toUpperCase()}`
+                : m.text.toUpperCase(),
+            }))
+          );
+        }
+      } catch { /* network error — skip */ }
+    };
+    fetchMessages();
+    const id = setInterval(fetchMessages, 5_000);
+    const supabase = getRealtimeClient();
+    const channel = supabase
+      .channel('flipboard_messages_changes_client')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'flipboard_messages' }, fetchMessages)
+      .subscribe();
+    return () => {
+      clearInterval(id);
+      supabase.removeChannel(channel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey]);
 
   const buildQueue = useCallback((): FlipMessage[] => {
     const queue: FlipMessage[] = [];
     for (const src of sources) {
+      if (src === 'messages')   queue.push(...boardMessages);
       if (src === 'reminders')  queue.push(...reminders);
       if (src === 'quotes')     queue.push(...QUOTES);
-      // calendar / weather: placeholders until integrations are live
-      if (src === 'calendar')   queue.push({ text: 'CALENDAR COMING SOON' });
-      if (src === 'weather')    queue.push({ text: 'WEATHER COMING SOON' });
+      if (src === 'calendar')   queue.push({ text: 'CALENDAR INTEGRATION COMING SOON' });
+      if (src === 'weather')    queue.push({ text: 'WEATHER INTEGRATION COMING SOON' });
     }
     return queue.length > 0 ? queue : [{ text: 'FRAME TV' }];
-  }, [sources, reminders]);
+  }, [sources, reminders, boardMessages]);
 
   const advance = useCallback(() => {
     const queue = buildQueue();
@@ -82,9 +126,12 @@ export function useFlipboardMessages({ sources, secondsPerMessage }: UseFlipboar
 
   // Bootstrap first message
   useEffect(() => {
-    const queue = buildQueue();
-    indexRef.current = 0;
-    setCurrent(queue[0] ?? null);
+    const timeout = window.setTimeout(() => {
+      const queue = buildQueue();
+      indexRef.current = 0;
+      setCurrent(queue[0] ?? null);
+    }, 0);
+    return () => clearTimeout(timeout);
   }, [buildQueue]);
 
   // Auto-advance

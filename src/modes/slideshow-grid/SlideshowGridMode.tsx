@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { pickLayout, type Layout } from './layout';
+import { getPhotoRotation, cellRotationStyle } from '@/lib/photoRotation';
 import type { Photo } from '@/types/db';
 
 interface SlideshowGridConfig {
@@ -47,16 +48,16 @@ function useProgressiveSrc(photoId: string | undefined) {
 
 function PhotoCell({ photo }: { photo: Photo | null }) {
   const src = useProgressiveSrc(photo?.id);
+  const rotation = getPhotoRotation(photo);
+  const rotStyle = cellRotationStyle(rotation);
   if (!src) return <div style={{ position: 'absolute', inset: 0, background: '#111' }} />;
   return (
     <>
-      {/* Blurred backdrop fills any corner gaps when aspect ratios differ */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={src} aria-hidden alt=""
-        style={{ ...FILL, filter: 'blur(24px) brightness(0.55)', transform: 'scale(1.15)' }} />
-      {/* Main image — cover fills the cell, crops to fit */}
+        style={{ ...FILL, filter: 'blur(24px) brightness(0.55)', transform: `scale(1.15)${rotation ? ` rotate(${rotation}deg)` : ''}` }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="" style={{ ...FILL, zIndex: 1 }} />
+      <img src={src} alt="" style={{ ...FILL, zIndex: 1, ...rotStyle }} />
     </>
   );
 }
@@ -86,12 +87,13 @@ export default function SlideshowGridMode({
   brightness,
   isPaused,
   onReady,
+  albumIds,
 }: ModeProps) {
   const cfg = config as SlideshowGridConfig;
-  // Each cell changes once per this interval; cells fire one-by-one staggered
-  const cellInterval = (cfg.cellIntervalSeconds ?? 3) * 1000;
+  // intervalSeconds is the canonical key; cellIntervalSeconds is the legacy key
+  const cellInterval = ((cfg.cellIntervalSeconds ?? (config as Record<string, unknown>).intervalSeconds as number) ?? 300) * 1000;
 
-  const { photos } = usePhotoRotation({ shuffle: true });
+  const { photos } = usePhotoRotation({ albumIds, shuffle: true });
   const [layout, setLayout] = useState<Layout | null>(null);
   const [cells, setCells] = useState<CellState[]>([]);
   const photoIdxRef = useRef(0);

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requireDisplayUser } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireDisplayUser(request);
+    if (auth.response) return auth.response;
+
     const { id } = await params;
     const size = Math.min(
       4000,
@@ -17,6 +21,7 @@ export async function GET(
       .from('photos')
       .select('source_type, source_id, thumbnail_path, storage_path')
       .eq('id', id)
+      .eq('user_id', auth.user.id)
       .maybeSingle();
 
     if (!photo) {

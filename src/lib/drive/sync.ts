@@ -7,7 +7,8 @@ import { extractFolderId, getFolderName, listFolderFiles, getThumbnailUrl, getIm
  * Re-importing the same folder (same drive_folder_id) re-syncs photos.
  */
 export async function syncFolderByUrl(
-  folderUrl: string
+  folderUrl: string,
+  userId?: string
 ): Promise<{ synced: number; albumId: string; errors: string[] }> {
   const folderId = extractFolderId(folderUrl);
   if (!folderId) throw new Error('Invalid Drive folder URL — could not extract folder ID.');
@@ -20,11 +21,14 @@ export async function syncFolderByUrl(
   const name = await getFolderName(folderId);
 
   // Check whether this folder has already been imported
-  const { data: existing } = await supabase
+  const existingQuery = supabase
     .from('albums')
     .select('id')
-    .eq('drive_folder_id', folderId)
-    .maybeSingle(); // intentionally matches archived albums too so we can unarchive them
+    .eq('drive_folder_id', folderId);
+  const { data: existing } = await (userId
+    ? existingQuery.eq('user_id', userId)
+    : existingQuery.is('user_id', null)
+  ).maybeSingle(); // intentionally matches archived albums too so we can unarchive them
 
   let albumId: string;
 
@@ -35,7 +39,7 @@ export async function syncFolderByUrl(
   } else {
     const { data: inserted, error: insertErr } = await supabase
       .from('albums')
-      .insert({ name, source_type: 'drive', drive_folder_id: folderId, display_order: 0 })
+      .insert({ name, user_id: userId ?? null, source_type: 'drive', drive_folder_id: folderId, display_order: 0 })
       .select('id')
       .single();
 
@@ -84,6 +88,7 @@ export async function syncFolderByUrl(
   if (newFiles.length > 0) {
     const rows = newFiles.map((file, idx) => ({
       album_id: albumId,
+      user_id: userId ?? null,
       source_type: 'drive' as const,
       source_id: file.id,
       storage_path: getImageUrl(file.id),
@@ -131,7 +136,7 @@ export async function syncFolderByUrl(
 /**
  * Re-sync all drive albums (called by cron).
  */
-export async function syncDrive(filterAlbumId?: string): Promise<{ synced: number; errors: string[] }> {
+export async function syncDrive(filterAlbumId?: string, userId?: string): Promise<{ synced: number; errors: string[] }> {
   const supabase = createServiceClient();
   let synced = 0;
   const errors: string[] = [];
@@ -143,14 +148,16 @@ export async function syncDrive(filterAlbumId?: string): Promise<{ synced: numbe
     .eq('is_archived', false);
 
   const { data: albums } = filterAlbumId
-    ? await query.eq('id', filterAlbumId)
-    : await query;
+    ? await (userId ? query.eq('user_id', userId) : query.is('user_id', null)).eq('id', filterAlbumId)
+    : userId
+      ? await query.eq('user_id', userId)
+      : await query.is('user_id', null);
 
   for (const album of albums ?? []) {
     if (!album.drive_folder_id) continue;
     try {
       const folderUrl = `https://drive.google.com/drive/folders/${album.drive_folder_id}`;
-      const result = await syncFolderByUrl(folderUrl);
+      const result = await syncFolderByUrl(folderUrl, userId);
       synced += result.synced;
       errors.push(...result.errors);
     } catch (err: unknown) {

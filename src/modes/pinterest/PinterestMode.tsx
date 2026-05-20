@@ -1,70 +1,93 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import type { SyntheticEvent } from 'react';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
+import { getPhotoRotation } from '@/lib/photoRotation';
 import type { Photo } from '@/types/db';
-import styles from './PinterestMode.module.css';
 
 interface PinterestConfig {
   rows?: number;
-  speed?: 0.5 | 1 | 2;
+  speed?: number;
   direction?: 'left' | 'right';
   cornerRadius?: number;
   gap?: number;
 }
 
+// 4× copies ensures even a row with 3 portrait images fills >1920px at any reasonable height.
+const COPIES = 4;
+
+function getViewportHeight() {
+  return typeof window === 'undefined' ? 900 : window.innerHeight;
+}
+
 /**
  * Single photo in the scrolling track.
- * Reads natural dimensions on load so width matches the image's real aspect ratio.
- * Before load: renders at 1:1 as a placeholder so the track has stable width.
+ * For 90/270° rotations, wraps the image in a container that matches the post-rotation
+ * visual dimensions so there are no black bars — uses the photo's stored W×H to derive
+ * the correct container width at the given row height.
  */
 function TrackPhoto({
   photo,
   rowHeightPx,
   cornerRadius,
-  imgIdx,
 }: {
   photo: Photo;
   rowHeightPx: number;
   cornerRadius: number;
-  imgIdx: number;
 }) {
-  const [displayWidth, setDisplayWidth] = useState<number>(rowHeightPx); // 1:1 until loaded
-  const imgRef = useRef<HTMLImageElement | null>(null);
-
-  const onLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const img = e.currentTarget as any;
-    const nw: number = img.naturalWidth ?? 0;
-    const nh: number = img.naturalHeight ?? 0;
-    if (!nw || !nh) return;
-    // Use rendered clientWidth/clientHeight to get the visual ratio after EXIF rotation
-    const cw: number = img.clientWidth ?? 0;
-    const ch: number = img.clientHeight ?? 0;
-    const visualRatio = cw > 0 && ch > 0 ? cw / ch : nw / nh;
-    setDisplayWidth(Math.round(rowHeightPx * visualRatio));
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const rotation = getPhotoRotation(photo);
+  const src = `/api/photos/${photo.id}/thumbnail?size=1200`;
+  const naturalWidth = photo.width ?? naturalSize?.width ?? null;
+  const naturalHeight = photo.height ?? naturalSize?.height ?? null;
+  const isSideways = rotation === 90 || rotation === 270;
+  const visualWidth = isSideways ? naturalHeight : naturalWidth;
+  const visualHeight = isSideways ? naturalWidth : naturalHeight;
+  const ratio = visualWidth && visualHeight ? visualWidth / visualHeight : 1;
+  const containerW = Math.max(
+    Math.round(rowHeightPx * 0.4),
+    Math.min(Math.round(rowHeightPx * ratio), Math.round(rowHeightPx * 2.5))
+  );
+  const handleLoad = (event: SyntheticEvent<HTMLImageElement>) => {
+    const img = event.currentTarget;
+    if (img.naturalWidth && img.naturalHeight) {
+      setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+    }
   };
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      ref={imgRef}
-      key={`${photo.id}-${imgIdx}`}
-      src={`/api/photos/${photo.id}/thumbnail?size=1200`}
-      alt=""
-      className={styles.photo}
-      onLoad={onLoad}
+    <div
       style={{
         height: `${rowHeightPx}px`,
-        width: `${displayWidth}px`,
-        borderRadius: `${cornerRadius}px`,
-        imageOrientation: 'from-image',
+        width: `${containerW}px`,
         flexShrink: 0,
-        objectFit: 'cover',
-        display: 'block',
+        position: 'relative',
+        overflow: 'hidden',
+        borderRadius: `${cornerRadius}px`,
       }}
-    />
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        loading="eager"
+        onLoad={handleLoad}
+        style={{
+          position: 'absolute',
+          width: isSideways ? `${rowHeightPx}px` : '100%',
+          height: isSideways ? `${containerW}px` : '100%',
+          top: '50%',
+          left: '50%',
+          transform: `translate(-50%, -50%)${rotation ? ` rotate(${rotation}deg)` : ''}`,
+          objectFit: 'cover',
+          imageOrientation: 'from-image',
+          maxWidth: 'none',
+          display: 'block',
+        }}
+      />
+    </div>
   );
 }
 
@@ -72,31 +95,97 @@ export default function PinterestMode({
   config,
   brightness,
   isPaused,
+  albumIds,
   onReady,
 }: ModeProps) {
-  const cfg = config as PinterestConfig;
+  const cfg = config as PinterestConfig & { reverse_direction?: boolean };
   const rowCount = cfg.rows ?? 3;
-  const speed = cfg.speed ?? 1;
-  const direction = cfg.direction ?? 'left';
+  // Handle legacy "0.5x"/"1x"/"2x" string values saved by earlier admin UI
+  const rawSpeed = cfg.speed;
+  const speed = typeof rawSpeed === 'number'
+    ? rawSpeed
+    : typeof rawSpeed === 'string'
+      ? (parseFloat(rawSpeed) || 1)
+      : 1;
+  // Handle both 'direction' string and legacy 'reverse_direction' boolean
+  const direction: 'left' | 'right' = typeof cfg.direction === 'string'
+    ? cfg.direction
+    : (cfg.reverse_direction ? 'right' : 'left');
   const cornerRadius = cfg.cornerRadius ?? 24;
   const gap = cfg.gap ?? 12;
 
-  const { photos } = usePhotoRotation({ shuffle: true });
-  const [viewportH, setViewportH] = useState(900);
+  const { photos } = usePhotoRotation({ albumIds, shuffle: true });
+  const [viewportH, setViewportH] = useState(getViewportHeight);
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = globalThis as any;
-    if (!w.innerHeight) return;
-    setViewportH(w.innerHeight);
-    const onResize = () => setViewportH(w.innerHeight);
-    w.addEventListener('resize', onResize);
-    return () => w.removeEventListener('resize', onResize);
+    const onResize = () => setViewportH(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   useEffect(() => {
     if (photos.length > 0) onReady?.();
   }, [photos.length, onReady]);
+
+  // JS animation refs — one pixel position per row, live-measured cycle width.
+  const trackRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const posPxRef = useRef<number[]>([]);
+  const rafRef = useRef<number>(0);
+  const isPausedRef = useRef(isPaused);
+  useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
+
+  // Reset per-row positions when row count changes so the animation restarts cleanly
+  useEffect(() => { posPxRef.current = []; }, [rowCount]);
+
+  // Pixel-based speed keeps the setting perceptible even when rows are very wide.
+  const pxPerSecond = 24 * speed;
+
+  useEffect(() => {
+    if (photos.length === 0) return;
+
+    let lastTs = 0;
+
+    const tick = (ts: number) => {
+      rafRef.current = requestAnimationFrame(tick);
+
+      if (isPausedRef.current) { lastTs = ts; return; }
+      if (!lastTs) { lastTs = ts; return; }
+
+      const dt = Math.min((ts - lastTs) / 1000, 0.1); // cap at 100ms (e.g. tab switch)
+      lastTs = ts;
+
+      for (let r = 0; r < rowCount; r++) {
+        const track = trackRefs.current[r];
+        if (!track) continue;
+
+        // cycleWidth = width of one copy's content (live — updates as images load)
+        const cycleWidth = track.scrollWidth / COPIES;
+        if (cycleWidth < 10) continue;
+
+        // Advance the pixel position within one repeated copy.
+        if (posPxRef.current[r] === undefined) posPxRef.current[r] = 0;
+        posPxRef.current[r] = (posPxRef.current[r] + pxPerSecond * dt) % cycleWidth;
+        const offsetPx = posPxRef.current[r];
+
+        // Alternate rows scroll in opposite directions
+        const rowDir =
+          r % 2 === 0
+            ? direction === 'left' ? -1 : 1
+            : direction === 'left' ? 1 : -1;
+
+        // Left-moving: translate 0 → -cycleWidth.
+        // Right-moving: translate -cycleWidth → 0.
+        const translateX = rowDir < 0
+          ? -offsetPx
+          : -(cycleWidth - offsetPx);
+
+        track.style.transform = `translateX(${translateX}px)`;
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [photos.length, rowCount, direction, pxPerSecond]);
 
   if (photos.length === 0) {
     return (
@@ -106,14 +195,11 @@ export default function PinterestMode({
     );
   }
 
-  // Pixel row height so TrackPhoto can calculate correct width
   const rowHeightPx = Math.floor((viewportH - gap * (rowCount + 1)) / rowCount);
 
-  // Distribute photos round-robin across rows, then duplicate for seamless loop
+  // Distribute photos round-robin across rows
   const rows: typeof photos[] = Array.from({ length: rowCount }, () => []);
   photos.forEach((photo, i) => rows[i % rowCount].push(photo));
-
-  const baseDuration = 30 / speed;
 
   return (
     <div
@@ -121,36 +207,36 @@ export default function PinterestMode({
       style={{ opacity: brightness / 100, gap: `${gap}px`, padding: `${gap}px` }}
     >
       {rows.map((rowPhotos, rowIdx) => {
-        const rowDirection =
-          rowIdx % 2 === 0
-            ? direction === 'left' ? 'normal' : 'reverse'
-            : direction === 'left' ? 'reverse' : 'normal';
-
-        const duration = baseDuration * (1 + rowIdx * 0.05);
-        const doubled = [...rowPhotos, ...rowPhotos];
+        // Repeat COPIES times for a seamless loop with enough content
+        const repeated = Array.from({ length: COPIES }, () => rowPhotos).flat();
 
         return (
           <div
             key={rowIdx}
-            className={styles.row}
-            style={{ height: `${rowHeightPx}px`, flexShrink: 0 }}
+            style={{
+              height: `${rowHeightPx}px`,
+              flexShrink: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+            }}
           >
             <div
-              className={styles.track}
+              ref={(el) => { trackRefs.current[rowIdx] = el; }}
               style={{
-                '--duration': `${duration}s`,
-                '--direction': rowDirection,
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
                 gap: `${gap}px`,
-                animationPlayState: isPaused ? 'paused' : 'running',
-              } as React.CSSProperties}
+                willChange: 'transform',
+              }}
             >
-              {doubled.map((photo, imgIdx) => (
+              {repeated.map((photo, imgIdx) => (
                 <TrackPhoto
-                  key={`${photo.id}-${imgIdx}`}
+                  key={`${photo.id}-r${rowIdx}-${imgIdx}`}
                   photo={photo}
                   rowHeightPx={rowHeightPx}
                   cornerRadius={cornerRadius}
-                  imgIdx={imgIdx}
                 />
               ))}
             </div>

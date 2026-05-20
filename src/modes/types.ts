@@ -6,12 +6,14 @@ export type ModeId =
   | 'flipboard'
   | 'coverflow'
   | 'unsplash-mood'
-  | 'easel';
+  | 'easel'
+  | 'eisenhower';
 
 export interface ModeProps {
   config: Record<string, unknown>;
   theme: 'light' | 'dark';
   brightness: number; // 5–100
   isPaused: boolean;
+  albumIds?: string[];
   onReady?: () => void;
 }

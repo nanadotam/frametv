@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdminUser } from '@/lib/auth';
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdminUser(request);
+    if (auth.response) return auth.response;
+
     const { id } = await params;
     const body = await request.json();
 
@@ -25,6 +29,7 @@ export async function PATCH(
       .from('reminders')
       .update(allowedFields)
       .eq('id', id)
+      .eq('user_id', auth.user.id)
       .select()
       .single();
 
@@ -46,10 +51,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdminUser(_request);
+    if (auth.response) return auth.response;
+
     const { id } = await params;
     const supabase = createServiceClient();
 
-    const { error } = await supabase.from('reminders').delete().eq('id', id);
+    const { error } = await supabase.from('reminders').delete().eq('id', id).eq('user_id', auth.user.id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

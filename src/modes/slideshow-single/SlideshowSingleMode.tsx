@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
+import { getPhotoRotation, fullscreenRotationStyle } from '@/lib/photoRotation';
 
 interface SlideshowSingleConfig {
   intervalSeconds?: number;
@@ -51,17 +52,21 @@ export default function SlideshowSingleMode({
   isPaused,
   onReady,
   config,
+  albumIds,
 }: ModeProps) {
   const cfg = config as SlideshowSingleConfig;
-  const intervalSeconds = cfg.intervalSeconds ?? 8;
+  // intervalSeconds is the canonical key; 'interval' is the old legacy key from early admin UI
+  const intervalSeconds = cfg.intervalSeconds ?? (config as Record<string, unknown>).interval as number ?? 300;
   const transition = cfg.transition ?? 'fade';
   const shuffle = cfg.shuffle ?? true;
 
-  const { photos, currentIndex, advance } = usePhotoRotation({ shuffle });
+  const { photos, currentIndex, advance } = usePhotoRotation({ albumIds, shuffle });
   const [key, setKey] = useState(0);
 
   const photo = photos[currentIndex] ?? null;
   const src = useProgressiveSrc(photo?.id);
+  const rotation = getPhotoRotation(photo);
+  const rotStyle = fullscreenRotationStyle(rotation);
 
   const v = TRANSITIONS[transition] ?? TRANSITIONS.fade;
 
@@ -90,7 +95,7 @@ export default function SlideshowSingleMode({
             exit={v.exit as never}
             transition={v.transition as never}
           >
-            {/* Blurred backdrop fills any letterbox gaps and adds depth */}
+            {/* Blurred backdrop */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={src}
@@ -100,15 +105,21 @@ export default function SlideshowSingleMode({
                 position: 'absolute',
                 inset: 0,
                 filter: 'blur(48px) saturate(0.8) brightness(0.6)',
-                transform: 'scale(1.15)',
+                transform: `scale(1.15)${rotation ? ` rotate(${rotation}deg)` : ''}`,
               }}
             />
-            {/* Primary image — cover to fill screen */}
+            {/* Primary image */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={src}
               alt=""
-              style={{ ...IMG_STYLE, position: 'relative', zIndex: 1 }}
+              style={{
+                ...IMG_STYLE,
+                position: 'absolute',
+                inset: 0,
+                zIndex: 1,
+                ...rotStyle,
+              }}
             />
           </motion.div>
         )}

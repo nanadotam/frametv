@@ -9,10 +9,15 @@ export function useAutoDim(): boolean {
 
   useEffect(() => {
     const check = () => {
+      if (!settings.dim) {
+        setDim(false);
+        return;
+      }
+
       const now = new Date();
       const cur = now.getHours() * 60 + now.getMinutes();
-      const dimStart = settings.dim?.startMinute ?? 23 * 60; // 23:00 default
-      const dimEnd = settings.dim?.endMinute ?? 6 * 60;       // 06:00 default
+      const dimStart = settings.dim.startMinute;
+      const dimEnd = settings.dim.endMinute;
 
       // Handle overnight wrap (e.g. 23:00–06:00)
       const inWindow =

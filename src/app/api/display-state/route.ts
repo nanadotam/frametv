@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requireAdminUser, requireDisplayUser } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const auth = await requireDisplayUser(request);
+    if (auth.response) return auth.response;
+
     const supabase = createServiceClient();
     const { data, error } = await supabase
       .from('display_state')
       .select('*')
-      .eq('id', 1)
+      .eq('user_id', auth.user.id)
       .single();
 
     if (error) {
@@ -25,6 +29,9 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const auth = await requireAdminUser(request);
+    if (auth.response) return auth.response;
+
     const body = await request.json();
 
     const allowedFields: Record<string, unknown> = {
@@ -44,7 +51,7 @@ export async function PATCH(request: NextRequest) {
     const { data, error } = await supabase
       .from('display_state')
       .update(allowedFields)
-      .eq('id', 1)
+      .eq('user_id', auth.user.id)
       .select()
       .single();
 

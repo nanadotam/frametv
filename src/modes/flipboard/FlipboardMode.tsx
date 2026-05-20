@@ -3,10 +3,8 @@
 import { useEffect } from 'react';
 import type { ModeProps } from '@/modes/types';
 import Board from './Board';
-import { useFlipboardMessages } from './useFlipboardMessages';
+import { useFlipboardMessages, type Source } from './useFlipboardMessages';
 import s from './FlipboardMode.module.css';
-
-type Source = 'reminders' | 'calendar' | 'weather' | 'quotes';
 
 interface FlipboardConfig {
   sources?: Source[];
@@ -22,8 +20,8 @@ export default function FlipboardMode({
   onReady,
 }: ModeProps) {
   const cfg = config as FlipboardConfig;
-  const sources = cfg.sources ?? ['reminders', 'quotes'];
-  const secondsPerMessage = cfg.seconds_per_message ?? cfg.secondsPerMessage ?? 8;
+  const sources: Source[] = cfg.sources?.length ? cfg.sources : ['reminders', 'quotes', 'messages'];
+  const secondsPerMessage = cfg.secondsPerMessage ?? cfg.seconds_per_message ?? 60;
   const soundEnabled = cfg.sound ?? false;
 
   const { current } = useFlipboardMessages({

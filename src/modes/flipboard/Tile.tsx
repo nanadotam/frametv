@@ -7,6 +7,7 @@ interface TileProps {
   char: string;
   tileSize: number;
   delay?: number; // ms
+  defaultBg?: string; // override the normal tile inner background
 }
 
 const CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,-!?\'/: ';
@@ -14,7 +15,7 @@ const SCRAMBLE_COLORS = ['#00AAFF', '#00FFCC', '#AA00FF', '#FF2D00', '#FFCC00', 
 const SCRAMBLE_INTERVAL = 65; // ms between each random char
 const MAX_SCRAMBLES = 11;
 
-export default function Tile({ char, tileSize, delay = 0 }: TileProps) {
+export default function Tile({ char, tileSize, delay = 0, defaultBg }: TileProps) {
   const [displayed, setDisplayed] = useState(char);
   const [bg, setBg] = useState<string>('');
   const [textColor, setTextColor] = useState('');
@@ -78,7 +79,7 @@ export default function Tile({ char, tileSize, delay = 0 }: TileProps) {
     >
       <div
         className={s.tileInner}
-        style={bg ? { backgroundColor: bg } : undefined}
+        style={{ backgroundColor: bg || defaultBg || undefined }}
       >
         <span
           className={s.tileChar}

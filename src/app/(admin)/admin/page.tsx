@@ -19,6 +19,7 @@ const MODES = [
   { id: 'coverflow',        label: 'Cover Flow', emoji: '🎵' },
   { id: 'unsplash-mood',    label: 'Mood',       emoji: '🌄' },
   { id: 'easel',            label: 'Easel',      emoji: '✍️' },
+  { id: 'eisenhower',       label: 'Eisenhower', emoji: '🧩' },
 ];
 
 async function patchDisplayState(patch: Partial<DisplayState>) {
