@@ -119,12 +119,14 @@ export default function SlideshowGridMode({
   // isReady gates the cascade effect without putting `layout` in its deps
   const [isReady, setIsReady] = useState(false);
 
-  const photoIdxRef  = useRef(0);
-  const prevCountRef = useRef<number | null>(null);
+  const photoIdxRef    = useRef(0);
+  const prevCountRef   = useRef<number | null>(null);
   // Mirror of layout state — lets cascade read current layout without being
   // in the effect's dep array (which would cancel pending timeouts on every setLayout call)
-  const layoutRef    = useRef<Layout | null>(null);
-  const initialized  = useRef(false);
+  const layoutRef      = useRef<Layout | null>(null);
+  const initialized    = useRef(false);
+  // Track IDs shown in the last cycle so we never reuse them in the same grid
+  const recentlyUsedRef = useRef<Set<string>>(new Set());
 
   // ── One-time init ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -181,12 +183,24 @@ export default function SlideshowGridMode({
       const newLayout = pickLayout(avgRatio, prevCountRef.current, maxCells);
       prevCountRef.current = newLayout.count;
 
-      // Pre-allocate exactly the right number of photos for this cycle
-      const batch = Array.from({ length: newLayout.count }, () => {
+      // Build batch — never reuse a photo that's currently on screen.
+      // Walk forward through photos[], skipping any ID in recentlyUsedRef.
+      // If the library is too small to satisfy the count with unique photos,
+      // fall back to sequential (better to repeat than to hang).
+      const excluded = new Set(recentlyUsedRef.current);
+      const batch: Photo[] = [];
+      let walked = 0;
+      while (batch.length < newLayout.count) {
         const p = photos[photoIdxRef.current];
         photoIdxRef.current = (photoIdxRef.current + 1) % photos.length;
-        return p;
-      });
+        walked++;
+        if (!excluded.has(p.id) || walked > photos.length) {
+          batch.push(p);
+          excluded.add(p.id); // also avoid duplicates within this batch
+        }
+      }
+      // Remember what's on screen this cycle
+      recentlyUsedRef.current = new Set(batch.map((p) => p.id));
 
       preload(photoIdxRef.current);
 
