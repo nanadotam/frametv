@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
-import { pickLayout, type Layout } from './layout';
+import { pickLayout, computeCellAR, type Layout } from './layout';
 import { getPhotoRotation, cellRotationStyle } from '@/lib/photoRotation';
 import type { Photo } from '@/types/db';
 
@@ -183,23 +183,47 @@ export default function SlideshowGridMode({
       const newLayout = pickLayout(avgRatio, prevCountRef.current, maxCells);
       prevCountRef.current = newLayout.count;
 
-      // Build batch — never reuse a photo that's currently on screen.
-      // Walk forward through photos[], skipping any ID in recentlyUsedRef.
-      // If the library is too small to satisfy the count with unique photos,
-      // fall back to sequential (better to repeat than to hang).
+      // Build a candidate pool from the next slice of the photo rotation,
+      // excluding photos currently on screen. Pool is 4× the cell count so
+      // there's enough variety for the AR-matching step below.
       const excluded = new Set(recentlyUsedRef.current);
-      const batch: Photo[] = [];
-      let walked = 0;
-      while (batch.length < newLayout.count) {
-        const p = photos[photoIdxRef.current];
-        photoIdxRef.current = (photoIdxRef.current + 1) % photos.length;
-        walked++;
-        if (!excluded.has(p.id) || walked > photos.length) {
-          batch.push(p);
-          excluded.add(p.id); // also avoid duplicates within this batch
+      const POOL_SIZE = Math.min(photos.length, Math.max(newLayout.count * 4, 20));
+      const pool: { photo: Photo; ar: number }[] = [];
+
+      for (let i = 0; pool.length < POOL_SIZE; i++) {
+        if (i >= photos.length) break; // exhausted library
+        const p = photos[(photoIdxRef.current + i) % photos.length];
+        if (!excluded.has(p.id) && !pool.find((c) => c.photo.id === p.id)) {
+          pool.push({ photo: p, ar: getAR(p.id) });
         }
       }
-      // Remember what's on screen this cycle
+
+      // Fallback: if the pool is too small, allow recently-used photos
+      for (let i = 0; pool.length < newLayout.count; i++) {
+        const p = photos[(photoIdxRef.current + i) % photos.length];
+        if (!pool.find((c) => c.photo.id === p.id)) {
+          pool.push({ photo: p, ar: getAR(p.id) });
+        }
+      }
+
+      // Greedy AR matching: for each cell pick the pool photo whose AR is
+      // closest to the cell's display AR (log-scale diff = scale-invariant).
+      const remaining = [...pool];
+      const batch: Photo[] = newLayout.areas.map((area) => {
+        const target = computeCellAR(area);
+        let bestIdx = 0;
+        let bestScore = Infinity;
+        remaining.forEach(({ ar }, i) => {
+          const score = Math.abs(Math.log(ar / target));
+          if (score < bestScore) { bestScore = score; bestIdx = i; }
+        });
+        const [chosen] = remaining.splice(bestIdx, 1);
+        return chosen.photo;
+      });
+
+      // Advance rotation index by the number of cells used this cycle
+      photoIdxRef.current = (photoIdxRef.current + newLayout.count) % photos.length;
+      // Remember what's showing so the next cycle can exclude them
       recentlyUsedRef.current = new Set(batch.map((p) => p.id));
 
       preload(photoIdxRef.current);

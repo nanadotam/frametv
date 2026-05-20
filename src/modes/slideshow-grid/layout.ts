@@ -180,6 +180,17 @@ export const ALL_LAYOUTS: Layout[] = [
 ];
 
 /**
+ * Compute the display aspect ratio of a single grid cell.
+ * Assumes a 16:9 screen divided into a 12-col × 6-row grid.
+ * AR = (colSpan × colUnit) / (rowSpan × rowUnit) = (colSpan/rowSpan) × (8/9)
+ */
+export function computeCellAR(area: GridArea): number {
+  const colSpan = area.colEnd - area.colStart;
+  const rowSpan = area.rowEnd - area.rowStart;
+  return (colSpan / rowSpan) * (8 / 9);
+}
+
+/**
  * Pick a layout based on the average aspect ratio of incoming photos.
  * Prefers a different cell count than the previous cycle for visual variety.
  * Falls back gracefully when photos.length < desired count.
