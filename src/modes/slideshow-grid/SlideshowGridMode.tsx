@@ -117,23 +117,47 @@ export default function SlideshowGridMode({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photos.length]);
 
-  // Staggered animation: change ONE random cell per interval
+  // Cascade: when the interval fires, change every cell one-by-one with STAGGER_MS between each.
+  // After the last cell changes, wait another cellInterval before the next cascade.
   useEffect(() => {
     if (isPaused || photos.length === 0 || cells.length === 0) return;
 
-    const id = setInterval(() => {
-      const cellIdx = Math.floor(Math.random() * cells.length);
-      const nextPhoto = photos[photoIdxRef.current];
-      photoIdxRef.current = (photoIdxRef.current + 1) % photos.length;
+    const STAGGER_MS = 1_000;
+    const pending: ReturnType<typeof setTimeout>[] = [];
+    let cancelled = false;
 
-      setCells((prev) => {
-        const next = [...prev];
-        next[cellIdx] = { photo: nextPhoto, flipKey: prev[cellIdx].flipKey + 100 };
-        return next;
+    function runCascade() {
+      // Shuffle cell order so the cascade ripples in a random direction each time
+      const order = [...Array(cells.length).keys()].sort(() => Math.random() - 0.5);
+
+      order.forEach((cellIdx, step) => {
+        const t = setTimeout(() => {
+          if (cancelled) return;
+          const photo = photos[photoIdxRef.current];
+          photoIdxRef.current = (photoIdxRef.current + 1) % photos.length;
+          setCells((prev) => {
+            const next = [...prev];
+            next[cellIdx] = { photo, flipKey: prev[cellIdx].flipKey + 100 };
+            return next;
+          });
+        }, step * STAGGER_MS);
+        pending.push(t);
       });
-    }, cellInterval);
 
-    return () => clearInterval(id);
+      // Schedule the next cascade after this one finishes + the configured interval
+      const nextDelay = (cells.length - 1) * STAGGER_MS + cellInterval;
+      const t = setTimeout(() => { if (!cancelled) runCascade(); }, nextDelay);
+      pending.push(t);
+    }
+
+    // First cascade starts after the initial interval
+    const first = setTimeout(() => { if (!cancelled) runCascade(); }, cellInterval);
+    pending.push(first);
+
+    return () => {
+      cancelled = true;
+      pending.forEach(clearTimeout);
+    };
   }, [isPaused, photos, cells.length, cellInterval]);
 
   if (!layout || cells.length === 0) {
