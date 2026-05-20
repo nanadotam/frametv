@@ -147,6 +147,7 @@ function useCinemaMode() {
 export default function DisplayPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [clockOn, setClockOn] = useState(true);
   const displayState = useDisplayStateRealtime();
   const activeMode = useActiveMode();
   const modes = useModes();
@@ -154,6 +155,11 @@ export default function DisplayPage() {
   const dim = useAutoDim();
   const clockConfig = useClockOverlayConfig();
   const { cinema, toast, toggle: toggleCinema } = useCinemaMode();
+
+  // Sync local toggle with the persisted config on first load
+  useEffect(() => {
+    setClockOn(clockConfig.enabled);
+  }, [clockConfig.enabled]);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -224,12 +230,53 @@ export default function DisplayPage() {
         <LoadingSkeleton />
       )}
 
-      {/* Clock overlay — hidden in cinema mode */}
-      {!cinema && <ClockOverlay config={clockConfig} />}
+      {/* Clock overlay — shown when toggled on; visible even in cinema mode */}
+      <ClockOverlay config={{ ...clockConfig, enabled: clockConfig.enabled && clockOn }} />
 
       {/* Dim overlay — hidden in cinema mode */}
       {!cinema && dim && (
         <div className="fixed inset-0 bg-black/40 pointer-events-none" />
+      )}
+
+      {/* Floating clock toggle — bottom-left, hidden in cinema mode */}
+      {!cinema && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setClockOn((v) => !v); }}
+          onDoubleClick={(e) => e.stopPropagation()}
+          title={clockOn ? 'Hide clock' : 'Show clock'}
+          style={{
+            position: 'fixed',
+            bottom: '28px',
+            left: '28px',
+            zIndex: 60,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '7px',
+            padding: '8px 16px',
+            borderRadius: '999px',
+            background: 'rgba(0,0,0,0.45)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            color: clockOn ? '#fff' : 'rgba(255,255,255,0.35)',
+            fontSize: '0.78rem',
+            fontWeight: 500,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            cursor: 'pointer',
+            opacity: 0.35,
+            transition: 'opacity 0.2s ease, color 0.2s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
+        >
+          {/* Clock icon */}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          {clockOn ? 'Clock on' : 'Clock off'}
+        </button>
       )}
 
       {/* Cinema mode toast */}
