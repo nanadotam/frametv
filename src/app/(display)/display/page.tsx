@@ -205,7 +205,8 @@ export default function DisplayPage() {
       });
   }, []);
 
-  // Dispatch skip events when photo_skip changes in DB
+  // Dispatch skip / reshuffle events when photo_skip changes in DB.
+  // A delta >= 1000 is treated as a reshuffle signal (sent by /api/display-state/reshuffle).
   const prevSkipRef = useRef<number | null>(null);
   useEffect(() => {
     const skip = displayState?.photo_skip ?? 0;
@@ -216,6 +217,10 @@ export default function DisplayPage() {
     const delta = skip - prevSkipRef.current;
     prevSkipRef.current = skip;
     if (delta === 0) return;
+    if (Math.abs(delta) >= 1000) {
+      window.dispatchEvent(new CustomEvent('frametv:reshuffle'));
+      return;
+    }
     const direction = delta > 0 ? 'next' : 'prev';
     const steps = Math.abs(delta);
     for (let i = 0; i < steps; i++) {
@@ -315,6 +320,43 @@ export default function DisplayPage() {
               <polyline points="12 6 12 12 16 14" />
             </svg>
             {clockOn ? 'Clock on' : 'Clock off'}
+          </button>
+
+          {/* Shuffle photos */}
+          <button
+            onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('frametv:reshuffle')); }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            title="Shuffle photos"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '8px 16px',
+              borderRadius: '999px',
+              background: 'rgba(0,0,0,0.45)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              color: '#fff',
+              fontSize: '0.78rem',
+              fontWeight: 500,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              opacity: 0.35,
+              transition: 'opacity 0.2s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
+          >
+            {/* Shuffle icon */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="16 3 21 3 21 8" />
+              <line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21 16 21 21 16 21" />
+              <line x1="15" y1="15" x2="21" y2="21" />
+            </svg>
+            Shuffle
           </button>
 
           {/* Log out of display */}

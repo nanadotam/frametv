@@ -18,6 +18,7 @@ export interface PhotoRotationResult {
   currentPhoto: Photo | null;
   advance: () => void;
   previous: () => void;
+  reshuffle: () => void;
 }
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -35,12 +36,16 @@ export function usePhotoRotation({
 }: UsePhotoRotationOptions = {}): PhotoRotationResult {
   const raw = usePhotos(albumIds);
   const [index, setIndex] = useState(0);
+  // Bump this counter to force a fresh shuffle without changing raw or shuffle flag
+  const [shuffleKey, setShuffleKey] = useState(0);
   const orderedRef = useRef<Photo[]>([]);
 
   const ordered = useMemo(() => {
     if (raw.length === 0) return [];
     return shuffle ? shuffleArray(raw) : raw;
-  }, [raw, shuffle]);
+  // shuffleKey intentionally included to re-randomize on demand
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raw, shuffle, shuffleKey]);
 
   // Keep ref in sync and reset index when the list changes identity
   useEffect(() => {
@@ -62,6 +67,10 @@ export function usePhotoRotation({
     );
   }, []);
 
+  const reshuffle = useCallback(() => {
+    setShuffleKey((k) => k + 1);
+  }, []);
+
   // Listen for remote skip signals dispatched by the display page
   useEffect(() => {
     const onSkip = (e: Event) => {
@@ -73,7 +82,14 @@ export function usePhotoRotation({
     return () => window.removeEventListener('frametv:skip', onSkip);
   }, [advance, previous]);
 
+  // Listen for reshuffle signal dispatched by the display page
+  useEffect(() => {
+    const onReshuffle = () => reshuffle();
+    window.addEventListener('frametv:reshuffle', onReshuffle);
+    return () => window.removeEventListener('frametv:reshuffle', onReshuffle);
+  }, [reshuffle]);
+
   const currentPhoto = ordered.length > 0 ? (ordered[index] ?? null) : null;
 
-  return { photos: ordered, currentIndex: index, currentPhoto, advance, previous };
+  return { photos: ordered, currentIndex: index, currentPhoto, advance, previous, reshuffle };
 }

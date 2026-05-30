@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   SkipForward, SkipBack, Pause, Play, Tv, Sun, Radio, Clock,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Send, Zap,
-  CalendarDays, Star,
+  CalendarDays, Star, Shuffle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -437,6 +437,7 @@ export default function NowPlayingPage() {
 
   const nextPhoto = () => fetch('/api/display-state/next', { method: 'POST' });
   const prevPhoto = () => fetch('/api/display-state/prev', { method: 'POST' });
+  const reshufflePhotos = () => fetch('/api/display-state/reshuffle', { method: 'POST' });
 
   const commitBrightness = (val: number) => patchDisplayState({ brightness: val });
 
@@ -758,6 +759,15 @@ export default function NowPlayingPage() {
                 <SkipForward size={16} /> Next
               </Button>
             </div>
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full h-12 gap-2 border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-400 transition-all"
+              onClick={reshufflePhotos}
+              disabled={!displayState}
+            >
+              <Shuffle size={16} /> Shuffle Photos
+            </Button>
           </CardContent>
         </Card>
 
