@@ -19,6 +19,7 @@ interface RawSpotifyTrack {
 export interface SpotifyTrack {
   id: string;
   name: string;
+  uri: string;
   artists: string[];
   albumArtUrl: string;
   albumName: string;
@@ -30,6 +31,7 @@ function mapTrack(raw: RawSpotifyTrack, progressMs = 0): SpotifyTrack {
   return {
     id: raw.id,
     name: raw.name,
+    uri: raw.uri,
     artists: raw.artists.map((a) => a.name),
     albumArtUrl: raw.album?.images?.[0]?.url ?? '',
     albumName: raw.album?.name ?? '',

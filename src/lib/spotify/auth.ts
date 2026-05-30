@@ -6,6 +6,8 @@ const SCOPES = [
   'user-read-currently-playing',
   'user-read-playback-state',
   'user-read-recently-played',
+  'streaming',
+  'user-modify-playback-state',
 ].join(' ');
 
 export function buildRedirectUri(origin: string): string {

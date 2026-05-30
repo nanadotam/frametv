@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/navigation';
-import { Tv, Images, LayoutGrid, Settings, Home, Radio, LogOut } from 'lucide-react';
+import { Tv, Images, LayoutGrid, Settings, Home, Radio, LogOut, Music2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -11,6 +11,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 const NAV = [
   { href: '/admin',           label: 'Remote',    icon: Home },
   { href: '/admin/albums',    label: 'Albums',    icon: Images },
+  { href: '/admin/music',     label: 'Music',     icon: Music2 },
   { href: '/admin/flipboard', label: 'FlipBoard', icon: Radio },
   { href: '/admin/modes',     label: 'Modes',     icon: LayoutGrid },
   { href: '/admin/settings',  label: 'Settings',  icon: Settings },

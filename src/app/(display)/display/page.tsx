@@ -11,6 +11,8 @@ import { useClockOverlayConfig } from '@/hooks/useClockOverlayConfig';
 import { MODES } from '@/modes/index';
 import type { ModeId } from '@/modes/types';
 import ClockOverlay from '@/components/display/ClockOverlay';
+import SpotifyOverlay from '@/components/display/SpotifyOverlay';
+import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { Input } from '@/components/ui/input';
 
 function LoadingSkeleton() {
@@ -187,6 +189,7 @@ export default function DisplayPage() {
   const dim = useAutoDim();
   const clockConfig = useClockOverlayConfig();
   const { cinema, toast, toggle: toggleCinema } = useCinemaMode();
+  useSpotifyPlayer(); // Load Web Playback SDK silently; registers TV as Spotify device
 
   // Sync local toggle with the persisted config on first load
   useEffect(() => {
@@ -269,6 +272,9 @@ export default function DisplayPage() {
 
       {/* Clock overlay — shown when toggled on; visible even in cinema mode */}
       <ClockOverlay config={{ ...clockConfig, enabled: clockConfig.enabled && clockOn }} />
+
+      {/* Spotify overlay — opposite corner from clock; auto-hides when nothing is playing */}
+      <SpotifyOverlay clockPosition={clockConfig.position} />
 
       {/* Dim overlay — hidden in cinema mode */}
       {!cinema && dim && (
