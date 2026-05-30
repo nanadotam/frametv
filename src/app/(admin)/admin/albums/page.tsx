@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { HardDrive, CloudUpload, ImageIcon, Trash2, Star, RefreshCw, Plus, FolderOpen } from 'lucide-react';
+import { HardDrive, ImageIcon, Trash2, Star, RefreshCw, Plus, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import type { Album } from '@/types/db';
+import PageGuide from '@/components/admin/PageGuide';
 
 export default function AlbumsPage() {
   const [albums, setAlbums]               = useState<Album[]>([]);
@@ -19,13 +20,11 @@ export default function AlbumsPage() {
   const [driveUrl, setDriveUrl]           = useState('');
   const [driveLoading, setDriveLoading]   = useState(false);
   const [driveError, setDriveError]       = useState('');
-  const [uploadLoading, setUploadLoading] = useState(false);
   const [activeAlbumIds, setActiveAlbumIds] = useState<string[]>([]);
   const [syncing, setSyncing]             = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  const fileInputRef    = useRef<HTMLInputElement>(null);
-  const confirmTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchAlbums = useCallback(async () => {
     try {
@@ -76,19 +75,6 @@ export default function AlbumsPage() {
     }
   };
 
-  const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setUploadLoading(true);
-    for (const file of Array.from(files)) {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('albumId', 'upload');
-      await fetch('/api/photos/upload', { method: 'POST', body: fd });
-    }
-    setUploadLoading(false);
-    await fetchAlbums();
-  };
-
   const syncAlbum = async (albumId: string) => {
     setSyncing(albumId);
     await fetch(`/api/albums/${albumId}/sync`, { method: 'POST' });
@@ -98,13 +84,11 @@ export default function AlbumsPage() {
 
   const handleDeleteClick = (id: string) => {
     if (confirmDelete === id) {
-      // Second tap — confirm delete
       fetch(`/api/albums/${id}`, { method: 'DELETE' });
       setAlbums((prev) => prev.filter((a) => a.id !== id));
       setConfirmDelete(null);
       if (confirmTimer.current) clearTimeout(confirmTimer.current);
     } else {
-      // First tap — arm confirm, auto-cancel after 3s
       setConfirmDelete(id);
       if (confirmTimer.current) clearTimeout(confirmTimer.current);
       confirmTimer.current = setTimeout(() => setConfirmDelete(null), 3000);
@@ -127,6 +111,21 @@ export default function AlbumsPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6">
+
+      <PageGuide
+        pageKey="albums"
+        icon={<HardDrive size={18} className="text-primary" />}
+        title="Albums"
+        about="Albums are collections of photos from your Google Drive folders. Add a folder and toggle it active — the photos inside will start playing on your TV display automatically."
+        steps={[
+          'Open Google Drive and find a folder with your photos.',
+          'Right-click the folder → Share → change to "Anyone with the link" can view.',
+          'Copy the share link.',
+          'Click "Add Drive folder" and paste the link — your photos will sync.',
+          'Toggle an album active to start showing it on TV.',
+        ]}
+      />
+
       {/* Header */}
       <div className="flex items-start justify-between pt-2">
         <div>
@@ -135,33 +134,9 @@ export default function AlbumsPage() {
             {visible.length} album{visible.length !== 1 ? 's' : ''} · {activeAlbumIds.length} active on TV
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setDriveModalOpen(true)} className="gap-1.5">
-            <HardDrive size={14} /> Drive
-          </Button>
-          <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadLoading} className="gap-1.5">
-            <CloudUpload size={14} /> {uploadLoading ? 'Uploading…' : 'Upload'}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => handleUpload(e.target.files)}
-          />
-        </div>
-      </div>
-
-      {/* Drop zone */}
-      <div
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); handleUpload(e.dataTransfer.files); }}
-        className="border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-primary/50 hover:bg-primary/5 transition-all cursor-default group"
-      >
-        <CloudUpload size={28} className="mx-auto mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
-        <p className="text-sm font-medium">Drop photos here to upload</p>
-        <p className="text-xs text-muted-foreground mt-1">JPG, PNG, HEIC supported</p>
+        <Button variant="outline" size="sm" onClick={() => setDriveModalOpen(true)} className="gap-1.5">
+          <HardDrive size={14} /> Add Drive folder
+        </Button>
       </div>
 
       {/* Active albums callout */}
@@ -185,7 +160,15 @@ export default function AlbumsPage() {
         <div className="text-center py-16 text-muted-foreground">
           <FolderOpen size={40} className="mx-auto mb-3 opacity-40" />
           <p className="font-medium">No albums yet</p>
-          <p className="text-sm mt-1">Add a Google Drive folder or upload photos directly</p>
+          <p className="text-sm mt-1">Add a Google Drive folder to get started</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4 gap-1.5"
+            onClick={() => setDriveModalOpen(true)}
+          >
+            <HardDrive size={14} /> Add Drive folder
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -198,7 +181,6 @@ export default function AlbumsPage() {
                 key={album.id}
                 className={cn('overflow-hidden transition-all', isActive && 'ring-2 ring-primary border-primary')}
               >
-                {/* Cover */}
                 <div className="aspect-video bg-muted relative flex items-center justify-center">
                   {album.cover_photo_id ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -249,7 +231,6 @@ export default function AlbumsPage() {
                         <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
                       </Button>
                     )}
-                    {/* Two-tap delete */}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -281,7 +262,7 @@ export default function AlbumsPage() {
               Paste a public Drive folder URL. The folder must be shared as &quot;Anyone with the link can view.&quot;
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-4 py-2">
             <div>
               <Label htmlFor="drive-url">Folder URL</Label>
               <Input
@@ -291,6 +272,15 @@ export default function AlbumsPage() {
                 onChange={(e) => setDriveUrl(e.target.value)}
                 className="mt-1.5"
               />
+            </div>
+            <div className="rounded-lg bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">How to get the link:</p>
+              <ol className="list-decimal list-inside space-y-0.5">
+                <li>Right-click the folder in Google Drive</li>
+                <li>Click <strong>Share</strong> → <strong>Anyone with the link</strong></li>
+                <li>Set permission to <strong>Viewer</strong></li>
+                <li>Click <strong>Copy link</strong> and paste it above</li>
+              </ol>
             </div>
             {driveError && <p className="text-sm text-destructive">{driveError}</p>}
           </div>

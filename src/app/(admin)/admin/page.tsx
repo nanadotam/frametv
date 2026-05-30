@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { invalidateModes } from '@/hooks/useModes';
 import type { DisplayState, Album, Schedule, Mode } from '@/types/db';
+import PageGuide from '@/components/admin/PageGuide';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -499,6 +500,20 @@ export default function NowPlayingPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-5">
+
+      <PageGuide
+        pageKey="remote"
+        icon={<Tv size={18} className="text-primary" />}
+        title="Remote"
+        about="This is your TV remote. Switch between display modes, toggle albums active, adjust brightness, and control playback — all from any device on your network."
+        steps={[
+          'Select a Mode to change what your TV shows (slideshow, grid, clock, etc.).',
+          'Toggle Albums to choose which photo collections appear.',
+          'Use Playback to pause, skip, or resume.',
+          'Adjust Brightness to dim the display at night.',
+          'Click "Quick Settings" to fine-tune the active mode.',
+        ]}
+      />
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between pt-2">

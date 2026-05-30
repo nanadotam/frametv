@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
 import { cn } from '@/lib/utils';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
+import PageGuide from '@/components/admin/PageGuide';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -245,6 +246,20 @@ export default function MusicPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-5">
+
+      <PageGuide
+        pageKey="music"
+        icon={<Music2 size={18} className="text-primary" />}
+        title="Music"
+        about="Search Spotify and play music directly on your TV browser. The TV tab becomes a Spotify device called FrameTV — requires Spotify Premium for in-browser playback."
+        steps={[
+          'Connect Spotify in Settings first.',
+          'Open the display tab on your TV and leave it running — it registers as a Spotify device.',
+          'Type a song, artist, or album in the search box.',
+          'Click a result to play it on the TV immediately.',
+          'Use "Send to TV" to transfer existing Spotify playback to the FrameTV device.',
+        ]}
+      />
 
       {/* Header */}
       <div className="flex items-start justify-between pt-2">

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv, Clock, CalendarDays, ChevronRight } from 'lucide-react';
+import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv, Clock, CalendarDays, ChevronRight, LockKeyhole, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import PageGuide from '@/components/admin/PageGuide';
 
 interface Settings {
   latitude: number;
@@ -48,8 +49,16 @@ const CLOCK_FONTS: { value: ClockFont; label: string }[] = [
   { value: 'Syne',             label: 'Syne — geometric' },
 ];
 
+interface SpotifyProfile {
+  display_name: string | null;
+  email: string | null;
+  image_url: string | null;
+  spotify_id: string | null;
+}
+
 interface Integrations {
   spotify_connected: boolean;
+  spotify_profile: SpotifyProfile | null;
   google_connected: boolean;
   unsplash_key_set: boolean;
   display_token: string;
@@ -67,6 +76,7 @@ const defaultSettings: Settings = {
 
 const defaultIntegrations: Integrations = {
   spotify_connected: false,
+  spotify_profile: null,
   google_connected: false,
   unsplash_key_set: false,
   display_token: '',
@@ -89,6 +99,14 @@ export default function SettingsPage() {
   const [apiKeySaved, setApiKeySaved]       = useState(false);
   const [clock, setClock]                   = useState<ClockOverlayConfig>({ enabled: false, position: 'bottom-right', font: 'Poppins' });
   const [spotifyBanner, setSpotifyBanner]   = useState<'connected' | 'error' | null>(null);
+
+  // PIN update state
+  const [pinMode, setPinMode]               = useState<'pin' | 'password'>('pin');
+  const [pinOldValue, setPinOldValue]       = useState('');
+  const [pinNewValue, setPinNewValue]       = useState('');
+  const [pinConfirm, setPinConfirm]         = useState('');
+  const [pinSaving, setPinSaving]           = useState(false);
+  const [pinResult, setPinResult]           = useState<{ ok: boolean; msg: string } | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -205,6 +223,42 @@ export default function SettingsPage() {
     }
   };
 
+  const updatePin = async () => {
+    if (!/^\d{6}$/.test(pinNewValue)) {
+      setPinResult({ ok: false, msg: 'New PIN must be exactly 6 digits.' });
+      return;
+    }
+    if (pinNewValue !== pinConfirm) {
+      setPinResult({ ok: false, msg: 'PINs do not match.' });
+      return;
+    }
+    setPinSaving(true);
+    setPinResult(null);
+    try {
+      const body =
+        pinMode === 'pin'
+          ? { mode: 'pin', old_pin: pinOldValue, new_pin: pinNewValue }
+          : { mode: 'password', password: pinOldValue, new_pin: pinNewValue };
+      const res = await fetch('/api/auth/pin-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setPinResult({ ok: true, msg: 'PIN updated successfully.' });
+        setPinOldValue('');
+        setPinNewValue('');
+        setPinConfirm('');
+        setTimeout(() => setPinResult(null), 3000);
+      } else {
+        setPinResult({ ok: false, msg: json.error ?? 'Failed to update PIN.' });
+      }
+    } finally {
+      setPinSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-4">
@@ -217,6 +271,21 @@ export default function SettingsPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6">
+
+      <PageGuide
+        pageKey="settings"
+        icon={<Tv size={18} className="text-primary" />}
+        title="Settings"
+        about="Configure your display, connect integrations, and personalise FrameTV. Changes save automatically."
+        steps={[
+          'Clock Overlay — enable it to show the time on top of your photos.',
+          'Auto Theme — dims the display at sunrise/sunset based on your location.',
+          'Spotify — connect your account to show album art and control music.',
+          'Display PIN — change the 6-digit PIN used to unlock the TV display.',
+          'Google Drive — connect your account to sync photos from Drive folders.',
+        ]}
+      />
+
       <div className="pt-2">
         <h1 className="text-xl font-bold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Display behaviour, clock, and integrations</p>
@@ -421,23 +490,62 @@ export default function SettingsPage() {
           <CardTitle className="text-base">Integrations</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-3 min-h-[48px]">
-            <div>
-              <p className="text-sm font-medium">Spotify</p>
-              <p className="text-xs text-muted-foreground">Show currently playing song</p>
+          <div className="flex items-start justify-between gap-3 min-h-[48px]">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {integrations.spotify_connected && integrations.spotify_profile?.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={integrations.spotify_profile.image_url}
+                  alt="Spotify profile"
+                  className="w-9 h-9 rounded-full object-cover shrink-0 border border-green-500/30"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-muted border border-border flex items-center justify-center shrink-0">
+                  <span className="text-xs text-muted-foreground">♫</span>
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Spotify</p>
+                {integrations.spotify_connected && integrations.spotify_profile ? (
+                  <p className="text-xs text-green-400 truncate">
+                    {integrations.spotify_profile.display_name ?? integrations.spotify_profile.email ?? 'Connected'}
+                    {integrations.spotify_profile.email && integrations.spotify_profile.display_name && (
+                      <span className="text-muted-foreground ml-1">· {integrations.spotify_profile.email}</span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Show currently playing song</p>
+                )}
+              </div>
             </div>
-            {integrations.spotify_connected ? (
-              <Badge variant="outline" className="border-green-500/40 text-green-400 bg-green-500/10">
-                <CheckCircle2 size={10} className="mr-1" /> Connected
-              </Badge>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (globalThis as any).location.href = '/api/auth/spotify';
-              }}>
-                Connect
-              </Button>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+              {integrations.spotify_connected ? (
+                <>
+                  <Badge variant="outline" className="border-green-500/40 text-green-400 bg-green-500/10">
+                    <CheckCircle2 size={10} className="mr-1" /> Connected
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      (globalThis as any).location.href = '/api/auth/spotify';
+                    }}
+                    title="Reconnect Spotify"
+                  >
+                    <RefreshCw size={12} />
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (globalThis as any).location.href = '/api/auth/spotify';
+                }}>
+                  Connect
+                </Button>
+              )}
+            </div>
           </div>
 
           <Separator />
@@ -517,6 +625,96 @@ export default function SettingsPage() {
               {integrations.unsplash_key_set ? 'Key set' : 'No key'}
             </Badge>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Update PIN ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <LockKeyhole size={15} className="text-primary" /> Update Display PIN
+          </CardTitle>
+          <CardDescription>Change the 6-digit PIN used to unlock your display</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Mode toggle */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setPinMode('pin'); setPinOldValue(''); setPinResult(null); }}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-lg border text-sm transition-all',
+                pinMode === 'pin'
+                  ? 'border-primary bg-primary/10 text-primary font-medium'
+                  : 'border-border text-muted-foreground hover:border-primary/50'
+              )}
+            >
+              Use current PIN
+            </button>
+            <button
+              onClick={() => { setPinMode('password'); setPinOldValue(''); setPinResult(null); }}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-lg border text-sm transition-all',
+                pinMode === 'password'
+                  ? 'border-primary bg-primary/10 text-primary font-medium'
+                  : 'border-border text-muted-foreground hover:border-primary/50'
+              )}
+            >
+              Use password
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>{pinMode === 'pin' ? 'Current PIN' : 'Account password'}</Label>
+            <Input
+              type="password"
+              inputMode={pinMode === 'pin' ? 'numeric' : undefined}
+              maxLength={pinMode === 'pin' ? 6 : undefined}
+              placeholder={pinMode === 'pin' ? '••••••' : 'Your account password'}
+              value={pinOldValue}
+              onChange={(e) => setPinOldValue(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>New PIN</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="••••••"
+                value={pinNewValue}
+                onChange={(e) => setPinNewValue(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Confirm PIN</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="••••••"
+                value={pinConfirm}
+                onChange={(e) => setPinConfirm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {pinResult && (
+            <p className={cn('text-sm', pinResult.ok ? 'text-green-400' : 'text-red-400')}>
+              {pinResult.ok && <CheckCircle2 size={13} className="inline mr-1" />}
+              {pinResult.msg}
+            </p>
+          )}
+
+          <Button
+            size="sm"
+            className={cn('w-full', pinResult?.ok && 'bg-green-600 hover:bg-green-500')}
+            onClick={updatePin}
+            disabled={pinSaving || !pinOldValue || !pinNewValue || !pinConfirm}
+          >
+            {pinSaving ? 'Updating…' : pinResult?.ok ? <><CheckCircle2 size={14} /> Updated</> : 'Update PIN'}
+          </Button>
         </CardContent>
       </Card>
 

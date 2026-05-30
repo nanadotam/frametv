@@ -33,7 +33,7 @@ export default function SignupPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Unable to create account.');
-      router.replace('/admin');
+      router.replace('/onboarding');
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create account.');
