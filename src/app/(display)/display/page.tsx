@@ -171,7 +171,11 @@ export default function DisplayPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [locked, setLocked] = useState(false);
   const [clockOn, setClockOn] = useState(true);
+  const [spotifyOn, setSpotifyOn] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // Modes where the Spotify overlay makes sense (photo/visual backgrounds)
+  const SPOTIFY_MODES = new Set(['slideshow-single', 'slideshow-grid', 'pinterest']);
 
   const logoutDisplay = useCallback(async () => {
     setLoggingOut(true);
@@ -273,8 +277,10 @@ export default function DisplayPage() {
       {/* Clock overlay — shown when toggled on; visible even in cinema mode */}
       <ClockOverlay config={{ ...clockConfig, enabled: clockConfig.enabled && clockOn }} />
 
-      {/* Spotify overlay — opposite corner from clock; auto-hides when nothing is playing */}
-      <SpotifyOverlay clockPosition={clockConfig.position} />
+      {/* Spotify overlay — only on photo modes, only when toggled on */}
+      {spotifyOn && modeId && SPOTIFY_MODES.has(modeId) && (
+        <SpotifyOverlay clockPosition={clockConfig.position} />
+      )}
 
       {/* Dim overlay — hidden in cinema mode */}
       {!cinema && dim && (
@@ -327,6 +333,44 @@ export default function DisplayPage() {
             </svg>
             {clockOn ? 'Clock on' : 'Clock off'}
           </button>
+
+          {/* Spotify overlay toggle — only shown on modes that support it */}
+          {modeId && SPOTIFY_MODES.has(modeId) && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setSpotifyOn((v) => !v); }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              title={spotifyOn ? 'Hide music overlay' : 'Show music overlay'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
+                padding: '8px 16px',
+                borderRadius: '999px',
+                background: 'rgba(0,0,0,0.45)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                color: spotifyOn ? '#fff' : 'rgba(255,255,255,0.35)',
+                fontSize: '0.78rem',
+                fontWeight: 500,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                opacity: 0.35,
+                transition: 'opacity 0.2s ease, color 0.2s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
+            >
+              {/* Music note icon */}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18V5l12-2v13" />
+                <circle cx="6" cy="18" r="3" />
+                <circle cx="18" cy="16" r="3" />
+              </svg>
+              {spotifyOn ? 'Music on' : 'Music off'}
+            </button>
+          )}
 
           {/* Shuffle photos */}
           <button
