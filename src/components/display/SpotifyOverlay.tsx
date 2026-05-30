@@ -1,16 +1,34 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
 import type { ClockPosition } from './ClockOverlay';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
 
-// ─── Position ─────────────────────────────────────────────────────────────────
+// ─── Position + gradient helpers ──────────────────────────────────────────────
 
 function overlayPosition(clockPos: ClockPosition): string {
-  // Mirror the clock: always stay at the bottom, opposite horizontal side
   return clockPos.includes('right') ? 'bottom-6 left-8' : 'bottom-6 right-8';
+}
+
+// A wide, feathered corner vignette that blends into any photo background.
+// Gradient runs from the nearest corner outward — direction flips based on side.
+function cornerGradient(clockPos: ClockPosition): React.CSSProperties {
+  const fromLeft = clockPos.includes('right'); // overlay is on the left when clock is right
+  return {
+    position: 'absolute',
+    // Extend well beyond the content so the fade starts far from the albums
+    top: '-70px',
+    bottom: '-20px',
+    left: fromLeft ? '-60px' : '-20px',
+    right: fromLeft ? '-20px' : '-60px',
+    background: fromLeft
+      ? 'linear-gradient(to top right, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.22) 38%, transparent 62%)'
+      : 'linear-gradient(to top left,  rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.22) 38%, transparent 62%)',
+    zIndex: -1,
+    pointerEvents: 'none',
+  };
 }
 
 // ─── Album art tile ───────────────────────────────────────────────────────────
@@ -158,17 +176,8 @@ export default function SpotifyOverlay({ clockPosition }: SpotifyOverlayProps) {
       className={`fixed ${posClass} z-50 pointer-events-none select-none`}
       style={{ maxWidth: 320 }}
     >
-      {/* Radial gradient shadow for legibility */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: '-28px -32px',
-          background:
-            'radial-gradient(ellipse 140% 110% at 40% 90%, rgba(0,0,0,0.6) 0%, transparent 72%)',
-          zIndex: -1,
-        }}
-      />
+      {/* Wide, soft corner vignette — blends into any photo */}
+      <div aria-hidden style={cornerGradient(clockPosition)} />
 
       {/* Album trio */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginBottom: 10 }}>
