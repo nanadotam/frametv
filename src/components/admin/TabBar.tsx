@@ -80,4 +80,5 @@ export function Sidebar() {
   );
 }
 
-export default { BottomTabBar, Sidebar };
+const TabBar = { BottomTabBar, Sidebar };
+export default TabBar;

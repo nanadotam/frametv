@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useCallback, useRef, useState } from 'react';
+import { forwardRef, useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 interface RippleItem {

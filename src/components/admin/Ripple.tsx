@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useState } from 'react';
 
 interface RippleItem {
   id: number;
@@ -10,8 +10,7 @@ interface RippleItem {
 }
 
 export function useRipple() {
-  const ripples = useRef<RippleItem[]>([]);
-  const rerender = useRef<(() => void) | null>(null);
+  const [ripples, setRipples] = useState<RippleItem[]>([]);
 
   const addRipple = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const el = e.currentTarget;
@@ -20,15 +19,13 @@ export function useRipple() {
     const x = e.clientX - rect.left - size / 2;
     const y = e.clientY - rect.top - size / 2;
     const id = Date.now() + Math.random();
-    ripples.current.push({ id, x, y, size });
-    rerender.current?.();
+    setRipples((prev) => [...prev, { id, x, y, size }]);
     setTimeout(() => {
-      ripples.current = ripples.current.filter((r) => r.id !== id);
-      rerender.current?.();
+      setRipples((prev) => prev.filter((r) => r.id !== id));
     }, 600);
   }, []);
 
-  return { ripples: ripples.current, addRipple, rerender };
+  return { ripples, addRipple };
 }
 
 interface RippleProps {
