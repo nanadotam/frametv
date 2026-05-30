@@ -8,6 +8,8 @@ const SCOPES = [
   'user-read-recently-played',
   'streaming',
   'user-modify-playback-state',
+  'user-read-private',
+  'user-read-email',
 ].join(' ');
 
 export function buildRedirectUri(origin: string): string {
@@ -25,7 +27,7 @@ export function getSpotifyAuthUrl(origin: string): string {
   return `${SPOTIFY_ACCOUNTS_BASE}/authorize?${params.toString()}`;
 }
 
-export async function exchangeCode(code: string, origin: string): Promise<void> {
+export async function exchangeCode(code: string, origin: string, userId?: string): Promise<void> {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -50,6 +52,35 @@ export async function exchangeCode(code: string, origin: string): Promise<void> 
 
   const tokens = await res.json();
   await saveSpotifyTokens(tokens);
+
+  if (userId) {
+    try {
+      const profileRes = await fetch('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      if (profileRes.ok) {
+        const p = await profileRes.json();
+        const { userSettingKey } = await import('@/lib/userData');
+        const supabase = createServiceClient();
+        await supabase.from('settings').upsert(
+          {
+            key: userSettingKey(userId, 'spotify_profile'),
+            user_id: userId,
+            value: {
+              display_name: p.display_name ?? null,
+              email: p.email ?? null,
+              image_url: (p.images as Array<{ url: string }>)?.[0]?.url ?? null,
+              spotify_id: p.id ?? null,
+            },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'key' }
+        );
+      }
+    } catch {
+      // Profile fetch is non-critical — tokens are already saved
+    }
+  }
 }
 
 async function saveSpotifyTokens(tokens: {

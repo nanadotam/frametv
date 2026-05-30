@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = createServiceClient();
 
-  const [spotifyRes, googleKeyRes] = await Promise.all([
+  const [spotifyRes, googleKeyRes, spotifyProfileRes] = await Promise.all([
     supabase
       .from('spotify_auth')
       .select('access_token, expires_at')
@@ -20,6 +20,11 @@ export async function GET(request: NextRequest) {
       .select('value')
       .eq('key', userSettingKey(auth.user.id, 'google_api_key'))
       .maybeSingle(),
+    supabase
+      .from('settings')
+      .select('value')
+      .eq('key', userSettingKey(auth.user.id, 'spotify_profile'))
+      .maybeSingle(),
   ]);
 
   const spotifyConnected =
@@ -29,9 +34,11 @@ export async function GET(request: NextRequest) {
       : true);
 
   const googleApiKey = googleKeyRes.data?.value ?? null;
+  const spotifyProfile = spotifyProfileRes.data?.value ?? null;
 
   return NextResponse.json({
     spotify_connected: spotifyConnected,
+    spotify_profile: spotifyProfile,
     google_connected: !!googleApiKey,
     unsplash_key_set: !!process.env.UNSPLASH_ACCESS_KEY,
     display_token: process.env.DISPLAY_TOKEN ?? '',

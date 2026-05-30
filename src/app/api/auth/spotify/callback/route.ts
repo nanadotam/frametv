@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCode } from '@/lib/spotify/auth';
+import { getAdminUser } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -20,7 +21,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const origin = new URL(request.url).origin;
-    await exchangeCode(code, origin);
+    const user = await getAdminUser(request);
+    await exchangeCode(code, origin, user?.id);
     return NextResponse.redirect(
       new URL('/admin/settings?spotify=connected', request.url)
     );
