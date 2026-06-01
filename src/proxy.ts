@@ -1,8 +1,29 @@
 import { createServerClient } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
 
+// Smart TV browser User-Agent patterns.
+// Covers Samsung Tizen, LG webOS, HbbTV (Panasonic/Philips/Hisense),
+// Amazon Fire TV, Hisense VIDAA, Sony Bravia, Roku, and Chromecast.
+// Xbox and Android TV/Google TV are intentionally excluded — they run
+// modern Chromium and handle the full React display page fine.
+const TV_UA = /Tizen|webOS|Web0S|SMART-TV|SmartTV|HbbTV|NetCast|CrKey|Roku|AmazonWebAppPlatform|VIDAA|BRAVIA/i;
+
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  // Route TV browsers visiting /display to the lightweight /tv page.
+  // Append ?full to the URL to bypass this and get the full React display.
+  if (
+    pathname === '/display' &&
+    !request.nextUrl.searchParams.has('full') &&
+    TV_UA.test(request.headers.get('user-agent') ?? '')
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/tv';
+    url.search = '';
+    return NextResponse.rewrite(url);
+  }
+
   if (pathname.startsWith('/admin') && !request.cookies.get('frametv_session')?.value) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
