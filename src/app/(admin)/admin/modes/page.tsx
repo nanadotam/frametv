@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { cn } from '@/lib/utils';
 import { invalidateModes } from '@/hooks/useModes';
 import type { Mode } from '@/types/db';
+import { TRANSLATIONS, DEFAULT_MOOD_CATEGORIES } from '@/modes/scripture/constants';
 
 // Interval options in seconds
 const INTERVAL_OPTIONS: { label: string; value: number }[] = [
@@ -283,6 +284,123 @@ function EaselConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange
   );
 }
 
+function ScriptureConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
+  const translation = (cfg.translation as string) ?? 'KJV';
+  const customMood = (cfg.customMood as string) ?? '';
+  const overlayOpacity = (cfg.overlayOpacity as number) ?? 55;
+  const showCross = (cfg.showCross as boolean) ?? true;
+  const moodMappingOverrides = (cfg.moodMappingOverrides as Record<string, string>) ?? {};
+
+  return (
+    <div className="space-y-5">
+      {/* Translation */}
+      <div className="space-y-1.5">
+        <Label>Bible translation</Label>
+        <Select
+          value={translation}
+          onValueChange={(v) => onChange({ ...cfg, translation: v })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {TRANSLATIONS.map((t) => (
+              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Custom Unsplash keyword — overrides auto-detection */}
+      <div className="space-y-1.5">
+        <Label>Background keyword</Label>
+        <Input
+          value={customMood}
+          onChange={(e) => onChange({ ...cfg, customMood: e.target.value })}
+          placeholder="e.g. green valley mountains lake…"
+        />
+        <p className="text-xs text-muted-foreground">
+          Type any Unsplash keyword. Leave blank to auto-pick based on the verse.
+        </p>
+      </div>
+
+      {/* Overlay darkness */}
+      <div className="space-y-2">
+        <div className="flex justify-between">
+          <Label>Background darkness</Label>
+          <span className="text-sm font-semibold text-primary">{overlayOpacity}%</span>
+        </div>
+        <Slider
+          min={25} max={85} step={5}
+          value={[overlayOpacity]}
+          onValueChange={(v) => onChange({ ...cfg, overlayOpacity: Number(Array.isArray(v) ? v[0] : v) })}
+        />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>Lighter</span><span>Darker</span>
+        </div>
+      </div>
+
+      {/* Cross icon */}
+      <div className="flex items-center justify-between">
+        <Label>Show cross icon</Label>
+        <Switch
+          checked={showCross}
+          onCheckedChange={(v) => onChange({ ...cfg, showCross: v })}
+        />
+      </div>
+
+      {/* Per-theme keyword overrides */}
+      <div className="space-y-2">
+        <Label>Auto-detection themes</Label>
+        <p className="text-xs text-muted-foreground">
+          These are used when no custom keyword is set. Edit the Unsplash queries to fine-tune each mood.
+        </p>
+        <div className="space-y-2.5 max-h-52 overflow-y-auto rounded-md border p-3 bg-muted/20">
+          {DEFAULT_MOOD_CATEGORIES.map((cat) => (
+            <div key={cat.id} className="space-y-1">
+              <span className="text-xs font-medium text-foreground/60">{cat.label}</span>
+              <Input
+                className="h-7 text-xs font-mono"
+                value={moodMappingOverrides[cat.id] ?? cat.query}
+                onChange={(e) => {
+                  const next = { ...moodMappingOverrides };
+                  if (e.target.value === cat.query) {
+                    delete next[cat.id];
+                  } else {
+                    next[cat.id] = e.target.value;
+                  }
+                  onChange({ ...cfg, moodMappingOverrides: next });
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VinylConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1.5">
+        <Label>Background</Label>
+        <Select
+          value={(cfg.background as string) ?? 'gradient'}
+          onValueChange={(v) => onChange({ ...cfg, background: v })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="gradient">Dominant color gradient</SelectItem>
+            <SelectItem value="black">Pure black</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Gradient pulls the mood color from the current album art.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ModeConfigForm({ mode, cfg, onChange }: { mode: Mode; cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
   switch (mode.id) {
     case 'slideshow-single':
@@ -304,6 +422,10 @@ function ModeConfigForm({ mode, cfg, onChange }: { mode: Mode; cfg: Record<strin
           No configuration needed. Tasks are pulled from the Reminders board.
         </div>
       );
+    case 'scripture':
+      return <ScriptureConfig cfg={cfg} onChange={onChange} />;
+    case 'vinyl':
+      return <VinylConfig cfg={cfg} onChange={onChange} />;
     default:
       return (
         <div className="space-y-1.5">
@@ -331,6 +453,8 @@ const MODE_DISPLAY: Record<string, { label: string; description: string; emoji: 
   'unsplash-mood':    { label: 'Mood',      description: 'Curated Unsplash photos by mood', emoji: '🌄' },
   'easel':            { label: 'Easel',     description: 'Rotating text messages', emoji: '✍️' },
   'eisenhower':       { label: 'Eisenhower', description: 'Matrix of tasks in 4 priority quadrants', emoji: '🧩' },
+  'scripture':        { label: 'Scripture',  description: 'Verse of the day with atmospheric backgrounds', emoji: '✝️' },
+  'vinyl':            { label: 'Vinyl',      description: 'Spinning vinyl record with Spotify album art', emoji: '💿' },
 };
 
 export default function ModesPage() {

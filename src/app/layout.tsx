@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { DM_Sans, Syne, JetBrains_Mono, Geist } from 'next/font/google';
+import { DM_Sans, Syne, JetBrains_Mono, Geist, Playfair_Display, Poppins } from 'next/font/google';
 import { Providers } from '@/components/providers';
 import './globals.css';
 import { cn } from "@/lib/utils";
@@ -24,6 +24,20 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 });
 
+const playfair = Playfair_Display({
+  variable: '--font-playfair',
+  subsets: ['latin'],
+  display: 'swap',
+  style: ['normal', 'italic'],
+});
+
+const poppins = Poppins({
+  variable: '--font-poppins',
+  subsets: ['latin'],
+  display: 'swap',
+  weight: ['400', '600', '700', '800'],
+});
+
 export const metadata: Metadata = {
   title: 'FrameTV',
   description: 'Your personal ambient display OS',
@@ -45,7 +59,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn("h-full", "antialiased", "dark", dmSans.variable, syne.variable, jetbrainsMono.variable, "font-sans", geist.variable)}
+      className={cn("h-full", "antialiased", "dark", dmSans.variable, syne.variable, jetbrainsMono.variable, playfair.variable, poppins.variable, "font-sans", geist.variable)}
     >
       <body className="min-h-full bg-bg text-fg font-sans">
         <Providers>{children}</Providers>

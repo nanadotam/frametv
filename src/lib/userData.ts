@@ -19,6 +19,8 @@ const DEFAULT_MODES = [
   { id: 'unsplash-mood', name: 'Mood Photos', description: 'Unsplash photos by mood keyword', is_enabled: true, config: { mood: 'mountains', intervalSeconds: 120 } },
   { id: 'easel', name: 'Easel', description: 'Single quote or intention on a clean canvas', is_enabled: true, config: { texts: ['Today is a gift.'], intervalMinutes: 5, fontFamily: 'Syne' } },
   { id: 'eisenhower', name: 'Eisenhower Matrix', description: 'Priority tasks in 4 colored quadrants', is_enabled: true, config: {} },
+  { id: 'scripture', name: 'Scripture', description: 'Verse of the day with atmospheric backgrounds', is_enabled: true, config: { translation: 'KJV', highlightSacredWords: true, showCross: true, overlayOpacity: 60, moodMappingOverrides: {} } },
+  { id: 'vinyl', name: 'Vinyl', description: 'Spinning vinyl record with Spotify album art', is_enabled: true, config: { background: 'gradient' } },
 ];
 
 export function userSettingKey(userId: string, key: string) {
@@ -46,10 +48,12 @@ export async function ensureUserDefaults(userId: string) {
   const { data: existingModes } = await supabase
     .from('user_modes')
     .select('id')
-    .eq('user_id', userId)
-    .limit(1);
+    .eq('user_id', userId);
 
-  if (!existingModes?.length) {
+  const existingIds = new Set((existingModes ?? []).map((m) => m.id));
+
+  if (!existingIds.size) {
+    // First time: seed from global modes table or defaults
     const { data: globalModes } = await supabase
       .from('modes')
       .select('id, name, description, is_enabled, config')
@@ -59,6 +63,15 @@ export async function ensureUserDefaults(userId: string) {
       sourceModes.map((mode) => ({ ...mode, user_id: userId })),
       { onConflict: 'user_id,id' }
     );
+  } else {
+    // Existing user: insert any DEFAULT_MODES entries that are missing (new modes added later)
+    const missing = DEFAULT_MODES.filter((m) => !existingIds.has(m.id));
+    if (missing.length) {
+      await supabase.from('user_modes').upsert(
+        missing.map((mode) => ({ ...mode, user_id: userId })),
+        { onConflict: 'user_id,id' }
+      );
+    }
   }
 
   const { data: displayState } = await supabase

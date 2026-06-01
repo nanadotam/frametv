@@ -7,7 +7,9 @@ export type ModeId =
   | 'coverflow'
   | 'unsplash-mood'
   | 'easel'
-  | 'eisenhower';
+  | 'eisenhower'
+  | 'scripture'
+  | 'vinyl';
 
 export interface ModeProps {
   config: Record<string, unknown>;

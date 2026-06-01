@@ -48,6 +48,16 @@ const EisenhowerMode = dynamic(
   { ssr: false }
 );
 
+const ScriptureMode = dynamic(
+  () => import('./scripture/ScriptureMode'),
+  { ssr: false }
+);
+
+const VinylMode = dynamic(
+  () => import('./vinyl/VinylMode'),
+  { ssr: false }
+);
+
 export const MODES: Record<ModeId, ComponentType<ModeProps>> = {
   'slideshow-single': SlideshowSingleMode,
   'slideshow-grid': SlideshowGridMode,
@@ -58,4 +68,6 @@ export const MODES: Record<ModeId, ComponentType<ModeProps>> = {
   'unsplash-mood': UnsplashMoodMode,
   easel: EaselMode,
   eisenhower: EisenhowerMode,
+  scripture: ScriptureMode,
+  vinyl: VinylMode,
 };

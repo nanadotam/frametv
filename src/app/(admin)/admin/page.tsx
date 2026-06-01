@@ -27,9 +27,11 @@ const MODES = [
   { id: 'clock-text',       label: 'Clock',      emoji: '🕐' },
   { id: 'flipboard',        label: 'FlipBoard',  emoji: '🔤' },
   { id: 'coverflow',        label: 'Cover Flow', emoji: '🎵' },
+  { id: 'vinyl',            label: 'Vinyl',      emoji: '💿' },
   { id: 'unsplash-mood',    label: 'Mood',       emoji: '🌄' },
   { id: 'easel',            label: 'Easel',      emoji: '✍️' },
   { id: 'eisenhower',       label: 'Eisenhower', emoji: '🧩' },
+  { id: 'scripture',        label: 'Scripture',  emoji: '✝️' },
 ];
 
 const INTERVAL_OPTIONS = [
@@ -46,6 +48,7 @@ const INTERVAL_OPTIONS = [
 const MODES_WITH_SETTINGS = new Set([
   'slideshow-single', 'slideshow-grid', 'pinterest',
   'clock-text', 'flipboard', 'unsplash-mood', 'easel',
+  'vinyl', 'scripture',
 ]);
 
 // ─── Chip Row ─────────────────────────────────────────────────────────────────
@@ -297,6 +300,49 @@ function EaselQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) =>
   );
 }
 
+function VinylQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) => void }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Background</p>
+      <ChipRow
+        options={[
+          { label: 'Color gradient', value: 'gradient' },
+          { label: 'Pure black',     value: 'black' },
+        ]}
+        value={(cfg.background as string) ?? 'gradient'}
+        onSelect={(v) => onChange({ ...cfg, background: v })}
+      />
+    </div>
+  );
+}
+
+function ScriptureQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) => void }) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Translation</p>
+        <ChipRow
+          options={[
+            { label: 'KJV',  value: 'KJV'  },
+            { label: 'NIV',  value: 'NIV'  },
+            { label: 'ESV',  value: 'ESV'  },
+            { label: 'NKJV', value: 'NKJV' },
+          ]}
+          value={(cfg.translation as string) ?? 'KJV'}
+          onSelect={(v) => onChange({ ...cfg, translation: v })}
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Highlight sacred words</span>
+        <Switch
+          checked={(cfg.highlightSacredWords as boolean) ?? true}
+          onCheckedChange={(v) => onChange({ ...cfg, highlightSacredWords: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function QuickSettingsContent({
   modeId, cfg, onChange,
 }: {
@@ -318,6 +364,10 @@ function QuickSettingsContent({
       return <MoodQuickSettings cfg={cfg} onChange={onChange} />;
     case 'easel':
       return <EaselQuickSettings cfg={cfg} onChange={onChange} />;
+    case 'vinyl':
+      return <VinylQuickSettings cfg={cfg} onChange={onChange} />;
+    case 'scripture':
+      return <ScriptureQuickSettings cfg={cfg} onChange={onChange} />;
     case 'coverflow':
     case 'eisenhower':
       return (

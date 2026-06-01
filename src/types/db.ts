@@ -7,7 +7,10 @@ export type ModeId =
   | 'flipboard'
   | 'coverflow'
   | 'unsplash-mood'
-  | 'easel';
+  | 'easel'
+  | 'eisenhower'
+  | 'scripture'
+  | 'vinyl';
 
 // ─── Albums ───────────────────────────────────────────────────────────────────
 export interface Album {
