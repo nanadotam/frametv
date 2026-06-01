@@ -19,6 +19,19 @@ export interface ClockOverlayConfig {
   font: ClockFont;
 }
 
+// Maps each font choice to the CSS custom property defined in display/layout.tsx.
+// Using var() guarantees the self-hosted font is referenced — no CDN string needed.
+const CLOCK_FONT: Record<ClockFont, string> = {
+  'Poppins':          'var(--font-clock-poppins)',
+  'Oswald':           'var(--font-clock-oswald)',
+  'JetBrains Mono':   'var(--font-clock-jetbrains)',
+  'Pacifico':         'var(--font-clock-pacifico)',
+  'Playfair Display': 'var(--font-clock-playfair)',
+  'Dancing Script':   'var(--font-clock-dancing)',
+  'Bebas Neue':       'var(--font-clock-bebas)',
+  'Syne':             'var(--font-clock-syne)',
+};
+
 const POSITION_CLASSES: Record<ClockPosition, string> = {
   'bottom-right': 'bottom-6 right-8 items-end text-right',
   'bottom-left':  'bottom-6 left-8  items-start text-left',
@@ -63,7 +76,7 @@ export default function ClockOverlay({ config }: Props) {
   return (
     <div
       className={`fixed flex flex-col gap-0.5 pointer-events-none select-none z-50 ${posClass}`}
-      style={{ fontFamily: `'${config.font}', sans-serif` }}
+      style={{ fontFamily: CLOCK_FONT[config.font] }}
     >
       {/* Drop shadow for legibility over any photo */}
       <div

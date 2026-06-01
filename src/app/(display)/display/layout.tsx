@@ -2,18 +2,50 @@
 
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
-import Head from 'next/head';
+import {
+  Poppins,
+  Oswald,
+  JetBrains_Mono,
+  Pacifico,
+  Playfair_Display,
+  Dancing_Script,
+  Bebas_Neue,
+  Syne,
+} from 'next/font/google';
+
+// All clock overlay fonts downloaded at build time and self-hosted.
+// This replaces the Google Fonts CDN <link> tag which was unreliable in Safari,
+// blocked on some networks, and used the deprecated next/head API.
+const poppins       = Poppins({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-poppins',   display: 'swap' });
+const oswald        = Oswald({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-oswald',    display: 'swap' });
+const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-jetbrains', display: 'swap' });
+const pacifico      = Pacifico({ subsets: ['latin'], weight: ['400'],        variable: '--font-clock-pacifico',  display: 'swap' });
+const playfair      = Playfair_Display({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-playfair',  display: 'swap' });
+const dancing       = Dancing_Script({ subsets: ['latin'], weight: ['700'],        variable: '--font-clock-dancing',   display: 'swap' });
+const bebasNeue     = Bebas_Neue({ subsets: ['latin'], weight: ['400'],        variable: '--font-clock-bebas',     display: 'swap' });
+const syne          = Syne({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-syne',       display: 'swap' });
+
+// All variable class names joined — applied to the wrapper so every descendant
+// (ClockOverlay, mode components) can reference these CSS custom properties.
+const clockFontVars = [
+  poppins.variable,
+  oswald.variable,
+  jetbrainsMono.variable,
+  pacifico.variable,
+  playfair.variable,
+  dancing.variable,
+  bebasNeue.variable,
+  syne.variable,
+].join(' ');
 
 export default function DisplayLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Register service worker
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {
-        // Service worker registration failed silently
-      });
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
 
-    // Request WakeLock
+    // Request WakeLock to prevent screen from dimming
     let wakeLock: WakeLockSentinel | null = null;
 
     async function acquireWakeLock() {
@@ -27,11 +59,8 @@ export default function DisplayLayout({ children }: { children: ReactNode }) {
 
     acquireWakeLock();
 
-    // Re-acquire on visibility change
     function onVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        acquireWakeLock();
-      }
+      if (document.visibilityState === 'visible') acquireWakeLock();
     }
 
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -43,19 +72,8 @@ export default function DisplayLayout({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <>
-      {/* Google Fonts for clock overlay */}
-      <Head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&family=Oswald:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Pacifico&family=Playfair+Display:wght@400;700&family=Dancing+Script:wght@700&family=Bebas+Neue&family=Syne:wght@400;700&display=swap"
-          rel="stylesheet"
-        />
-      </Head>
-      <div className="bg-black overflow-hidden w-screen h-screen">
-        {children}
-      </div>
-    </>
+    <div className={`bg-black overflow-hidden w-screen h-screen ${clockFontVars}`}>
+      {children}
+    </div>
   );
 }
