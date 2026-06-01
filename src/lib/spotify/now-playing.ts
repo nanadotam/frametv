@@ -58,6 +58,13 @@ interface QueueResponse {
   queue: RawSpotifyTrack[];
 }
 
+interface RecentlyPlayedResponse {
+  items: Array<{
+    track: RawSpotifyTrack;
+    played_at: string;
+  }>;
+}
+
 export async function getNowPlayingWithQueue(
   accessToken: string
 ): Promise<NowPlayingResult | null> {
@@ -67,7 +74,22 @@ export async function getNowPlayingWithQueue(
     spotifyFetch<QueueResponse | null>('/me/player/queue', accessToken).catch(() => null),
   ]);
 
-  if (!playback?.item) return null;
+  if (!playback?.item) {
+    const recent = await spotifyFetch<RecentlyPlayedResponse | null>(
+      '/me/player/recently-played?limit=1',
+      accessToken
+    ).catch(() => null);
+    const lastTrack = recent?.items?.[0]?.track;
+
+    if (!lastTrack) return null;
+
+    return {
+      current: mapTrack(lastTrack, 0),
+      queue: [],
+      isPlaying: false,
+      progressMs: null,
+    };
+  }
 
   // Use up to 10 upcoming tracks from the real queue endpoint
   const rawQueue: RawSpotifyTrack[] = queueData?.queue?.slice(0, 10) ?? [];

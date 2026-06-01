@@ -7,30 +7,22 @@ import { Tv, Settings, Monitor, Zap, Images, LayoutGrid, CalendarDays, LogOut } 
 
 export default function Home() {
   const router = useRouter();
-  const [checking, setChecking] = useState(true);
+  const [isSignedIn, setIsSignedIn] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/me').then((res) => {
-      if (!res.ok) router.replace('/login');
-      setChecking(false);
+      setIsSignedIn(res.ok);
     }).catch(() => {
-      router.replace('/login');
+      setIsSignedIn(false);
     });
-  }, [router]);
+  }, []);
 
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
+    setIsSignedIn(false);
+    router.replace('/');
     router.refresh();
   };
-
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-background text-foreground flex flex-col">
@@ -45,14 +37,16 @@ export default function Home() {
             <p className="text-xs text-muted-foreground mt-0.5">Choose a view</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={logout}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <LogOut size={14} />
-          <span className="hidden sm:inline">Sign out</span>
-        </button>
+        {isSignedIn ? (
+          <button
+            type="button"
+            onClick={logout}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <LogOut size={14} />
+            <span className="hidden sm:inline">Sign out</span>
+          </button>
+        ) : null}
       </header>
 
       {/* Two-card hub */}

@@ -21,6 +21,7 @@ interface NowPlayingApiResponse {
 const POLL_ACTIVE_MS = 3_000;
 const POLL_PAUSED_MS = 15_000;
 const HISTORY_KEY = 'frametv:spotify:history';
+const LAST_TRACK_KEY = 'frametv:spotify:last-track';
 const MAX_HISTORY = 20;
 
 function loadHistory(): SpotifyTrack[] {
@@ -40,9 +41,26 @@ function saveHistory(tracks: SpotifyTrack[]) {
   }
 }
 
+function loadLastTrack(): SpotifyTrack | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return JSON.parse(localStorage.getItem(LAST_TRACK_KEY) ?? 'null');
+  } catch {
+    return null;
+  }
+}
+
+function saveLastTrack(track: SpotifyTrack) {
+  try {
+    localStorage.setItem(LAST_TRACK_KEY, JSON.stringify(track));
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
 export function useSpotifyNowPlaying(): NowPlayingResult {
   const [state, setState] = useState<NowPlayingResult>({
-    current: null,
+    current: loadLastTrack(),
     queue: [],
     history: loadHistory(),
     isPlaying: false,
@@ -53,7 +71,7 @@ export function useSpotifyNowPlaying(): NowPlayingResult {
   const prevTrackIdRef = useRef<string | null>(null);
   const historyRef = useRef<SpotifyTrack[]>(loadHistory());
   // Hold the latest current in a ref so history can access it inside setState
-  const currentRef = useRef<SpotifyTrack | null>(null);
+  const currentRef = useRef<SpotifyTrack | null>(loadLastTrack());
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +85,8 @@ export function useSpotifyNowPlaying(): NowPlayingResult {
             const newCurrent = data.current ?? null;
             const newId = newCurrent?.id ?? null;
             const prevId = prevTrackIdRef.current;
+
+            if (newCurrent) saveLastTrack(newCurrent);
 
             if (newId && prevId && newId !== prevId) {
               // Track changed — push the old track into history
@@ -110,13 +130,13 @@ export function useSpotifyNowPlaying(): NowPlayingResult {
                 }));
               }
             } else {
-              // Same track or no current — just update queue/playing state
+              // Same track or no fresh current — preserve the latest known track.
               if (newId && !prevId) prevTrackIdRef.current = newId;
-              currentRef.current = newCurrent;
+              currentRef.current = newCurrent ?? currentRef.current;
               isPlayingRef.current = data.isPlaying ?? false;
               setState((s) => ({
                 ...s,
-                current: newCurrent,
+                current: newCurrent ?? s.current,
                 queue: data.queue ?? [],
                 isPlaying: data.isPlaying ?? false,
               }));
@@ -140,7 +160,6 @@ export function useSpotifyNowPlaying(): NowPlayingResult {
       cancelled = true;
       if (timerRef.current !== null) clearTimeout(timerRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return state;
