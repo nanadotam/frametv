@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { getPhotoRotation } from '@/lib/photoRotation';
@@ -17,17 +17,15 @@ interface PinterestConfig {
 
 // 4× copies ensures seamless looping regardless of strip width.
 const COPIES = 4;
-// How many photos each row shows per full rotation before refreshing.
+// Photos shown per row per page.
 const PHOTOS_PER_ROW = 12;
+// How many full rotations each belt completes before photos begin rolling over.
+const ROTATIONS_BEFORE_SWAP = 2;
 
 function getViewportHeight() {
   return typeof window === 'undefined' ? 900 : window.innerHeight;
 }
 
-/**
- * Returns a page of photos from `all`, wrapping around as needed.
- * pageIdx 0 = first PHOTOS_PER_ROW × rowCount photos, pageIdx 1 = next set, etc.
- */
 function getPage(all: Photo[], pageIdx: number, pageSize: number): Photo[] {
   if (all.length === 0) return [];
   const result: Photo[] = [];
@@ -37,10 +35,6 @@ function getPage(all: Photo[], pageIdx: number, pageSize: number): Photo[] {
   return result;
 }
 
-/**
- * Warms the HTTP cache for a set of photos so <img> tags load instantly.
- * Uses new Image() so results land in the browser's HTTP cache (not Cache Storage).
- */
 function preloadImages(photos: Photo[]) {
   const isSlow = getConnectionSpeed() === 'slow';
   const size = isSlow ? IMG_SIZES.thumb_medium : IMG_SIZES.thumb_large;
@@ -51,11 +45,11 @@ function preloadImages(photos: Photo[]) {
 }
 
 /**
- * Single photo in the scrolling track.
- * Loads a small thumbnail immediately, upgrades to display-quality in background.
- * If the display-quality image was preloaded, it appears with no visible loading delay.
+ * Single photo slot in the scrolling track.
+ * Handles both initial load and seamless in-place photo swaps when the
+ * `photo` prop changes — new image loads in the background before revealing.
  */
-function TrackPhoto({
+const TrackPhoto = memo(function TrackPhoto({
   photo,
   rowHeightPx,
   cornerRadius,
@@ -74,9 +68,15 @@ function TrackPhoto({
   const rotation = getPhotoRotation(photo);
   const lqipSrc = photoThumbUrl(photo, IMG_SIZES.lqip);
 
-  // Upgrade to display-quality in background once mounted.
-  // If preloaded, the Image fires onload immediately and skips the blurry phase.
+  // Handles initial mount and every subsequent photo prop change.
+  // New photo loads progressively: thumb_small → display-quality.
+  // If the display-quality image was preloaded it resolves instantly with no LQIP flash.
   useEffect(() => {
+    setMainLoaded(false);
+    setNaturalWidth(photo.width ?? null);
+    setNaturalHeight(photo.height ?? null);
+    setDisplaySrc(photoThumbUrl(photo, IMG_SIZES.thumb_small));
+
     const isSlow = getConnectionSpeed() === 'slow';
     const targetSize = isSlow ? IMG_SIZES.thumb_medium : IMG_SIZES.thumb_large;
     const upgradeSrc = photoThumbUrl(photo, targetSize);
@@ -86,6 +86,8 @@ function TrackPhoto({
     return () => {
       img.onload = null;
     };
+    // photo.id is the intentional dep — we only reload when the photo changes,
+    // not on every render where photo properties might shift.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photo.id]);
 
@@ -110,7 +112,6 @@ function TrackPhoto({
         background: '#111',
       }}
     >
-      {/* LQIP blurred fill — shows immediately while real image loads */}
       {!mainLoaded && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -157,7 +158,7 @@ function TrackPhoto({
       />
     </div>
   );
-}
+});
 
 export default function PinterestMode({
   config,
@@ -194,79 +195,70 @@ export default function PinterestMode({
   }, []);
 
   // ── Pagination ──────────────────────────────────────────────────────────────
-  // Instead of looping the same photos forever, the strip shows one "page" of
-  // PHOTOS_PER_ROW photos per row. After every complete rotation (the circular
-  // belt makes one full loop), the next page swaps in — already preloaded.
 
   const pageSize = rowCount * PHOTOS_PER_ROW;
   const [displayPhotos, setDisplayPhotos] = useState<Photo[]>([]);
+
+  // Kept in sync with displayPhotos but updated synchronously inside the RAF
+  // loop so slot-swap logic always reads the latest version without waiting for
+  // a React render cycle.
+  const displayPhotosRef = useRef<Photo[]>([]);
+
   const pageIndexRef = useRef(0);
   const nextPhotosRef = useRef<Photo[]>([]);
-  const preloadDoneRef = useRef(false); // true once next-page preload is queued
   const allPhotosRef = useRef<Photo[]>([]);
+
   useEffect(() => {
     allPhotosRef.current = allPhotos;
   }, [allPhotos]);
 
-  // When the full photo list first arrives (or changes), initialise page 0
-  // and immediately start preloading page 1.
+  // ── Rolling-swap state (all refs — mutated only inside RAF tick) ────────────
+
+  // rawPos (pixels) at which the last rolling swap completed, per row.
+  // Row 0 is master; rows 1+ follow the same visual cycle.
+  const lastSwapAtRef = useRef<number[]>([]);
+  // How many photo slots (across all rows, for this column index) have been
+  // replaced in the current rolling transition.
+  const slotsSwappedRef = useRef(0);
+  // Snapshot of the incoming photo set captured at the start of a transition.
+  const pendingNextRef = useRef<Photo[]>([]);
+  // cycleWidth captured at the start of a transition so mid-swap layout changes
+  // (from new photo aspect ratios) don't cause the progress calculation to jump.
+  const transitionCycleWidthRef = useRef(0);
+
+  // Initialise page 0 and preload page 1 whenever the full photo list changes.
   useEffect(() => {
     if (allPhotos.length === 0) return;
     pageIndexRef.current = 0;
-    preloadDoneRef.current = false;
     rawPosRef.current = [];
+    lastSwapAtRef.current = [];
+    slotsSwappedRef.current = 0;
+    pendingNextRef.current = [];
+    transitionCycleWidthRef.current = 0;
 
     const page0 = getPage(allPhotos, 0, pageSize);
+    displayPhotosRef.current = page0;
     setDisplayPhotos(page0);
 
     const page1 = getPage(allPhotos, 1, pageSize);
     nextPhotosRef.current = page1;
     preloadImages(page1);
-    preloadDoneRef.current = true;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allPhotos, pageSize]);
 
   useEffect(() => {
     if (displayPhotos.length > 0) onReady?.();
   }, [displayPhotos.length, onReady]);
 
-  // Stable swap function accessed from the RAF loop via a ref.
-  // Called once per full rotation to advance to the next page.
-  const doSwapRef = useRef(() => {});
-  useEffect(() => {
-    doSwapRef.current = () => {
-      const next = nextPhotosRef.current;
-      if (next.length === 0) return;
-
-      pageIndexRef.current += 1;
-      rawPosRef.current = []; // all rows restart at 0 for the fresh strip
-      preloadDoneRef.current = false;
-      setDisplayPhotos([...next]);
-
-      // Queue preload for the page after the one we just swapped in.
-      const all = allPhotosRef.current;
-      const pSize = rowCount * PHOTOS_PER_ROW;
-      const nextNext = getPage(all, pageIndexRef.current + 1, pSize);
-      nextPhotosRef.current = nextNext;
-      preloadImages(nextNext);
-      preloadDoneRef.current = true;
-    };
-  }, [rowCount]);
-
   // ── JS animation ────────────────────────────────────────────────────────────
+
   const trackRefs = useRef<(HTMLDivElement | null)[]>([]);
-  // rawPosRef tracks the raw (non-modulo) accumulated pixel position per row.
-  // Using raw values lets us detect when row 0 has scrolled exactly cycleWidth
-  // pixels — i.e. one full rotation of the circular belt.
   const rawPosRef = useRef<number[]>([]);
   const rafRef = useRef<number>(0);
   const isPausedRef = useRef(isPaused);
+
   useEffect(() => {
     isPausedRef.current = isPaused;
   }, [isPaused]);
-  useEffect(() => {
-    rawPosRef.current = [];
-  }, [rowCount]);
 
   const pxPerSecond = 24 * speed;
 
@@ -290,33 +282,93 @@ export default function PinterestMode({
       const dt = Math.min((ts - lastTs) / 1000, 0.1);
       lastTs = ts;
 
-      let swappedThisFrame = false;
-
       for (let r = 0; r < rowCount; r++) {
         const track = trackRefs.current[r];
         if (!track) continue;
 
-        const cycleWidth = track.scrollWidth / COPIES;
-        if (cycleWidth < 10) continue;
+        const liveWidth = track.scrollWidth / COPIES;
+        if (liveWidth < 10) continue;
+
+        // During a rolling transition, use the captured width so that aspect-
+        // ratio changes from incoming photos don't cause the progress to jump.
+        const cycleWidth =
+          transitionCycleWidthRef.current > 0 ? transitionCycleWidthRef.current : liveWidth;
 
         const prevRaw = rawPosRef.current[r] ?? 0;
         const newRaw = prevRaw + pxPerSecond * dt;
         rawPosRef.current[r] = newRaw;
 
-        // Row 0 is the master: it drives rotation-complete and preload events.
-        if (r === 0 && !swappedThisFrame) {
-          const prevRotations = Math.floor(prevRaw / cycleWidth);
-          const currRotations = Math.floor(newRaw / cycleWidth);
+        // ── Rolling swap (row 0 is master) ────────────────────────────────────
+        if (r === 0) {
+          const lastSwapAt = lastSwapAtRef.current[0] ?? 0;
+          const rawSince = newRaw - lastSwapAt;
 
-          if (currRotations > prevRotations) {
-            // One full rotation complete — swap to the next page.
-            swappedThisFrame = true;
-            rawPosRef.current = []; // reset positions (doSwap will re-initialise)
-            doSwapRef.current();
+          if (rawSince >= ROTATIONS_BEFORE_SWAP * cycleWidth) {
+            // Capture the cycle width once when we first enter the transition.
+            if (transitionCycleWidthRef.current === 0) {
+              transitionCycleWidthRef.current = liveWidth;
+            }
+
+            // Capture the incoming photo set once at transition start.
+            if (pendingNextRef.current.length === 0 && nextPhotosRef.current.length > 0) {
+              pendingNextRef.current = [...nextPhotosRef.current];
+            }
+
+            if (pendingNextRef.current.length > 0) {
+              const tw = transitionCycleWidthRef.current;
+              // Progress through the "transition rotation" (0 → 1).
+              const progress = (rawSince - ROTATIONS_BEFORE_SWAP * tw) / tw;
+              // Number of slots that should have been swapped by now.
+              const targetSwapped = Math.min(
+                Math.ceil(progress * PHOTOS_PER_ROW),
+                PHOTOS_PER_ROW
+              );
+
+              if (targetSwapped > slotsSwappedRef.current) {
+                // Build updated photo array, replacing only the newly due slots.
+                // Slots are distributed round-robin: photo at (row r, slot s)
+                // lives at index s * rowCount + r in the flat displayPhotos array.
+                const current = displayPhotosRef.current;
+                const updated = [...current];
+                for (let slot = slotsSwappedRef.current; slot < targetSwapped; slot++) {
+                  for (let rr = 0; rr < rowCount; rr++) {
+                    const idx = slot * rowCount + rr;
+                    if (idx < pendingNextRef.current.length) {
+                      updated[idx] = pendingNextRef.current[idx];
+                    }
+                  }
+                }
+                slotsSwappedRef.current = targetSwapped;
+
+                // Keep ref in sync immediately so the next tick reads fresh data.
+                displayPhotosRef.current = updated;
+                setDisplayPhotos(updated);
+
+                if (slotsSwappedRef.current >= PHOTOS_PER_ROW) {
+                  // All slots rolled over — transition complete.
+                  lastSwapAtRef.current[0] = newRaw;
+                  transitionCycleWidthRef.current = 0;
+                  slotsSwappedRef.current = 0;
+                  pendingNextRef.current = [];
+
+                  // Advance page index and preload the next-next set.
+                  pageIndexRef.current += 1;
+                  const all = allPhotosRef.current;
+                  const pSize = rowCount * PHOTOS_PER_ROW;
+                  const nextNext = getPage(all, pageIndexRef.current + 1, pSize);
+                  nextPhotosRef.current = nextNext;
+                  preloadImages(nextNext);
+                }
+              }
+            }
           }
         }
 
-        const offsetPx = (rawPosRef.current[r] ?? 0) % cycleWidth;
+        // Apply scroll transform — use live cycleWidth for the visual offset so
+        // the belt stays crisp even as slot widths settle after photo changes.
+        const effectiveWidth =
+          transitionCycleWidthRef.current > 0 ? transitionCycleWidthRef.current : liveWidth;
+        const offsetPx = (rawPosRef.current[r] ?? 0) % effectiveWidth;
 
         // Alternate rows scroll in opposite directions for visual depth.
         const rowDir =
@@ -328,7 +380,7 @@ export default function PinterestMode({
               ? 1
               : -1;
 
-        const translateX = rowDir < 0 ? -offsetPx : -(cycleWidth - offsetPx);
+        const translateX = rowDir < 0 ? -offsetPx : -(effectiveWidth - offsetPx);
         track.style.transform = `translateX(${translateX}px)`;
       }
     };
@@ -386,7 +438,7 @@ export default function PinterestMode({
             >
               {repeated.map((photo, imgIdx) => (
                 <TrackPhoto
-                  key={`${photo.id}-r${rowIdx}-${imgIdx}`}
+                  key={`r${rowIdx}-${imgIdx}`}
                   photo={photo}
                   rowHeightPx={rowHeightPx}
                   cornerRadius={cornerRadius}
