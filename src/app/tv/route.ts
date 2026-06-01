@@ -226,6 +226,41 @@ html,body{
 .ftv-vinyl-title h1{font-size:clamp(34px,5vw,68px);line-height:1.05}
 .ftv-vinyl-title p{font-size:clamp(20px,2.4vw,34px);color:rgba(255,255,255,.72);margin-top:10px}
 
+/* Scripture ─────────────────────────────────────────────────────────────── */
+.ftv-scripture{
+  position:absolute;top:0;right:0;bottom:0;left:0;
+  display:-webkit-box;display:-ms-flexbox;display:flex;
+  -webkit-box-orient:vertical;-webkit-box-direction:normal;
+  -ms-flex-direction:column;flex-direction:column;
+  -webkit-box-align:center;-ms-flex-align:center;align-items:center;
+  -webkit-box-pack:center;-ms-flex-pack:center;justify-content:center;
+  overflow:hidden;background:#0a0a0a;text-align:center;
+}
+.ftv-scripture-bg{position:absolute;top:0;right:0;bottom:0;left:0}
+.ftv-scripture-bg img{width:100%;height:100%;object-fit:cover;display:block}
+.ftv-scripture-overlay{position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.55)}
+.ftv-scripture-cross{position:absolute;top:28px;left:28px;opacity:.55}
+.ftv-scripture-body{position:relative;padding:8% 14%;max-width:900px;width:100%}
+.ftv-scripture-text{
+  font-family:Georgia,"Times New Roman",serif;
+  font-size:clamp(22px,3vw,46px);
+  font-weight:400;line-height:1.65;color:#fff;margin:0;
+}
+.ftv-scripture-rule{width:36px;height:1px;background:rgba(255,255,255,.35);margin:clamp(14px,2vw,24px) auto}
+.ftv-scripture-ref{
+  font-family:system-ui,-apple-system,sans-serif;
+  font-size:clamp(11px,1.1vw,15px);font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.6);margin:0;
+}
+.ftv-scripture-trans{
+  font-family:system-ui,-apple-system,sans-serif;
+  font-size:clamp(9px,.75vw,11px);letter-spacing:.08em;color:rgba(255,255,255,.3);margin:5px 0 0;
+}
+.ftv-scripture-credit{
+  position:absolute;bottom:12px;right:16px;
+  font-size:10px;color:rgba(255,255,255,.28);font-family:system-ui,-apple-system,sans-serif;
+}
+
 /* Clock ─────────────────────────────────────────────────────────────────── */
 #ftv-clock{
   position:absolute;
@@ -317,6 +352,13 @@ const JS = `
     D.vinylArt = grab('ftv-vinyl-art');
     D.vinylName = grab('ftv-vinyl-name');
     D.vinylArtist = grab('ftv-vinyl-artist');
+    D.scripture        = grab('ftv-scripture');
+    D.scriptureBgImg   = grab('ftv-scripture-bg-img');
+    D.scriptureOverlay = grab('ftv-scripture-overlay');
+    D.scriptureText    = grab('ftv-scripture-text');
+    D.scriptureRef     = grab('ftv-scripture-ref');
+    D.scriptureTrans   = grab('ftv-scripture-trans');
+    D.scriptureCredit  = grab('ftv-scripture-credit');
     D.fullBtn  = grab('ftv-fullscreen');
     D.clock    = grab('ftv-clock');
     D.clockTxt = grab('ftv-clock-txt');
@@ -504,6 +546,7 @@ const JS = `
 
       if (modeId === 'clock-text') { startClockMode(); }
       else if (modeId === 'vinyl' || modeId === 'coverflow') { startVinylMode(); }
+      else if (modeId === 'scripture') { startScriptureMode(); }
       else                         { loadPhotos(albumIds); }
     });
   }
@@ -575,7 +618,46 @@ const JS = `
     hide(D.grid);
     hide(D.pinGrid);
     hide(D.vinyl);
+    hide(D.scripture);
     hide(D.clock);
+  }
+
+  function startScriptureMode() {
+    clearVisuals();
+    hide(D.loading);
+    D.display.style.opacity = (brightness / 100).toFixed(2);
+    showBlock(D.display);
+    showFlex(D.scripture);
+
+    var translation = (modeConfig && modeConfig.translation) || 'KJV';
+    var customMood  = (modeConfig && modeConfig.customMood)  || '';
+    var overlayVal  = (modeConfig && typeof modeConfig.overlayOpacity === 'number')
+      ? (modeConfig.overlayOpacity / 100).toFixed(2)
+      : '0.55';
+
+    if (D.scriptureOverlay) {
+      D.scriptureOverlay.style.background = 'rgba(0,0,0,' + overlayVal + ')';
+    }
+
+    get('/api/scripture?translation=' + encodeURIComponent(translation), function (data, ok) {
+      if (!ok || !data || !data.text) return;
+      if (D.scriptureText)  D.scriptureText.textContent  = data.text;
+      if (D.scriptureRef)   D.scriptureRef.textContent   = data.reference || '';
+      if (D.scriptureTrans) D.scriptureTrans.textContent = data.translation || '';
+
+      var mood = customMood || 'green valley mountains nature peaceful';
+      get('/api/unsplash?mood=' + encodeURIComponent(mood), function (uData, uOk) {
+        if (!uOk || !uData || !uData.photos || !uData.photos.length) return;
+        var now = new Date();
+        var dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+        var photo = uData.photos[dayOfYear % uData.photos.length];
+        if (!photo) return;
+        if (D.scriptureBgImg) D.scriptureBgImg.src = photo.urls.regular;
+        if (D.scriptureCredit && photo.user) {
+          D.scriptureCredit.textContent = 'Photo: ' + (photo.user.name || '') + ' / Unsplash';
+        }
+      });
+    });
   }
 
   function startVinylMode() {
@@ -844,12 +926,12 @@ const JS = `
     if      (k === 'ArrowRight' || k === 39) {
       if (modeId === 'slideshow-grid') { currentIdx += 6; renderGrid(); }
       else if (modeId === 'pinterest') { currentIdx += 3; renderPinterest(); }
-      else if (modeId !== 'clock-text' && modeId !== 'vinyl' && modeId !== 'coverflow') advance(currentIdx + 1);
+      else if (modeId !== 'clock-text' && modeId !== 'vinyl' && modeId !== 'coverflow' && modeId !== 'scripture') advance(currentIdx + 1);
     }
     else if (k === 'ArrowLeft'  || k === 37) {
       if (modeId === 'slideshow-grid') { currentIdx -= 6; renderGrid(); }
       else if (modeId === 'pinterest') { currentIdx -= 3; renderPinterest(); }
-      else if (modeId !== 'clock-text' && modeId !== 'vinyl' && modeId !== 'coverflow') advance(currentIdx - 1);
+      else if (modeId !== 'clock-text' && modeId !== 'vinyl' && modeId !== 'coverflow' && modeId !== 'scripture') advance(currentIdx - 1);
     }
     else if (k === 'Enter' || k === 13 || k === ' ' || k === 32) { isPaused = !isPaused; }
     else if (k === 'f' || k === 'F' || k === 70) { toggleFullscreen(); }
@@ -973,6 +1055,22 @@ function buildPage(): string {
       <h1 id="ftv-vinyl-name">Spotify idle</h1>
       <p id="ftv-vinyl-artist">Last song will appear after playback</p>
     </div>
+  </div>
+  <!-- Scripture mode -->
+  <div id="ftv-scripture" class="ftv-scripture" style="display:none">
+    <div class="ftv-scripture-bg"><img id="ftv-scripture-bg-img" alt=""></div>
+    <div id="ftv-scripture-overlay" class="ftv-scripture-overlay"></div>
+    <svg class="ftv-scripture-cross" width="16" height="22" viewBox="0 0 16 22" fill="none">
+      <rect x="6" y="0" width="4" height="22" rx="2" fill="white" fill-opacity="0.55"/>
+      <rect x="0" y="6" width="16" height="4" rx="2" fill="white" fill-opacity="0.55"/>
+    </svg>
+    <div class="ftv-scripture-body">
+      <p id="ftv-scripture-text" class="ftv-scripture-text"></p>
+      <div class="ftv-scripture-rule"></div>
+      <p id="ftv-scripture-ref" class="ftv-scripture-ref"></p>
+      <p id="ftv-scripture-trans" class="ftv-scripture-trans"></p>
+    </div>
+    <p id="ftv-scripture-credit" class="ftv-scripture-credit"></p>
   </div>
   <!-- Clock overlay / fullscreen clock -->
   <div id="ftv-clock" style="display:none" aria-live="off">
