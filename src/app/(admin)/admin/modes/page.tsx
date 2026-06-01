@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Settings2 } from 'lucide-react';
+import { Settings2, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { invalidateModes } from '@/hooks/useModes';
 import type { Mode } from '@/types/db';
 import { TRANSLATIONS, DEFAULT_MOOD_CATEGORIES } from '@/modes/scripture/constants';
+import { MODE_CATEGORIES, MODE_METADATA, MODE_ORDER } from '@/lib/modeMetadata';
 
 // Interval options in seconds
 const INTERVAL_OPTIONS: { label: string; value: number }[] = [
@@ -443,20 +444,6 @@ function ModeConfigForm({ mode, cfg, onChange }: { mode: Mode; cfg: Record<strin
   }
 }
 
-const MODE_DISPLAY: Record<string, { label: string; description: string; emoji: string }> = {
-  'slideshow-single': { label: 'Slideshow', description: 'One photo at a time with smooth transitions', emoji: '🖼️' },
-  'slideshow-grid':   { label: 'Grid',      description: 'Mosaic grid of photos', emoji: '🔲' },
-  'pinterest':        { label: 'Pinterest', description: 'Scrolling masonry columns', emoji: '📌' },
-  'clock-text':       { label: 'Clock',     description: 'Large ambient clock display', emoji: '🕐' },
-  'flipboard':        { label: 'FlipBoard', description: 'News-ticker style messages', emoji: '🔤' },
-  'coverflow':        { label: 'Cover Flow',description: '3D cover flow carousel', emoji: '🎵' },
-  'unsplash-mood':    { label: 'Mood',      description: 'Curated Unsplash photos by mood', emoji: '🌄' },
-  'easel':            { label: 'Easel',     description: 'Rotating text messages', emoji: '✍️' },
-  'eisenhower':       { label: 'Eisenhower', description: 'Matrix of tasks in 4 priority quadrants', emoji: '🧩' },
-  'scripture':        { label: 'Scripture',  description: 'Verse of the day with atmospheric backgrounds', emoji: '✝️' },
-  'vinyl':            { label: 'Vinyl',      description: 'Spinning vinyl record with Spotify album art', emoji: '💿' },
-};
-
 export default function ModesPage() {
   const [modes, setModes] = useState<Mode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -512,9 +499,14 @@ export default function ModesPage() {
 
   const displayModes = modes.length > 0
     ? modes
-    : Object.entries(MODE_DISPLAY).map(([id, d]) => ({
+    : MODE_ORDER.map((id) => {
+        const d = MODE_METADATA[id];
+        return {
         id, name: d.label, description: d.description, is_enabled: true, config: {},
-      } as Mode));
+      } as Mode;
+      });
+
+  const orderedModes = [...displayModes].sort((a, b) => MODE_ORDER.indexOf(a.id) - MODE_ORDER.indexOf(b.id));
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6">
@@ -532,50 +524,73 @@ export default function ModesPage() {
           ))}
         </div>
       ) : (
-        <div className="space-y-3">
-          {displayModes.map((mode) => {
-            const display = MODE_DISPLAY[mode.id];
+        <div className="space-y-5">
+          {MODE_CATEGORIES.map((category) => {
+            const CategoryIcon = category.icon;
+            const categoryModes = orderedModes.filter((mode) => MODE_METADATA[mode.id]?.category === category.id);
+            if (categoryModes.length === 0) return null;
             return (
-              <Card key={mode.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-4">
-                    <div className="text-2xl shrink-0">{display?.emoji ?? '⚙️'}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-sm">{display?.label ?? mode.name}</h3>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'text-xs',
-                            mode.is_enabled
-                              ? 'border-green-500/40 text-green-400 bg-green-500/10'
-                              : 'border-border text-muted-foreground'
-                          )}
-                        >
-                          {mode.is_enabled ? 'On' : 'Off'}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {display?.description ?? (mode as Mode & { description?: string }).description ?? 'No description'}
-                      </p>
-                      {mode.config && Object.keys(mode.config as object).length > 0 && (
-                        <p className="text-xs text-muted-foreground/50 mt-1 truncate font-mono">
-                          {Object.entries(mode.config as Record<string, unknown>).slice(0, 3).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' · ')}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <Switch
-                        checked={mode.is_enabled}
-                        onCheckedChange={() => toggleEnabled(mode)}
-                      />
-                      <Button size="sm" variant="outline" onClick={() => openConfig(mode)} className="gap-1.5 text-xs">
-                        <Settings2 size={12} /> Configure
-                      </Button>
-                    </div>
+              <section key={category.id} className="space-y-2.5">
+                <div className="flex items-center gap-2 px-1">
+                  <span className={cn('flex size-8 items-center justify-center rounded-lg border', category.tone.iconBg, category.tone.iconBorder)}>
+                    <CategoryIcon size={15} className={category.tone.text} />
+                  </span>
+                  <div>
+                    <h2 className="text-xs font-semibold uppercase tracking-wider">{category.label}</h2>
+                    <p className="text-xs text-muted-foreground">{category.description}</p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+                <div className="space-y-3">
+                  {categoryModes.map((mode) => {
+                    const display = MODE_METADATA[mode.id];
+                    const Icon = display?.icon ?? SlidersHorizontal;
+                    return (
+                      <Card key={mode.id}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-4">
+                            <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-lg border', category.tone.iconBg, category.tone.iconBorder, category.tone.text)}>
+                              <Icon size={20} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-sm">{display?.label ?? mode.name}</h3>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    'text-xs',
+                                    mode.is_enabled
+                                      ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                                      : 'border-border text-muted-foreground'
+                                  )}
+                                >
+                                  {mode.is_enabled ? 'On' : 'Off'}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                {display?.description ?? (mode as Mode & { description?: string }).description ?? 'No description'}
+                              </p>
+                              {mode.config && Object.keys(mode.config as object).length > 0 && (
+                                <p className="text-xs text-muted-foreground/50 mt-1 truncate font-mono">
+                                  {Object.entries(mode.config as Record<string, unknown>).slice(0, 3).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' · ')}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <Switch
+                                checked={mode.is_enabled}
+                                onCheckedChange={() => toggleEnabled(mode)}
+                              />
+                              <Button size="sm" variant="outline" onClick={() => openConfig(mode)} className="gap-1.5 text-xs">
+                                <Settings2 size={12} /> Configure
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </section>
             );
           })}
         </div>
@@ -585,8 +600,7 @@ export default function ModesPage() {
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {configModal && (MODE_DISPLAY[configModal.mode.id]?.emoji ?? '⚙️')} Configure{' '}
-              {configModal && (MODE_DISPLAY[configModal.mode.id]?.label ?? configModal.mode.name)}
+              Configure {configModal && (MODE_METADATA[configModal.mode.id]?.label ?? configModal.mode.name)}
             </DialogTitle>
             <DialogDescription>Adjust settings for this display mode.</DialogDescription>
           </DialogHeader>

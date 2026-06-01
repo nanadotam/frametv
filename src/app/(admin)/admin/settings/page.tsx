@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv, Clock, CalendarDays, ChevronRight, LockKeyhole, RefreshCw } from 'lucide-react';
+import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv, Clock, CalendarDays, ChevronRight, LockKeyhole, RefreshCw, Music2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -500,8 +500,8 @@ export default function SettingsPage() {
                   className="w-9 h-9 rounded-full object-cover shrink-0 border border-green-500/30"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-muted border border-border flex items-center justify-center shrink-0">
-                  <span className="text-xs text-muted-foreground">♫</span>
+                <div className="w-9 h-9 rounded-full bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                  <Music2 size={15} className="text-emerald-400" />
                 </div>
               )}
               <div className="min-w-0">

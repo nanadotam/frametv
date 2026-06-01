@@ -16,6 +16,41 @@ import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { Input } from '@/components/ui/input';
 import { Maximize2, Minimize2 } from 'lucide-react';
 
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+  msRequestFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  msFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+  msExitFullscreen?: () => Promise<void> | void;
+};
+
+function getFullscreenElement() {
+  const doc = document as FullscreenDocument;
+  return document.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement || null;
+}
+
+function isFullscreenSupported() {
+  if (typeof document === 'undefined') return false;
+  const el = document.documentElement as FullscreenElement;
+  return Boolean(el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen);
+}
+
+function requestFullscreen() {
+  const el = document.documentElement as FullscreenElement;
+  const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  return Promise.resolve(request?.call(el));
+}
+
+function exitFullscreen() {
+  const doc = document as FullscreenDocument;
+  const exit = document.exitFullscreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+  return Promise.resolve(exit?.call(document));
+}
+
 function LoadingSkeleton() {
   return (
     <div className="w-full h-full bg-black flex items-center justify-center">
@@ -120,6 +155,7 @@ function DisplayPinGate({ onUnlock }: { onUnlock: () => void }) {
 function useCinemaMode() {
   const [cinema, setCinema] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [supported, setSupported] = useState(true);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -129,13 +165,20 @@ function useCinemaMode() {
   }, []);
 
   const enter = useCallback(() => {
-    document.documentElement.requestFullscreen?.().catch(() => {});
+    if (!isFullscreenSupported()) {
+      setSupported(false);
+      showToast('Use your TV browser menu to enter fullscreen');
+      return;
+    }
+    requestFullscreen().catch(() => {
+      showToast('Use your TV browser menu to enter fullscreen');
+    });
     setCinema(true);
     showToast('Cinema Mode');
   }, [showToast]);
 
   const exit = useCallback(() => {
-    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    if (getFullscreenElement()) exitFullscreen().catch(() => {});
     setCinema(false);
     showToast('Exiting Cinema Mode');
   }, [showToast]);
@@ -146,14 +189,21 @@ function useCinemaMode() {
 
   // Sync state when the user presses Escape (browser exits fullscreen automatically)
   useEffect(() => {
+    setSupported(isFullscreenSupported());
     const onFsChange = () => {
-      if (!document.fullscreenElement && cinema) {
+      if (!getFullscreenElement() && cinema) {
         setCinema(false);
         showToast('Exiting Cinema Mode');
       }
     };
     document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    document.addEventListener('MSFullscreenChange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+      document.removeEventListener('MSFullscreenChange', onFsChange);
+    };
   }, [cinema, showToast]);
 
   // F key shortcut
@@ -165,7 +215,34 @@ function useCinemaMode() {
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle]);
 
-  return { cinema, toast, toggle };
+  return { cinema, toast, toggle, enter, supported };
+}
+
+function useFullscreenPrompt(enabled: boolean) {
+  const storageKey = 'frametv:display-fullscreen-prompt-dismissed';
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) return;
+    try {
+      if (localStorage.getItem(storageKey)) return;
+    } catch {
+      // Keep the prompt visible if storage is unavailable.
+    }
+    setVisible(true);
+    const timer = window.setTimeout(() => {
+      setVisible(false);
+      try { localStorage.setItem(storageKey, '1'); } catch {}
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [enabled]);
+
+  const dismiss = useCallback(() => {
+    setVisible(false);
+    try { localStorage.setItem(storageKey, '1'); } catch {}
+  }, []);
+
+  return { visible, dismiss };
 }
 
 function getDisplayClientId() {
@@ -247,7 +324,8 @@ export default function DisplayPage() {
   const theme = useAutoTheme();
   const dim = useAutoDim();
   const clockConfig = useClockOverlayConfig();
-  const { cinema, toast, toggle: toggleCinema } = useCinemaMode();
+  const { cinema, toast, toggle: toggleCinema, enter: enterCinema, supported: fullscreenSupported } = useCinemaMode();
+  const fullscreenPrompt = useFullscreenPrompt(authChecked && !locked);
   useSpotifyPlayer(); // Load Web Playback SDK silently; registers TV as Spotify device
 
   // Sync local toggle with the persisted config on first load
@@ -342,6 +420,53 @@ export default function DisplayPage() {
       {/* Dim overlay — hidden in cinema mode */}
       {!cinema && dim && (
         <div className="fixed inset-0 bg-black/40 pointer-events-none" />
+      )}
+
+      {!cinema && fullscreenPrompt.visible && (
+        <div
+          className="fixed inset-0 z-[90] pointer-events-none flex items-center justify-center p-8"
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <div
+            className="pointer-events-auto w-full max-w-md rounded-2xl border border-white/15 bg-black/65 p-5 text-center text-white shadow-2xl backdrop-blur-xl"
+            style={{ WebkitBackdropFilter: 'blur(20px)' }}
+          >
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
+              <Maximize2 size={22} />
+            </div>
+            <h2 className="text-xl font-semibold tracking-tight">Enter fullscreen</h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/60">
+              This display looks best without the browser frame.
+            </p>
+            {fullscreenSupported ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fullscreenPrompt.dismiss();
+                  enterCinema();
+                }}
+                className="mt-5 h-12 w-full rounded-xl bg-white text-sm font-bold uppercase tracking-[0.08em] text-black transition-transform active:translate-y-px"
+              >
+                Enter fullscreen
+              </button>
+            ) : (
+              <p className="mt-5 rounded-xl bg-white/10 px-4 py-3 text-sm text-white/70">
+                Fullscreen is not exposed by this browser. Use the TV browser menu if it has a fullscreen option.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                fullscreenPrompt.dismiss();
+              }}
+              className="mt-3 text-xs font-medium uppercase tracking-[0.1em] text-white/45 hover:text-white"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Floating controls — bottom-left, hidden in cinema mode */}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Music2 } from 'lucide-react';
 import { FastAverageColor } from 'fast-average-color';
 import type { ModeProps } from '@/modes/types';
 import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
@@ -310,7 +311,7 @@ export default function VinylMode({ brightness, config, onReady }: ModeProps) {
                         justifyContent: 'center', fontSize: '3rem',
                       }}
                     >
-                      🎵
+                      <Music2 size={44} />
                     </motion.div>
                   )}
                 </AnimatePresence>

@@ -156,6 +156,54 @@ html,body{
   cursor:pointer;
   -webkit-appearance:none;-moz-appearance:none;appearance:none;
 }
+.ftv-full-prompt{
+  position:fixed;top:0;right:0;bottom:0;left:0;z-index:85;
+  display:-webkit-box;display:-ms-flexbox;display:flex;
+  -webkit-box-align:center;-ms-flex-align:center;align-items:center;
+  -webkit-box-pack:center;-ms-flex-pack:center;justify-content:center;
+  padding:40px;pointer-events:none;
+}
+.ftv-full-card{
+  width:100%;max-width:440px;text-align:center;
+  background:rgba(0,0,0,.68);
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:24px;
+  padding:28px;
+  pointer-events:auto;
+  box-shadow:0 28px 80px rgba(0,0,0,.5);
+}
+.ftv-full-card h2{font-size:30px;line-height:1.1;margin-bottom:10px}
+.ftv-full-card p{font-size:16px;line-height:1.55;color:rgba(255,255,255,.62);margin-bottom:18px}
+.ftv-full-card button{
+  width:100%;height:56px;border-radius:14px;border:0;
+  background:#fff;color:#000;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;font-family:inherit;cursor:pointer;
+}
+.ftv-full-card .ftv-skip{
+  display:block;width:auto;height:auto;margin:16px auto 0;
+  background:transparent;color:rgba(255,255,255,.48);font-size:12px;
+}
+.ftv-unsupported{
+  position:absolute;top:0;right:0;bottom:0;left:0;
+  display:-webkit-box;display:-ms-flexbox;display:flex;
+  -webkit-box-align:center;-ms-flex-align:center;align-items:center;
+  -webkit-box-pack:center;-ms-flex-pack:center;justify-content:center;
+  background:linear-gradient(135deg,#17120e,#302014);
+  padding:40px;text-align:center;
+}
+.ftv-unsupported-card{
+  max-width:720px;border:1px solid rgba(255,255,255,.14);
+  background:rgba(0,0,0,.32);border-radius:24px;padding:34px;
+  box-shadow:0 28px 90px rgba(0,0,0,.35);
+}
+.ftv-unsupported-card h1{font-size:clamp(34px,5vw,62px);line-height:1.04;margin-bottom:16px}
+.ftv-unsupported-card p{font-size:clamp(17px,1.8vw,24px);line-height:1.55;color:rgba(255,255,255,.68)}
+.ftv-unsupported-actions{margin-top:24px;display:-webkit-box;display:-ms-flexbox;display:flex;-webkit-box-pack:center;-ms-flex-pack:center;justify-content:center}
+.ftv-unsupported-actions a{
+  display:inline-block;color:#000;background:#fff;text-decoration:none;
+  border-radius:999px;padding:14px 22px;font-weight:800;font-size:14px;
+  letter-spacing:.06em;text-transform:uppercase;
+}
 .ftv-photo{
   position:absolute;
   top:0;right:0;bottom:0;left:0;
@@ -352,6 +400,12 @@ const JS = `
     D.vinylArt = grab('ftv-vinyl-art');
     D.vinylName = grab('ftv-vinyl-name');
     D.vinylArtist = grab('ftv-vinyl-artist');
+    D.unsupported = grab('ftv-unsupported');
+    D.unsupportedMode = grab('ftv-unsupported-mode');
+    D.fullPrompt = grab('ftv-full-prompt');
+    D.fullPromptBtn = grab('ftv-full-prompt-btn');
+    D.fullPromptSkip = grab('ftv-full-prompt-skip');
+    D.fullPromptMsg = grab('ftv-full-prompt-msg');
     D.scripture        = grab('ftv-scripture');
     D.scriptureBgImg   = grab('ftv-scripture-bg-img');
     D.scriptureOverlay = grab('ftv-scripture-overlay');
@@ -407,6 +461,24 @@ const JS = `
     if (el.requestFullscreen) el.requestFullscreen();
     else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
     else if (el.msRequestFullscreen) el.msRequestFullscreen();
+  }
+
+  function dismissFullscreenPrompt() {
+    hide(D.fullPrompt);
+    try { localStorage.setItem('frametv:tv-fullscreen-prompt-dismissed', '1'); } catch (e) {}
+  }
+
+  function showFullscreenPrompt() {
+    try {
+      if (localStorage.getItem('frametv:tv-fullscreen-prompt-dismissed')) return;
+    } catch (e) {}
+    if (!D.fullPrompt) return;
+    if (!fullscreenSupported() && D.fullPromptMsg) {
+      D.fullPromptMsg.textContent = 'Fullscreen is not exposed by this TV browser. Use your TV browser menu if it has a fullscreen option.';
+      if (D.fullPromptBtn) hide(D.fullPromptBtn);
+    }
+    showFlex(D.fullPrompt);
+    setTimeout(dismissFullscreenPrompt, 8000);
   }
 
   function clientId() {
@@ -544,7 +616,8 @@ const JS = `
       };
       clockPosClass = posMap[cfg.position] || 'ftv-pos-br';
 
-      if (modeId === 'clock-text') { startClockMode(); }
+      if (!tvSafeModeSupported(modeId)) { showUnsupportedMode(); }
+      else if (modeId === 'clock-text') { startClockMode(); }
       else if (modeId === 'vinyl' || modeId === 'coverflow') { startVinylMode(); }
       else if (modeId === 'scripture') { startScriptureMode(); }
       else                         { loadPhotos(albumIds); }
@@ -585,6 +658,7 @@ const JS = `
     hide(D.imgB);
     D.display.style.opacity = (brightness / 100).toFixed(2);
     showBlock(D.display);
+    showFullscreenPrompt();
     D.clock.className        = 'ftv-clock-full';
     D.clock.style.fontFamily = clockFont;
     D.clock.style.display    = 'flex';
@@ -619,7 +693,28 @@ const JS = `
     hide(D.pinGrid);
     hide(D.vinyl);
     hide(D.scripture);
+    hide(D.unsupported);
     hide(D.clock);
+  }
+
+  function tvSafeModeSupported(id) {
+    return id === 'slideshow-single' ||
+      id === 'slideshow-grid' ||
+      id === 'pinterest' ||
+      id === 'clock-text' ||
+      id === 'vinyl' ||
+      id === 'coverflow' ||
+      id === 'scripture';
+  }
+
+  function showUnsupportedMode() {
+    clearVisuals();
+    hide(D.loading);
+    D.display.style.opacity = (brightness / 100).toFixed(2);
+    showBlock(D.display);
+    if (D.unsupportedMode) D.unsupportedMode.textContent = modeId || 'This mode';
+    showFlex(D.unsupported);
+    showFullscreenPrompt();
   }
 
   function startScriptureMode() {
@@ -627,6 +722,7 @@ const JS = `
     hide(D.loading);
     D.display.style.opacity = (brightness / 100).toFixed(2);
     showBlock(D.display);
+    showFullscreenPrompt();
     showFlex(D.scripture);
 
     var translation = (modeConfig && modeConfig.translation) || 'KJV';
@@ -665,6 +761,7 @@ const JS = `
     hide(D.loading);
     D.display.style.opacity = (brightness / 100).toFixed(2);
     showBlock(D.display);
+    showFullscreenPrompt();
     showFlex(D.vinyl);
     loadSpotifyVinyl();
     if (tSpotify) clearInterval(tSpotify);
@@ -737,6 +834,7 @@ const JS = `
     hide(D.loading);
     D.display.style.opacity = (brightness / 100).toFixed(2);
     showBlock(D.display);
+    showFullscreenPrompt();
     if (modeId === 'slideshow-grid') {
       startGridMode();
     } else if (modeId === 'pinterest') {
@@ -966,6 +1064,11 @@ const JS = `
     cacheDom();
     if (D.pinForm) D.pinForm.addEventListener('submit', onPinSubmit);
     if (D.fullBtn) D.fullBtn.addEventListener('click', toggleFullscreen);
+    if (D.fullPromptBtn) D.fullPromptBtn.addEventListener('click', function () {
+      dismissFullscreenPrompt();
+      toggleFullscreen();
+    });
+    if (D.fullPromptSkip) D.fullPromptSkip.addEventListener('click', dismissFullscreenPrompt);
     document.addEventListener('keydown', onKey);
     document.addEventListener('fullscreenchange', heartbeat);
     document.addEventListener('webkitfullscreenchange', heartbeat);
@@ -1044,6 +1147,18 @@ function buildPage(): string {
   <img id="ftv-img-b" class="ftv-photo" alt="">
   <div id="ftv-grid" class="ftv-grid" style="display:none"></div>
   <div id="ftv-pinterest" class="ftv-pinterest" style="display:none"></div>
+  <div id="ftv-unsupported" class="ftv-unsupported" style="display:none">
+    <div class="ftv-unsupported-card">
+      <h1>Compatibility renderer</h1>
+      <p>
+        <span id="ftv-unsupported-mode">This mode</span> is not supported by the TV-safe renderer yet.
+        Open the full renderer if this TV browser can handle it, or switch to Slideshow from the admin remote.
+      </p>
+      <div class="ftv-unsupported-actions">
+        <a href="/display?full=1">Open full renderer</a>
+      </div>
+    </div>
+  </div>
   <div id="ftv-vinyl" class="ftv-vinyl" style="display:none">
     <div id="ftv-vinyl-bg" class="ftv-vinyl-bg"></div>
     <div class="ftv-record">
@@ -1077,6 +1192,14 @@ function buildPage(): string {
     <span id="ftv-clock-txt"></span>
   </div>
   <button id="ftv-fullscreen" class="ftv-control" type="button" aria-label="Fullscreen">&#9974;&#xFE0E;</button>
+  <div id="ftv-full-prompt" class="ftv-full-prompt" style="display:none">
+    <div class="ftv-full-card">
+      <h2>Enter fullscreen</h2>
+      <p id="ftv-full-prompt-msg">This display looks best without the browser frame.</p>
+      <button id="ftv-full-prompt-btn" type="button">Enter fullscreen</button>
+      <button id="ftv-full-prompt-skip" class="ftv-skip" type="button">Not now</button>
+    </div>
+  </div>
 </div>
 
 <script>${JS}</script>

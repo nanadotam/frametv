@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Monitor } from 'lucide-react';
+import { Clock3, Hash, Monitor, Music2, Settings, Smartphone, Zap } from 'lucide-react';
 
 const TOTAL = 4;
 
@@ -255,23 +255,25 @@ function StepTips() {
   return (
     <div className="flex flex-col gap-5">
       <div className="text-center space-y-2">
-        <div className="text-5xl">⚡</div>
+        <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+          <Zap size={30} />
+        </div>
         <h2 className="text-3xl font-black tracking-tight">You&apos;re almost ready</h2>
         <p className="text-sm text-muted-foreground">A few things to know before you dive in.</p>
       </div>
 
       <div className="space-y-2.5">
         {[
-          { emoji: '🔢', text: 'Your display PIN unlocks the TV screen — use it when prompted on the display.' },
-          { emoji: '🎵', text: 'Connect Spotify in Settings to show album art and control music from your phone.' },
-          { emoji: '🕐', text: 'Enable the clock overlay to show the time and date over your photos.' },
-          { emoji: '📱', text: 'The Remote tab works from any device — bookmark /admin on your phone.' },
-        ].map(({ emoji, text }) => (
+          { icon: Hash, text: 'Your display PIN unlocks the TV screen — use it when prompted on the display.' },
+          { icon: Music2, text: 'Connect Spotify in Settings to show album art and control music from your phone.' },
+          { icon: Clock3, text: 'Enable the clock overlay to show the time and date over your photos.' },
+          { icon: Smartphone, text: 'The Remote tab works from any device — bookmark /admin on your phone.' },
+        ].map(({ icon: Icon, text }) => (
           <div
             key={text}
             className="flex items-start gap-3 rounded-xl px-4 py-3 border border-border bg-card"
           >
-            <span className="text-xl shrink-0">{emoji}</span>
+            <Icon size={18} className="mt-0.5 shrink-0 text-primary" />
             <p className="text-sm text-muted-foreground leading-snug">{text}</p>
           </div>
         ))}

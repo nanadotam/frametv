@@ -12,9 +12,13 @@ const NAV = [
   { href: '/admin',           label: 'Remote',    icon: Home },
   { href: '/admin/albums',    label: 'Albums',    icon: Images },
   { href: '/admin/music',     label: 'Music',     icon: Music2 },
-  { href: '/admin/flipboard', label: 'FlipBoard', icon: Radio },
   { href: '/admin/modes',     label: 'Modes',     icon: LayoutGrid },
   { href: '/admin/settings',  label: 'Settings',  icon: Settings },
+];
+
+const SECONDARY_NAV = [
+  { href: '/admin/flipboard', label: 'FlipBoard', icon: Radio },
+  { href: '/admin/schedule',  label: 'Schedule',  icon: Settings },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -33,8 +37,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Sidebar — desktop */}
         <aside className="hidden md:flex flex-col w-56 border-r border-border bg-card shrink-0">
           <div className="flex items-center gap-2.5 px-4 py-4 border-b border-border">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-              <Tv size={15} className="text-primary-foreground" />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-sky-500 flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20">
+              <Tv size={15} className="text-white" />
             </div>
             <div>
               <p className="text-sm font-semibold leading-none tracking-tight">FrameTV</p>
@@ -52,7 +56,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   className={cn(
                     'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
                     active
-                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      ? 'bg-gradient-to-r from-emerald-500/22 to-sky-500/14 text-emerald-50 ring-1 ring-emerald-400/25 shadow-sm'
                       : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                   )}
                 >
@@ -62,19 +66,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               );
             })}
 
-            {/* Schedule — accessible but not a primary tab */}
-            <Link
-              href="/admin/schedule"
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                pathname.startsWith('/admin/schedule')
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-              )}
-            >
-              <Settings size={16} className="opacity-60" />
-              Schedule
-            </Link>
+            <div className="pt-3 mt-3 border-t border-border/70">
+              <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                More
+              </p>
+              {SECONDARY_NAV.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                    pathname.startsWith(href)
+                      ? 'bg-gradient-to-r from-emerald-500/22 to-sky-500/14 text-emerald-50 ring-1 ring-emerald-400/25 shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                  )}
+                >
+                  <Icon size={16} className="opacity-75" />
+                  {label}
+                </Link>
+              ))}
+            </div>
           </nav>
 
           <Separator />
@@ -113,7 +124,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 href={href}
                 className={cn(
                   'flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition-colors',
-                  active ? 'text-primary' : 'text-muted-foreground'
+                  active ? 'text-emerald-300' : 'text-muted-foreground'
                 )}
               >
                 <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />

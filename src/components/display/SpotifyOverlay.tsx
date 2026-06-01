@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Music2 } from 'lucide-react';
 import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
 import type { ClockPosition } from './ClockOverlay';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
@@ -104,7 +105,7 @@ function AlbumTile({
             fontSize: isCurrent ? 28 : 20,
           }}
         >
-          🎵
+          <Music2 size={isCurrent ? 28 : 20} />
         </div>
       )}
     </motion.div>
