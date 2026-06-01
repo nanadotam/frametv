@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
@@ -118,6 +118,7 @@ export default function SlideshowSingleMode({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={src}
+              alt=""
               aria-hidden
               style={{
                 ...IMG_STYLE,

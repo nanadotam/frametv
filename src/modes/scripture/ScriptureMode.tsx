@@ -43,13 +43,16 @@ export default function ScriptureMode({ config, brightness, onReady }: ModeProps
   // Use refs for values that shouldn't retrigger the fetch
   const customMoodRef = useRef(cfg.customMood ?? '');
   const overridesRef = useRef<Record<string, string>>(cfg.moodMappingOverrides ?? {});
-  customMoodRef.current = cfg.customMood ?? '';
-  overridesRef.current = cfg.moodMappingOverrides ?? {};
 
   const [verse, setVerse] = useState<ScriptureVerse | null>(null);
   const [photo, setPhoto] = useState<UnsplashPhoto | null>(null);
   const [visible, setVisible] = useState(false);
   const cancelRef = useRef(false);
+
+  useEffect(() => {
+    customMoodRef.current = cfg.customMood ?? '';
+    overridesRef.current = cfg.moodMappingOverrides ?? {};
+  }, [cfg.customMood, cfg.moodMappingOverrides]);
 
   const load = useCallback(async () => {
     cancelRef.current = false;

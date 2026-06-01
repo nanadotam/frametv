@@ -147,6 +147,15 @@ html,body{
   -webkit-transition:opacity .35s ease;
   transition:opacity .35s ease;
 }
+.ftv-control{
+  position:fixed;right:24px;bottom:24px;z-index:80;
+  width:58px;height:58px;border-radius:999px;
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(0,0,0,.55);color:#fff;
+  font-size:28px;line-height:58px;text-align:center;
+  cursor:pointer;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+}
 .ftv-photo{
   position:absolute;
   top:0;right:0;bottom:0;left:0;
@@ -158,6 +167,64 @@ html,body{
   -webkit-transition:opacity 1.3s ease;
   transition:opacity 1.3s ease;
 }
+.ftv-hidden{display:none!important}
+.ftv-grid{
+  position:absolute;top:0;right:0;bottom:0;left:0;
+  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);
+  gap:10px;padding:10px;background:#050505;
+}
+.ftv-grid img,.ftv-pincol img{
+  width:100%;height:100%;object-fit:cover;display:block;background:#111;
+}
+.ftv-pinterest{
+  position:absolute;top:0;right:0;bottom:0;left:0;
+  display:-webkit-box;display:-ms-flexbox;display:flex;
+  gap:10px;padding:10px;overflow:hidden;background:#050505;
+}
+.ftv-pincol{
+  -webkit-box-flex:1;-ms-flex:1;flex:1;
+  display:-webkit-box;display:-ms-flexbox;display:flex;
+  -webkit-box-orient:vertical;-webkit-box-direction:normal;
+  -ms-flex-direction:column;flex-direction:column;
+  gap:10px;
+}
+.ftv-pincol img{height:34vh;border-radius:16px}
+.ftv-vinyl{
+  position:absolute;top:0;right:0;bottom:0;left:0;
+  display:-webkit-box;display:-ms-flexbox;display:flex;
+  -webkit-box-orient:vertical;-webkit-box-direction:normal;
+  -ms-flex-direction:column;flex-direction:column;
+  -webkit-box-align:center;-ms-flex-align:center;align-items:center;
+  -webkit-box-pack:center;-ms-flex-pack:center;justify-content:center;
+  overflow:hidden;background:#6b5040;
+}
+.ftv-vinyl-bg{
+  position:absolute;top:0;right:0;bottom:0;left:0;
+  background:radial-gradient(ellipse at 35% 20%,rgba(255,255,255,.22),transparent 48%),linear-gradient(155deg,#806044,#2a1c12);
+}
+.ftv-record{
+  position:relative;width:62vmin;height:62vmin;border-radius:50%;
+  background:
+    repeating-radial-gradient(circle at center,#111 0,#111 2px,#191919 2.8px,#090909 4.2px),
+    radial-gradient(circle at center,#1a1a1a 0,#050505 65%,#000 100%);
+  box-shadow:0 18px 60px rgba(0,0,0,.45);
+  -webkit-animation:ftv-spin 18s linear infinite;
+  animation:ftv-spin 18s linear infinite;
+}
+@-webkit-keyframes ftv-spin{from{-webkit-transform:rotate(0)}to{-webkit-transform:rotate(360deg)}}
+@keyframes ftv-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.ftv-label{
+  position:absolute;top:50%;left:50%;
+  width:62%;height:62%;border-radius:50%;overflow:hidden;
+  -webkit-transform:translate(-50%,-50%);transform:translate(-50%,-50%);
+  background:rgba(255,255,255,.12);
+}
+.ftv-label img{width:100%;height:100%;object-fit:cover;display:block}
+.ftv-vinyl-title{
+  position:relative;text-align:center;margin-top:34px;max-width:78vw;
+}
+.ftv-vinyl-title h1{font-size:clamp(34px,5vw,68px);line-height:1.05}
+.ftv-vinyl-title p{font-size:clamp(20px,2.4vw,34px);color:rgba(255,255,255,.72);margin-top:10px}
 
 /* Clock ─────────────────────────────────────────────────────────────────── */
 #ftv-clock{
@@ -223,9 +290,11 @@ const JS = `
   var clockPosClass = 'ftv-pos-br';
   var clockFont     = 'system-ui,sans-serif';
   var modeId        = null;
+  var modeConfig    = {};
   var tPhoto        = null;
   var tPoll         = null;
   var tClock        = null;
+  var tSpotify      = null;
 
   /* ── dom cache ──────────────────────────────────────────────────────────── */
   var D = {};
@@ -241,6 +310,14 @@ const JS = `
     D.display  = grab('ftv-display');
     D.imgA     = grab('ftv-img-a');
     D.imgB     = grab('ftv-img-b');
+    D.grid     = grab('ftv-grid');
+    D.pinGrid  = grab('ftv-pinterest');
+    D.vinyl    = grab('ftv-vinyl');
+    D.vinylBg  = grab('ftv-vinyl-bg');
+    D.vinylArt = grab('ftv-vinyl-art');
+    D.vinylName = grab('ftv-vinyl-name');
+    D.vinylArtist = grab('ftv-vinyl-artist');
+    D.fullBtn  = grab('ftv-fullscreen');
     D.clock    = grab('ftv-clock');
     D.clockTxt = grab('ftv-clock-txt');
   }
@@ -269,6 +346,58 @@ const JS = `
   function showBlock(el) { if (el) el.style.display = 'block'; }
   function hide(el)      { if (el) el.style.display = 'none'; }
   function msg(t)        { if (D.loadMsg) D.loadMsg.textContent = t; }
+
+  function fullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement || null;
+  }
+  function fullscreenSupported() {
+    var el = document.documentElement;
+    return !!(el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen);
+  }
+  function toggleFullscreen() {
+    var el = document.documentElement;
+    if (fullscreenElement()) {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      else if (document.msExitFullscreen) document.msExitFullscreen();
+      return;
+    }
+    if (el.requestFullscreen) el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else if (el.msRequestFullscreen) el.msRequestFullscreen();
+  }
+
+  function clientId() {
+    try {
+      var key = 'frametv:display-device-id';
+      var existing = localStorage.getItem(key);
+      if (existing) return existing;
+      var next = String(Date.now()) + '-' + String(Math.random()).slice(2);
+      localStorage.setItem(key, next);
+      return next;
+    } catch (e) {
+      return String(Date.now()) + '-' + String(Math.random()).slice(2);
+    }
+  }
+
+  function heartbeat() {
+    var body = JSON.stringify({
+      client_id: clientId(),
+      label: 'TV display',
+      route: '/tv',
+      renderer: 'html-tv',
+      active_mode_id: modeId,
+      viewport_width: window.innerWidth || document.documentElement.clientWidth,
+      viewport_height: window.innerHeight || document.documentElement.clientHeight,
+      screen_width: window.screen ? window.screen.width : null,
+      screen_height: window.screen ? window.screen.height : null,
+      device_pixel_ratio: window.devicePixelRatio || 1,
+      fullscreen_supported: fullscreenSupported(),
+      fullscreen_active: !!fullscreenElement(),
+      visibility_state: document.visibilityState || 'visible'
+    });
+    post('/api/display-devices', body, function () {});
+  }
 
   /* ── auth ───────────────────────────────────────────────────────────────── */
   function checkAuth() {
@@ -307,8 +436,10 @@ const JS = `
     // Clear any timers from a previous session (e.g. user logs out and back in).
     if (tClock) { clearInterval(tClock); tClock = null; }
     if (tPhoto) { clearInterval(tPhoto); tPhoto = null; }
+    if (tSpotify) { clearInterval(tSpotify); tSpotify = null; }
     msg('');
     loadState();
+    heartbeat();
     if (tPoll) clearInterval(tPoll);
     tPoll = setInterval(poll, POLL_MS);
   }
@@ -349,6 +480,7 @@ const JS = `
         if (modes[i].id === modeId) { row = modes[i]; break; }
       }
       var cfg  = (row && row.config) || {};
+      modeConfig = cfg;
       var secs = Number(cfg.intervalSeconds || cfg.interval || 10);
       intervalMs = Math.max(2, secs) * 1000;
       loadClockConfig(albumIds);
@@ -371,6 +503,7 @@ const JS = `
       clockPosClass = posMap[cfg.position] || 'ftv-pos-br';
 
       if (modeId === 'clock-text') { startClockMode(); }
+      else if (modeId === 'vinyl' || modeId === 'coverflow') { startVinylMode(); }
       else                         { loadPhotos(albumIds); }
     });
   }
@@ -436,6 +569,67 @@ const JS = `
     }
   }
 
+  function clearVisuals() {
+    hide(D.imgA);
+    hide(D.imgB);
+    hide(D.grid);
+    hide(D.pinGrid);
+    hide(D.vinyl);
+    hide(D.clock);
+  }
+
+  function startVinylMode() {
+    clearVisuals();
+    hide(D.loading);
+    D.display.style.opacity = (brightness / 100).toFixed(2);
+    showBlock(D.display);
+    showFlex(D.vinyl);
+    loadSpotifyVinyl();
+    if (tSpotify) clearInterval(tSpotify);
+    tSpotify = setInterval(loadSpotifyVinyl, 15000);
+  }
+
+  function loadSpotifyVinyl() {
+    get('/api/spotify/now-playing', function (data, ok) {
+      var cur = ok && data && data.current ? data.current : null;
+      if (!cur) {
+        if (D.vinylName) D.vinylName.textContent = 'Spotify idle';
+        if (D.vinylArtist) D.vinylArtist.textContent = 'Last song will appear after playback';
+        return;
+      }
+      if (D.vinylArt && cur.albumArtUrl) D.vinylArt.src = cur.albumArtUrl;
+      if (D.vinylName) D.vinylName.textContent = cur.name || '';
+      if (D.vinylArtist) D.vinylArtist.textContent = (cur.artists || []).join(', ');
+      if (cur.albumArtUrl) sampleImageColor(cur.albumArtUrl);
+    });
+  }
+
+  function sampleImageColor(src) {
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function () {
+      try {
+        var c = document.createElement('canvas');
+        c.width = 24; c.height = 24;
+        var ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, 24, 24);
+        var data = ctx.getImageData(0, 0, 24, 24).data;
+        var r = 0, g = 0, b = 0, n = 0;
+        for (var i = 0; i < data.length; i += 16) {
+          r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
+        }
+        r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+        var light = 'rgb(' + Math.min(255, r + 52) + ',' + Math.min(255, g + 52) + ',' + Math.min(255, b + 52) + ')';
+        var base = 'rgb(' + r + ',' + g + ',' + b + ')';
+        var dark = 'rgb(' + Math.round(r * .45) + ',' + Math.round(g * .45) + ',' + Math.round(b * .45) + ')';
+        if (D.vinylBg) {
+          D.vinylBg.style.background = 'radial-gradient(ellipse at 35% 20%,' + light + ' 0%,transparent 48%),linear-gradient(155deg,' + base + ',' + dark + ')';
+        }
+      } catch (e) { /* CORS can block canvas reads; keep default colors */ }
+    };
+    img.src = src;
+  }
+
   /* ── photo loading ──────────────────────────────────────────────────────── */
   // Uses /api/photos which allows display sessions (unlike /api/albums/[id]/photos
   // which is admin-only). Fetches all albums in one request via albumIds param.
@@ -461,9 +655,63 @@ const JS = `
     hide(D.loading);
     D.display.style.opacity = (brightness / 100).toFixed(2);
     showBlock(D.display);
+    if (modeId === 'slideshow-grid') {
+      startGridMode();
+    } else if (modeId === 'pinterest') {
+      startPinterestMode();
+    } else {
+      startSlideshowMode();
+    }
+    if (clockEnabled) mountClockOverlay();
+  }
+
+  function startSlideshowMode() {
+    clearVisuals();
+    showBlock(D.imgA);
+    showBlock(D.imgB);
     advance(0);
     startTimer();
-    if (clockEnabled) mountClockOverlay();
+  }
+
+  function startGridMode() {
+    clearVisuals();
+    renderGrid();
+    showBlock(D.grid);
+    startTimer();
+  }
+
+  function startPinterestMode() {
+    clearVisuals();
+    renderPinterest();
+    showFlex(D.pinGrid);
+    startTimer();
+  }
+
+  function renderGrid() {
+    if (!D.grid || !photos.length) return;
+    var html = '';
+    for (var i = 0; i < 6; i++) {
+      var idx = ((currentIdx + i) % photos.length + photos.length) % photos.length;
+      var p = photos[idx];
+      html += '<img alt="" src="' + photoSrc(p) + '">';
+    }
+    D.grid.innerHTML = html;
+  }
+
+  function renderPinterest() {
+    if (!D.pinGrid || !photos.length) return;
+    var cols = Math.max(2, Math.min(5, Number(modeConfig.rows || 3)));
+    var html = '';
+    for (var c = 0; c < cols; c++) {
+      html += '<div class="ftv-pincol">';
+      for (var r = 0; r < 5; r++) {
+        var idx = ((currentIdx + c + r * cols) % photos.length + photos.length) % photos.length;
+        var p = photos[idx];
+        html += '<img alt="" src="' + photoSrc(p) + '">';
+      }
+      html += '</div>';
+    }
+    D.pinGrid.innerHTML = html;
   }
 
   /* ── photo display ──────────────────────────────────────────────────────── */
@@ -539,7 +787,16 @@ const JS = `
   function startTimer() {
     if (tPhoto) clearInterval(tPhoto);
     tPhoto = setInterval(function () {
-      if (!isPaused) advance(currentIdx + 1);
+      if (isPaused) return;
+      if (modeId === 'slideshow-grid') {
+        currentIdx = (currentIdx + 6) % photos.length;
+        renderGrid();
+      } else if (modeId === 'pinterest') {
+        currentIdx = (currentIdx + 3) % photos.length;
+        renderPinterest();
+      } else {
+        advance(currentIdx + 1);
+      }
     }, intervalMs);
   }
 
@@ -562,23 +819,40 @@ const JS = `
         var delta = ns - lastSkip;
         if (Math.abs(delta) >= 1000) {
           photos = shuffle(photos);
-          advance(0);
+          currentIdx = 0;
         } else {
           var dir   = delta > 0 ? 1 : -1;
           var steps = Math.abs(delta);
-          advance(currentIdx + dir * steps);
+          currentIdx = currentIdx + dir * steps;
         }
+        if (modeId === 'slideshow-grid') renderGrid();
+        else if (modeId === 'pinterest') renderPinterest();
+        else advance(currentIdx);
       }
       lastSkip = ns;
+
+      if (s.active_mode_id && s.active_mode_id !== modeId) {
+        loadState();
+      }
+      heartbeat();
     });
   }
 
   /* ── remote / keyboard ──────────────────────────────────────────────────── */
   function onKey(e) {
     var k = e.key || e.keyCode;
-    if      (k === 'ArrowRight' || k === 39) { if (modeId !== 'clock-text') advance(currentIdx + 1); }
-    else if (k === 'ArrowLeft'  || k === 37) { if (modeId !== 'clock-text') advance(currentIdx - 1); }
+    if      (k === 'ArrowRight' || k === 39) {
+      if (modeId === 'slideshow-grid') { currentIdx += 6; renderGrid(); }
+      else if (modeId === 'pinterest') { currentIdx += 3; renderPinterest(); }
+      else if (modeId !== 'clock-text' && modeId !== 'vinyl' && modeId !== 'coverflow') advance(currentIdx + 1);
+    }
+    else if (k === 'ArrowLeft'  || k === 37) {
+      if (modeId === 'slideshow-grid') { currentIdx -= 6; renderGrid(); }
+      else if (modeId === 'pinterest') { currentIdx -= 3; renderPinterest(); }
+      else if (modeId !== 'clock-text' && modeId !== 'vinyl' && modeId !== 'coverflow') advance(currentIdx - 1);
+    }
     else if (k === 'Enter' || k === 13 || k === ' ' || k === 32) { isPaused = !isPaused; }
+    else if (k === 'f' || k === 'F' || k === 70) { toggleFullscreen(); }
   }
 
   /* ── utilities ──────────────────────────────────────────────────────────── */
@@ -609,7 +883,10 @@ const JS = `
   function boot() {
     cacheDom();
     if (D.pinForm) D.pinForm.addEventListener('submit', onPinSubmit);
+    if (D.fullBtn) D.fullBtn.addEventListener('click', toggleFullscreen);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('fullscreenchange', heartbeat);
+    document.addEventListener('webkitfullscreenchange', heartbeat);
     checkAuth();
   }
 
@@ -683,10 +960,25 @@ function buildPage(): string {
   <!-- Two layers crossfade — only one is visible at a time -->
   <img id="ftv-img-a" class="ftv-photo" alt="">
   <img id="ftv-img-b" class="ftv-photo" alt="">
+  <div id="ftv-grid" class="ftv-grid" style="display:none"></div>
+  <div id="ftv-pinterest" class="ftv-pinterest" style="display:none"></div>
+  <div id="ftv-vinyl" class="ftv-vinyl" style="display:none">
+    <div id="ftv-vinyl-bg" class="ftv-vinyl-bg"></div>
+    <div class="ftv-record">
+      <div class="ftv-label">
+        <img id="ftv-vinyl-art" alt="">
+      </div>
+    </div>
+    <div class="ftv-vinyl-title">
+      <h1 id="ftv-vinyl-name">Spotify idle</h1>
+      <p id="ftv-vinyl-artist">Last song will appear after playback</p>
+    </div>
+  </div>
   <!-- Clock overlay / fullscreen clock -->
   <div id="ftv-clock" style="display:none" aria-live="off">
     <span id="ftv-clock-txt"></span>
   </div>
+  <button id="ftv-fullscreen" class="ftv-control" type="button" aria-label="Fullscreen">&#9974;&#xFE0E;</button>
 </div>
 
 <script>${JS}</script>

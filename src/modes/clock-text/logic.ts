@@ -15,9 +15,6 @@ const HOUR_IDS: Record<number, string> = {
   12: 'twelve',
 };
 
-// Words that require the NEXT hour (e.g. "ten TO four" means hour+1)
-const TO_BUCKETS = new Set([35, 40, 45, 50, 55]);
-
 function getHourId(h24: number, useNext: boolean): string {
   let h = h24 % 12;
   if (useNext) h = (h + 1) % 12;
@@ -37,8 +34,6 @@ export function computeActiveWords(date: Date): Set<string> {
 
   // Determine which bucket the minute falls in
   const bucket = Math.floor(m / 5) * 5;
-  const useNextHour = TO_BUCKETS.has(bucket) || (bucket === 0 && m === 0 ? false : bucket > 30);
-
   // Map minute bucket → word IDs
   if (bucket === 0) {
     // o'clock

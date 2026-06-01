@@ -14,6 +14,7 @@ import ClockOverlay from '@/components/display/ClockOverlay';
 import SpotifyOverlay from '@/components/display/SpotifyOverlay';
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { Input } from '@/components/ui/input';
+import { Maximize2, Minimize2 } from 'lucide-react';
 
 function LoadingSkeleton() {
   return (
@@ -167,6 +168,60 @@ function useCinemaMode() {
   return { cinema, toast, toggle };
 }
 
+function getDisplayClientId() {
+  const key = 'frametv:display-device-id';
+  try {
+    const existing = localStorage.getItem(key);
+    if (existing) return existing;
+    const next = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem(key, next);
+    return next;
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
+function useDisplayDeviceHeartbeat(activeModeId: string | null, enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+
+    const send = () => {
+      fetch('/api/display-devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: getDisplayClientId(),
+          label: 'React display',
+          route: '/display',
+          renderer: 'react',
+          active_mode_id: activeModeId,
+          viewport_width: window.innerWidth,
+          viewport_height: window.innerHeight,
+          screen_width: window.screen?.width,
+          screen_height: window.screen?.height,
+          device_pixel_ratio: window.devicePixelRatio,
+          fullscreen_supported: Boolean(document.documentElement.requestFullscreen),
+          fullscreen_active: Boolean(document.fullscreenElement),
+          visibility_state: document.visibilityState,
+        }),
+      }).catch(() => {});
+    };
+
+    send();
+    const interval = window.setInterval(send, 30_000);
+    document.addEventListener('fullscreenchange', send);
+    document.addEventListener('visibilitychange', send);
+    window.addEventListener('resize', send);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('fullscreenchange', send);
+      document.removeEventListener('visibilitychange', send);
+      window.removeEventListener('resize', send);
+    };
+  }, [activeModeId, enabled]);
+}
+
 export default function DisplayPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -235,6 +290,9 @@ export default function DisplayPage() {
     }
   }, [displayState?.photo_skip]);
 
+  const modeId = activeMode.modeId as ModeId | null;
+  useDisplayDeviceHeartbeat(modeId, authChecked && !locked);
+
   if (authChecked && locked) {
     return <DisplayPinGate onUnlock={() => { setLocked(false); window.location.reload(); }} />;
   }
@@ -247,7 +305,6 @@ export default function DisplayPage() {
     );
   }
 
-  const modeId = activeMode.modeId as ModeId | null;
   const ModeComponent = modeId && MODES[modeId] ? MODES[modeId] : null;
 
   const brightness: number = (displayState.brightness as number) ?? 100;
@@ -300,6 +357,37 @@ export default function DisplayPage() {
             gap: '10px',
           }}
         >
+          {/* Clock toggle */}
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleCinema(); }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            title={cinema ? 'Exit fullscreen' : 'Enter fullscreen'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '8px 16px',
+              borderRadius: '999px',
+              background: 'rgba(0,0,0,0.55)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.16)',
+              color: '#fff',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              opacity: 0.55,
+              transition: 'opacity 0.2s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.55')}
+          >
+            {cinema ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            {cinema ? 'Exit full' : 'Fullscreen'}
+          </button>
+
           {/* Clock toggle */}
           <button
             onClick={(e) => { e.stopPropagation(); setClockOn((v) => !v); }}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   SkipForward, SkipBack, Pause, Play, Tv, Sun, Radio, Clock,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Send, Zap,
-  CalendarDays, Star, Shuffle,
+  CalendarDays, Star, Shuffle, MonitorSmartphone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { invalidateModes } from '@/hooks/useModes';
-import type { DisplayState, Album, Schedule, Mode } from '@/types/db';
+import type { DisplayState, Album, Schedule, Mode, DisplayDevice } from '@/types/db';
 import PageGuide from '@/components/admin/PageGuide';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -398,6 +398,8 @@ export default function NowPlayingPage() {
   const [schedules, setSchedules]           = useState<Schedule[]>([]);
   const [clockConfig, setClockConfig]       = useState<ClockConfig>({ enabled: false, position: 'bottom-right', font: 'Poppins' });
   const [modes, setModes]                   = useState<Mode[]>([]);
+  const [displayDevices, setDisplayDevices] = useState<DisplayDevice[]>([]);
+  const [deviceNow, setDeviceNow]           = useState(0);
   const [modeConfig, setModeConfig]         = useState<Cfg>({});
   const [loading, setLoading]               = useState(false);
   const [fetchError, setFetchError]         = useState<string | null>(null);
@@ -411,12 +413,13 @@ export default function NowPlayingPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [dsRes, albumsRes, scheduleRes, clockRes, modesRes] = await Promise.all([
+      const [dsRes, albumsRes, scheduleRes, clockRes, modesRes, devicesRes] = await Promise.all([
         fetch('/api/display-state'),
         fetch('/api/albums'),
         fetch('/api/schedules'),
         fetch('/api/settings?key=clock_overlay'),
         fetch('/api/modes'),
+        fetch('/api/display-devices'),
       ]);
 
       if (dsRes.ok) {
@@ -449,6 +452,12 @@ export default function NowPlayingPage() {
       if (modesRes.ok) {
         const json = await modesRes.json();
         setModes(Array.isArray(json) ? json : (json.modes ?? []));
+      }
+
+      if (devicesRes.ok) {
+        const json = await devicesRes.json();
+        setDisplayDevices(json.devices ?? []);
+        setDeviceNow(Date.now());
       }
     } catch {
       setFetchError('Network error — is the dev server running?');
@@ -545,6 +554,7 @@ export default function NowPlayingPage() {
   const isConnected  = displayState !== null && fetchError === null;
   const enabledSchedules = schedules.filter((s) => s.is_enabled);
   const nextSchedule = enabledSchedules[0] ?? null;
+  const activeDevices = displayDevices.filter((d) => deviceNow - new Date(d.last_seen_at).getTime() < 90_000);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -686,6 +696,56 @@ export default function NowPlayingPage() {
             <p className="text-xs text-muted-foreground/50 text-right">
               Updated {lastUpdated.toLocaleTimeString()}
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Display Devices ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <MonitorSmartphone size={15} className="text-primary" />
+              Display devices
+            </CardTitle>
+            <Badge variant="outline" className="text-xs">
+              {activeDevices.length} active
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {displayDevices.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Open the display on a TV or browser to register a device heartbeat.
+            </p>
+          ) : (
+            displayDevices.slice(0, 4).map((device) => {
+              const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
+              const label = device.label || device.device_name || `${device.browser ?? 'Browser'} on ${device.os ?? 'Unknown OS'}`;
+              return (
+                <div
+                  key={device.id}
+                  className="flex items-start justify-between gap-3 bg-background rounded-lg border border-border p-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={cn('w-2 h-2 rounded-full', active ? 'bg-green-500' : 'bg-muted-foreground/40')} />
+                      <p className="text-sm font-semibold truncate">{label}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">
+                      {device.renderer ?? 'display'} · {device.active_mode_id ?? 'unknown mode'} · {device.browser ?? 'Unknown browser'} · {device.os ?? 'Unknown OS'}
+                    </p>
+                    <p className="text-xs text-muted-foreground/70 mt-0.5">
+                      {device.viewport_width ?? '?'}×{device.viewport_height ?? '?'} viewport
+                      {device.fullscreen_active ? ' · fullscreen' : ''}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground shrink-0">
+                    {new Date(device.last_seen_at).toLocaleTimeString()}
+                  </span>
+                </div>
+              );
+            })
           )}
         </CardContent>
       </Card>

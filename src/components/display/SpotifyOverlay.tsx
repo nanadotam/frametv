@@ -146,8 +146,7 @@ export default function SpotifyOverlay({ clockPosition }: SpotifyOverlayProps) {
         key: rowKeyRef.current,
       };
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id]);
+  }, [current, history, queue]);
 
   // Keep next slot fresh as queue updates
   useEffect(() => {
@@ -157,15 +156,14 @@ export default function SpotifyOverlay({ clockPosition }: SpotifyOverlayProps) {
       if (prev.next?.id === nextId) return prev;
       return { ...prev, next: queue[0] ?? null };
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue[0]?.id]);
+  }, [queue]);
 
   // Pulse current album when track is near its end (< 6 seconds remaining)
   useEffect(() => {
     if (!current) return;
     const remaining = current.durationMs - current.progressMs;
     setPulsing(remaining > 0 && remaining < 6_000);
-  }, [current?.progressMs, current?.durationMs]);
+  }, [current]);
 
   if (!isPlaying || !row) return null;
 

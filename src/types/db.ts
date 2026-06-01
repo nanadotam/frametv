@@ -70,6 +70,37 @@ export interface DisplayState {
   updated_at: string;
 }
 
+// ─── Display Devices ─────────────────────────────────────────────────────────
+export interface DisplayDevice {
+  id: string;
+  user_id: string;
+  client_id: string;
+  label: string | null;
+  route: string | null;
+  renderer: string | null;
+  active_mode_id: string | null;
+  viewport_width: number | null;
+  viewport_height: number | null;
+  screen_width: number | null;
+  screen_height: number | null;
+  device_pixel_ratio: number | null;
+  fullscreen_supported: boolean | null;
+  fullscreen_active: boolean | null;
+  visibility_state: string | null;
+  device_name: string | null;
+  ip: string | null;
+  user_agent: string | null;
+  browser: string | null;
+  os: string | null;
+  device_type: string | null;
+  country: string | null;
+  city: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Schedules ────────────────────────────────────────────────────────────────
 export interface Schedule {
   id: string;
