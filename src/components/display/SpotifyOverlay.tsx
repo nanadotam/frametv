@@ -2,14 +2,15 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Music2 } from 'lucide-react';
+import { Music2, Play, Pause, SkipForward } from 'lucide-react';
 import type { ClockPosition } from './ClockOverlay';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
 
-// ─── Position + gradient helpers ──────────────────────────────────────────────
+// ─── Position helpers ─────────────────────────────────────────────────────────
 
+// Sit above the floating controls bar (bottom:28px + ~40px height + 8px gap = 88px)
 function overlayPosition(clockPos: ClockPosition): string {
-  return clockPos.includes('right') ? 'bottom-6 left-8' : 'bottom-6 right-8';
+  return clockPos.includes('right') ? 'left-8' : 'right-8';
 }
 
 function cornerGradient(clockPos: ClockPosition): React.CSSProperties {
@@ -98,7 +99,6 @@ function AlbumTile({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: isCurrent ? 28 : 20,
           }}
         >
           <Music2 size={isCurrent ? 28 : 20} />
@@ -125,9 +125,19 @@ interface SpotifyOverlayProps {
   queue: SpotifyTrack[];
   history: SpotifyTrack[];
   isPlaying: boolean;
+  onPlayPause?: () => void;
+  onNext?: () => void;
 }
 
-export default function SpotifyOverlay({ clockPosition, current, queue, history, isPlaying }: SpotifyOverlayProps) {
+export default function SpotifyOverlay({
+  clockPosition,
+  current,
+  queue,
+  history,
+  isPlaying,
+  onPlayPause,
+  onNext,
+}: SpotifyOverlayProps) {
   const [row, setRow] = useState<RowState | null>(null);
   const [pulsing, setPulsing] = useState(false);
   const rowKeyRef = useRef(0);
@@ -163,15 +173,17 @@ export default function SpotifyOverlay({ clockPosition, current, queue, history,
 
   if (!isPlaying || !row) return null;
 
-  const posClass = overlayPosition(clockPosition);
+  const sideClass = overlayPosition(clockPosition);
+  const showControls = Boolean(onPlayPause || onNext);
 
   return (
     <div
-      className={`fixed ${posClass} z-50 pointer-events-none select-none`}
-      style={{ maxWidth: 320 }}
+      className={`fixed bottom-[88px] ${sideClass} z-50 select-none`}
+      style={{ maxWidth: 320, pointerEvents: 'none' }}
     >
       <div aria-hidden style={cornerGradient(clockPosition)} />
 
+      {/* Album trio */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginBottom: 10 }}>
         <AnimatePresence mode="popLayout">
           {row.prev && (
@@ -188,6 +200,7 @@ export default function SpotifyOverlay({ clockPosition, current, queue, history,
         </AnimatePresence>
       </div>
 
+      {/* Track label */}
       <div style={{ paddingLeft: row.prev ? 82 : 0 }}>
         <motion.p
           key={row.current.id + '-title'}
@@ -229,6 +242,92 @@ export default function SpotifyOverlay({ clockPosition, current, queue, history,
         >
           {row.current.artists.join(', ')}
         </motion.p>
+
+        {/* Playback controls */}
+        {showControls && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.24 }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              marginTop: 10,
+              pointerEvents: 'auto',
+            }}
+          >
+            {onPlayPause && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onPlayPause(); }}
+                onDoubleClick={(e) => e.stopPropagation()}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.15)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease, transform 0.1s ease',
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.28)';
+                  e.currentTarget.style.transform = 'scale(1.08)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying
+                  ? <Pause size={15} fill="currentColor" />
+                  : <Play size={15} fill="currentColor" style={{ marginLeft: 1 }} />}
+              </button>
+            )}
+
+            {onNext && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onNext(); }}
+                onDoubleClick={(e) => e.stopPropagation()}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.1)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: 'rgba(255,255,255,0.8)',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease, transform 0.1s ease',
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.22)';
+                  e.currentTarget.style.transform = 'scale(1.08)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                title="Next track"
+              >
+                <SkipForward size={14} fill="currentColor" />
+              </button>
+            )}
+          </motion.div>
+        )}
       </div>
     </div>
   );

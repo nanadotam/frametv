@@ -386,7 +386,7 @@ function DeviceSelector() {
 
 export default function MusicPage() {
   const { current, queue, isPlaying } = useSpotifyNowPlaying();
-  const { deviceId, isReady, isConnecting, isPremiumRequired, error: sdkError, playUri } = useSpotifyPlayer();
+  const { deviceId, isReady, isConnecting, isPremiumRequired, error: sdkError, playUri, activate: activateSpotify } = useSpotifyPlayer();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SpotifyTrack[]>([]);
   const [searching, setSearching] = useState(false);
@@ -418,6 +418,7 @@ export default function MusicPage() {
   const prev  = () => playerAction('prev',  deviceParam);
 
   const playTrack = async (uri: string) => {
+    activateSpotify(); // must be synchronous within the click gesture
     setPlayError(null);
     try {
       await playUri(uri);

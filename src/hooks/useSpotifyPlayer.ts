@@ -7,6 +7,7 @@ interface SpotifyPlayerInstance {
   disconnect(): void;
   addListener(event: string, cb: (data: unknown) => void): boolean;
   removeListener(event: string): boolean;
+  activateElement(): void; // must be called within a user gesture before first play
 }
 
 declare global {
@@ -38,7 +39,6 @@ function loadSdkScript(): Promise<void> {
   if (sdkScriptPromise) return sdkScriptPromise;
   sdkScriptPromise = new Promise((resolve) => {
     if (document.querySelector(`script[src="${SDK_URL}"]`)) {
-      // Script already in DOM; wait for SDK ready or resolve immediately if already loaded
       if (window.Spotify) { resolve(); return; }
       const prev = window.onSpotifyWebPlaybackSDKReady;
       window.onSpotifyWebPlaybackSDKReady = () => { prev?.(); resolve(); };
@@ -53,7 +53,10 @@ function loadSdkScript(): Promise<void> {
   return sdkScriptPromise;
 }
 
-export function useSpotifyPlayer(): SpotifyPlayerState & { playUri: (uri: string) => Promise<void> } {
+export function useSpotifyPlayer(): SpotifyPlayerState & {
+  playUri: (uri: string) => Promise<void>;
+  activate: () => void;
+} {
   const [state, setState] = useState<SpotifyPlayerState>({
     deviceId: null,
     isReady: false,
@@ -62,8 +65,9 @@ export function useSpotifyPlayer(): SpotifyPlayerState & { playUri: (uri: string
     error: null,
   });
 
-  // Keep device_id in a ref so playUri can read it synchronously without stale closure
+  // Refs allow synchronous access inside click handlers (no stale closure)
   const deviceIdRef = useRef<string | null>(null);
+  const activateRef = useRef<(() => void) | null>(null);
   const playerRef = useRef<SpotifyPlayerInstance | null>(null);
   const mountedRef = useRef(true);
 
@@ -71,10 +75,9 @@ export function useSpotifyPlayer(): SpotifyPlayerState & { playUri: (uri: string
     mountedRef.current = true;
 
     async function init() {
-      // 401 = Spotify not connected — skip SDK silently
       const tokenRes = await fetch('/api/spotify/token').catch(() => null);
       if (!tokenRes?.ok) {
-        if (mountedRef.current) setState((s) => ({ ...s, isConnecting: false, error: null }));
+        if (mountedRef.current) setState((s) => ({ ...s, isConnecting: false }));
         return;
       }
 
@@ -96,6 +99,11 @@ export function useSpotifyPlayer(): SpotifyPlayerState & { playUri: (uri: string
         },
         volume: 0.8,
       });
+
+      // Store activateElement bound to this player instance
+      activateRef.current = () => {
+        try { player.activateElement(); } catch {}
+      };
 
       player.addListener('ready', (data) => {
         const { device_id } = data as { device_id: string };
@@ -142,12 +150,18 @@ export function useSpotifyPlayer(): SpotifyPlayerState & { playUri: (uri: string
     return () => {
       mountedRef.current = false;
       playerRef.current?.disconnect();
+      activateRef.current = null;
     };
+  }, []);
+
+  // Call this synchronously inside a click handler before any async play call
+  const activate = useCallback(() => {
+    activateRef.current?.();
   }, []);
 
   const playUri = useCallback(async (uri: string) => {
     const id = deviceIdRef.current;
-    if (!id) throw new Error('Spotify player not ready yet');
+    if (!id) throw new Error('Spotify player not ready yet — wait a moment and try again');
 
     const res = await fetch('/api/spotify/player', {
       method: 'POST',
@@ -161,5 +175,5 @@ export function useSpotifyPlayer(): SpotifyPlayerState & { playUri: (uri: string
     }
   }, []);
 
-  return { ...state, playUri };
+  return { ...state, playUri, activate };
 }

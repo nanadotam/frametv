@@ -293,7 +293,6 @@ function useDisplayDeviceHeartbeat(activeModeId: string | null, enabled: boolean
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           client_id: getDisplayClientId(),
-          label: 'React display',
           route: '/display',
           renderer: 'react',
           active_mode_id: activeModeId,
@@ -547,7 +546,7 @@ export default function DisplayPage() {
   const clockConfig = useClockOverlayConfig();
   const { cinema, toast, toggle: toggleCinema, enter: enterCinema, supported: fullscreenSupported } = useCinemaMode();
   const fullscreenPrompt = useFullscreenPrompt(authChecked && !locked);
-  const { deviceId, isReady: spotifyReady, playUri } = useSpotifyPlayer();
+  const { deviceId, isReady: spotifyReady, isConnecting: spotifyConnecting, isPremiumRequired, playUri, activate: activateSpotify } = useSpotifyPlayer();
   const spotifyNow = useSpotifyNowPlaying();
 
   useEffect(() => {
@@ -590,33 +589,34 @@ export default function DisplayPage() {
   const modeId = activeMode.modeId as ModeId | null;
   useDisplayDeviceHeartbeat(modeId, authChecked && !locked);
 
-  // Transfer current Spotify session here, or play last known track
+  // Transfer current Spotify session here, or play last known track.
+  // activate() MUST be called synchronously before any await — it needs the user gesture context.
   const handlePlayOnTV = useCallback(async () => {
     if (transferring) return;
+    activateSpotify(); // unlock AudioContext within the click gesture
     setTransferring(true);
     try {
       if (spotifyNow.isPlaying) {
-        // Something is already playing somewhere — transfer it to this browser
         await fetch('/api/spotify/player', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'transfer', ...(deviceId ? { device_id: deviceId } : {}) }),
         });
       } else if (spotifyNow.current?.uri) {
-        // Nothing is playing — start the last known track in this browser
         await playUri(spotifyNow.current.uri);
       }
     } catch {
-      // Silently fail on display page — no toast UI here
+      // Silently fail on display page
     } finally {
       setTransferring(false);
     }
-  }, [deviceId, transferring, spotifyNow.isPlaying, spotifyNow.current, playUri]);
+  }, [deviceId, transferring, spotifyNow.isPlaying, spotifyNow.current, playUri, activateSpotify]);
 
-  // Play a searched track in this browser
+  // Play a searched track in this browser — activate() first for AudioContext
   const handlePlayTrack = useCallback(async (uri: string, _name: string) => {
+    activateSpotify();
     await playUri(uri);
-  }, [playUri]);
+  }, [playUri, activateSpotify]);
 
   if (authChecked && locked) {
     return <DisplayPinGate onUnlock={() => { setLocked(false); window.location.reload(); }} />;
@@ -670,6 +670,28 @@ export default function DisplayPage() {
           queue={spotifyNow.queue}
           history={spotifyNow.history}
           isPlaying={spotifyNow.isPlaying}
+          onPlayPause={() => {
+            activateSpotify(); // within user gesture
+            fetch('/api/spotify/player', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: spotifyNow.isPlaying ? 'pause' : 'play',
+                ...(deviceId ? { device_id: deviceId } : {}),
+              }),
+            }).catch(() => {});
+          }}
+          onNext={() => {
+            activateSpotify(); // within user gesture
+            fetch('/api/spotify/player', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'next',
+                ...(deviceId ? { device_id: deviceId } : {}),
+              }),
+            }).catch(() => {});
+          }}
         />
       )}
 
@@ -790,11 +812,13 @@ export default function DisplayPage() {
             <button
               onClick={(e) => { e.stopPropagation(); setSpotifyOn((v) => !v); if (searchOpen) setSearchOpen(false); }}
               onDoubleClick={(e) => e.stopPropagation()}
-              title={spotifyOn ? 'Hide music overlay' : 'Show music overlay'}
-              style={{
-                ...BTN,
-                color: spotifyOn ? '#fff' : 'rgba(255,255,255,0.35)',
-              }}
+              title={
+                isPremiumRequired ? 'Spotify Premium required for browser playback'
+                : spotifyReady ? 'Player ready — music will play in this browser'
+                : spotifyConnecting ? 'Connecting to Spotify player…'
+                : spotifyOn ? 'Hide music overlay' : 'Show music overlay'
+              }
+              style={{ ...BTN, color: spotifyOn ? '#fff' : 'rgba(255,255,255,0.35)' }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.opacity = '1';
                 e.currentTarget.style.background = 'rgba(29,185,84,0.18)';
@@ -808,6 +832,17 @@ export default function DisplayPage() {
                 <circle cx="18" cy="16" r="3" />
               </svg>
               {spotifyOn ? 'Music on' : 'Music off'}
+              {/* SDK status dot */}
+              <span style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                flexShrink: 0,
+                background: isPremiumRequired ? '#eab308'
+                  : spotifyReady ? '#1db954'
+                  : spotifyConnecting ? 'rgba(255,255,255,0.3)'
+                  : 'rgba(255,100,100,0.7)',
+              }} />
             </button>
           )}
 
