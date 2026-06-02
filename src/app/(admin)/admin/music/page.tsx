@@ -14,6 +14,7 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
+import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { cn } from '@/lib/utils';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
 import type { SpotifyDevice } from '@/app/api/spotify/devices/route';
@@ -385,9 +386,11 @@ function DeviceSelector() {
 
 export default function MusicPage() {
   const { current, queue, isPlaying } = useSpotifyNowPlaying();
+  const { deviceId, isReady, isConnecting, isPremiumRequired, error: sdkError, playUri } = useSpotifyPlayer();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SpotifyTrack[]>([]);
   const [searching, setSearching] = useState(false);
+  const [playError, setPlayError] = useState<string | null>(null);
   const [volume, setVolume] = useState(70);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -408,12 +411,24 @@ export default function MusicPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, doSearch]);
 
-  const play  = () => playerAction('play');
-  const pause = () => playerAction('pause');
-  const next  = () => playerAction('next');
-  const prev  = () => playerAction('prev');
-  const playTrack = (uri: string) => playerAction('play_track', { uri });
-  const commitVolume = (v: number) => { setVolume(v); playerAction('volume', { volume: v }); };
+  const deviceParam = deviceId ? { device_id: deviceId } : {};
+  const play  = () => playerAction('play',  deviceParam);
+  const pause = () => playerAction('pause', deviceParam);
+  const next  = () => playerAction('next',  deviceParam);
+  const prev  = () => playerAction('prev',  deviceParam);
+
+  const playTrack = async (uri: string) => {
+    setPlayError(null);
+    try {
+      await playUri(uri);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setPlayError(msg);
+      setTimeout(() => setPlayError(null), 5000);
+    }
+  };
+
+  const commitVolume = (v: number) => { setVolume(v); playerAction('volume', { volume: v, ...deviceParam }); };
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-5">
@@ -434,11 +449,41 @@ export default function MusicPage() {
 
       {/* Header */}
       <div className="pt-2">
-        <h1 className="text-xl font-bold tracking-tight">Music</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-bold tracking-tight">Music</h1>
+          {/* SDK status pill */}
+          {isPremiumRequired ? (
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
+              Spotify Premium required
+            </span>
+          ) : sdkError ? (
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-destructive/15 text-destructive border border-destructive/30" title={sdkError}>
+              SDK error
+            </span>
+          ) : isReady ? (
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/30 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              Ready to play
+            </span>
+          ) : isConnecting ? (
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-muted text-muted-foreground border border-border flex items-center gap-1.5">
+              <Loader2 size={10} className="animate-spin" />
+              Connecting…
+            </span>
+          ) : null}
+        </div>
         <p className="text-sm text-muted-foreground mt-0.5">
           {current ? `${current.name} — ${current.artists[0]}` : 'Open Spotify to start playing'}
         </p>
       </div>
+
+      {/* Play error */}
+      {playError && (
+        <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          <Music2 size={14} className="mt-0.5 shrink-0" />
+          {playError}
+        </div>
+      )}
 
       {/* Now Playing */}
       <AnimatePresence mode="wait">
@@ -540,7 +585,14 @@ export default function MusicPage() {
 
         {results.length > 0 && (
           <div className="space-y-0.5">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium px-1 mb-2">Results</p>
+            <div className="flex items-center justify-between px-1 mb-2">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Results</p>
+              {!isReady && !isPremiumRequired && (
+                <p className="text-xs text-muted-foreground italic">
+                  {isConnecting ? 'Connecting player…' : 'Player not connected'}
+                </p>
+              )}
+            </div>
             {results.map((track, i) => (
               <TrackRow
                 key={track.id + i}

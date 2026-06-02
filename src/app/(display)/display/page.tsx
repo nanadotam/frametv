@@ -547,7 +547,7 @@ export default function DisplayPage() {
   const clockConfig = useClockOverlayConfig();
   const { cinema, toast, toggle: toggleCinema, enter: enterCinema, supported: fullscreenSupported } = useCinemaMode();
   const fullscreenPrompt = useFullscreenPrompt(authChecked && !locked);
-  const { deviceId } = useSpotifyPlayer();
+  const { deviceId, isReady: spotifyReady, playUri } = useSpotifyPlayer();
   const spotifyNow = useSpotifyNowPlaying();
 
   useEffect(() => {
@@ -590,44 +590,33 @@ export default function DisplayPage() {
   const modeId = activeMode.modeId as ModeId | null;
   useDisplayDeviceHeartbeat(modeId, authChecked && !locked);
 
-  // Transfer or play last track on this TV device
+  // Transfer current Spotify session here, or play last known track
   const handlePlayOnTV = useCallback(async () => {
     if (transferring) return;
     setTransferring(true);
     try {
-      const body: Record<string, unknown> = deviceId ? { device_id: deviceId } : {};
       if (spotifyNow.isPlaying) {
-        // Something is already playing somewhere — transfer it here
-        body.action = 'transfer';
+        // Something is already playing somewhere — transfer it to this browser
+        await fetch('/api/spotify/player', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'transfer', ...(deviceId ? { device_id: deviceId } : {}) }),
+        });
       } else if (spotifyNow.current?.uri) {
-        // Nothing is playing — start the last known track here
-        body.action = 'play_track';
-        body.uri = spotifyNow.current.uri;
-      } else {
-        return;
+        // Nothing is playing — start the last known track in this browser
+        await playUri(spotifyNow.current.uri);
       }
-      await fetch('/api/spotify/player', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+    } catch {
+      // Silently fail on display page — no toast UI here
     } finally {
       setTransferring(false);
     }
-  }, [deviceId, transferring, spotifyNow.isPlaying, spotifyNow.current]);
+  }, [deviceId, transferring, spotifyNow.isPlaying, spotifyNow.current, playUri]);
 
-  // Play a specific track on this TV device
+  // Play a searched track in this browser
   const handlePlayTrack = useCallback(async (uri: string, _name: string) => {
-    await fetch('/api/spotify/player', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'play_track',
-        uri,
-        ...(deviceId ? { device_id: deviceId } : {}),
-      }),
-    });
-  }, [deviceId]);
+    await playUri(uri);
+  }, [playUri]);
 
   if (authChecked && locked) {
     return <DisplayPinGate onUnlock={() => { setLocked(false); window.location.reload(); }} />;
@@ -647,7 +636,7 @@ export default function DisplayPage() {
   const modeRow = modes.find((m) => m.id === modeId);
   const config: Record<string, unknown> = (modeRow?.config as Record<string, unknown>) ?? {};
 
-  const isSpotifyMode = modeId && SPOTIFY_MODES.has(modeId);
+  const isSpotifyMode = Boolean(modeId && SPOTIFY_MODES.has(modeId));
   const hasSpotifyTrack = Boolean(spotifyNow.current);
   const showPlayOnTV = spotifyOn && isSpotifyMode && hasSpotifyTrack;
   const playOnTVLabel = spotifyNow.isPlaying

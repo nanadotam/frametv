@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-// Minimal types for the Spotify Web Playback SDK
 interface SpotifyPlayerInstance {
   connect(): Promise<boolean>;
   disconnect(): void;
@@ -23,20 +22,48 @@ declare global {
   }
 }
 
-interface SpotifyPlayerState {
+export interface SpotifyPlayerState {
   deviceId: string | null;
   isReady: boolean;
+  isConnecting: boolean;
   isPremiumRequired: boolean;
+  error: string | null;
 }
 
 const SDK_URL = 'https://sdk.scdn.co/spotify-player.js';
 
-export function useSpotifyPlayer(): SpotifyPlayerState {
+let sdkScriptPromise: Promise<void> | null = null;
+
+function loadSdkScript(): Promise<void> {
+  if (sdkScriptPromise) return sdkScriptPromise;
+  sdkScriptPromise = new Promise((resolve) => {
+    if (document.querySelector(`script[src="${SDK_URL}"]`)) {
+      // Script already in DOM; wait for SDK ready or resolve immediately if already loaded
+      if (window.Spotify) { resolve(); return; }
+      const prev = window.onSpotifyWebPlaybackSDKReady;
+      window.onSpotifyWebPlaybackSDKReady = () => { prev?.(); resolve(); };
+      return;
+    }
+    window.onSpotifyWebPlaybackSDKReady = resolve;
+    const script = document.createElement('script');
+    script.src = SDK_URL;
+    script.async = true;
+    document.head.appendChild(script);
+  });
+  return sdkScriptPromise;
+}
+
+export function useSpotifyPlayer(): SpotifyPlayerState & { playUri: (uri: string) => Promise<void> } {
   const [state, setState] = useState<SpotifyPlayerState>({
     deviceId: null,
     isReady: false,
+    isConnecting: true,
     isPremiumRequired: false,
+    error: null,
   });
+
+  // Keep device_id in a ref so playUri can read it synchronously without stale closure
+  const deviceIdRef = useRef<string | null>(null);
   const playerRef = useRef<SpotifyPlayerInstance | null>(null);
   const mountedRef = useRef(true);
 
@@ -44,67 +71,70 @@ export function useSpotifyPlayer(): SpotifyPlayerState {
     mountedRef.current = true;
 
     async function init() {
-      // Fetch token — 401 means Spotify not connected, skip SDK
-      const res = await fetch('/api/spotify/token').catch(() => null);
-      if (!res?.ok) return;
-
-      const initPlayer = () => {
-        if (!window.Spotify || !mountedRef.current) return;
-
-        const player = new window.Spotify.Player({
-          name: 'FrameTV',
-          getOAuthToken: (cb) => {
-            fetch('/api/spotify/token')
-              .then((r) => (r.ok ? r.json() : null))
-              .then((d) => { if (d?.token) cb(d.token); });
-          },
-          volume: 0.7,
-        });
-
-        player.addListener('ready', (data) => {
-          const { device_id } = data as { device_id: string };
-          if (!mountedRef.current) return;
-          setState({ deviceId: device_id, isReady: true, isPremiumRequired: false });
-          // Register device ID on server so admin can target it
-          fetch('/api/spotify/device', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device_id }),
-          }).catch(() => {});
-        });
-
-        player.addListener('not_ready', () => {
-          if (mountedRef.current) setState((s) => ({ ...s, isReady: false }));
-        });
-
-        // Premium required error
-        player.addListener('initialization_error', (e) => {
-          console.warn('[SpotifySDK] init error', e);
-        });
-        player.addListener('authentication_error', (e) => {
-          console.warn('[SpotifySDK] auth error', e);
-        });
-        player.addListener('account_error', () => {
-          // Non-Premium account
-          if (mountedRef.current) setState((s) => ({ ...s, isPremiumRequired: true }));
-        });
-
-        player.connect();
-        playerRef.current = player;
-      };
-
-      // SDK requires onSpotifyWebPlaybackSDKReady to be set before script loads
-      window.onSpotifyWebPlaybackSDKReady = initPlayer;
-
-      if (window.Spotify) {
-        // Script already loaded (e.g., hot reload)
-        initPlayer();
-      } else if (!document.querySelector(`script[src="${SDK_URL}"]`)) {
-        const script = document.createElement('script');
-        script.src = SDK_URL;
-        script.async = true;
-        document.head.appendChild(script);
+      // 401 = Spotify not connected — skip SDK silently
+      const tokenRes = await fetch('/api/spotify/token').catch(() => null);
+      if (!tokenRes?.ok) {
+        if (mountedRef.current) setState((s) => ({ ...s, isConnecting: false, error: null }));
+        return;
       }
+
+      try {
+        await loadSdkScript();
+      } catch {
+        if (mountedRef.current) setState((s) => ({ ...s, isConnecting: false, error: 'Failed to load Spotify SDK' }));
+        return;
+      }
+
+      if (!window.Spotify || !mountedRef.current) return;
+
+      const player = new window.Spotify.Player({
+        name: 'FrameTV',
+        getOAuthToken: (cb) => {
+          fetch('/api/spotify/token')
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => { if (d?.token) cb(d.token); });
+        },
+        volume: 0.8,
+      });
+
+      player.addListener('ready', (data) => {
+        const { device_id } = data as { device_id: string };
+        if (!mountedRef.current) return;
+        deviceIdRef.current = device_id;
+        setState({ deviceId: device_id, isReady: true, isConnecting: false, isPremiumRequired: false, error: null });
+        fetch('/api/spotify/device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id }),
+        }).catch(() => {});
+      });
+
+      player.addListener('not_ready', () => {
+        if (!mountedRef.current) return;
+        deviceIdRef.current = null;
+        setState((s) => ({ ...s, isReady: false, isConnecting: true, deviceId: null }));
+      });
+
+      player.addListener('initialization_error', (e) => {
+        const msg = (e as { message?: string }).message ?? 'Initialization error';
+        if (mountedRef.current) setState((s) => ({ ...s, isConnecting: false, error: msg }));
+      });
+
+      player.addListener('authentication_error', (e) => {
+        const msg = (e as { message?: string }).message ?? 'Authentication error';
+        if (mountedRef.current) setState((s) => ({ ...s, isConnecting: false, error: msg }));
+      });
+
+      player.addListener('account_error', () => {
+        if (mountedRef.current) setState((s) => ({ ...s, isConnecting: false, isPremiumRequired: true, error: null }));
+      });
+
+      const connected = await player.connect();
+      if (!connected && mountedRef.current) {
+        setState((s) => ({ ...s, isConnecting: false, error: 'Could not connect to Spotify' }));
+      }
+
+      playerRef.current = player;
     }
 
     init();
@@ -115,5 +145,21 @@ export function useSpotifyPlayer(): SpotifyPlayerState {
     };
   }, []);
 
-  return state;
+  const playUri = useCallback(async (uri: string) => {
+    const id = deviceIdRef.current;
+    if (!id) throw new Error('Spotify player not ready yet');
+
+    const res = await fetch('/api/spotify/player', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'play_track', uri, device_id: id }),
+    });
+
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json.error ?? `Playback failed (${res.status})`);
+    }
+  }, []);
+
+  return { ...state, playUri };
 }
