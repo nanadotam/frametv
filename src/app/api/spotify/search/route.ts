@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminUser } from '@/lib/auth';
+import { requireDisplayUser } from '@/lib/auth';
 import { getAccessToken } from '@/lib/spotify/auth';
 import { spotifyFetch } from '@/lib/spotify/client';
 
@@ -17,7 +17,7 @@ interface SearchResponse {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAdminUser(request);
+  const auth = await requireDisplayUser(request);
   if (auth.response) return auth.response;
 
   const q = new URL(request.url).searchParams.get('q')?.trim();

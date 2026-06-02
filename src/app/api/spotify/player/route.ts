@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminUser } from '@/lib/auth';
+import { requireDisplayUser } from '@/lib/auth';
 import { getAccessToken } from '@/lib/spotify/auth';
 import { spotifyFetch } from '@/lib/spotify/client';
 import { createServiceClient } from '@/lib/supabase/server';
@@ -25,7 +25,7 @@ async function getStoredDeviceId(userId: string): Promise<string | null> {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAdminUser(request);
+  const auth = await requireDisplayUser(request);
   if (auth.response) return auth.response;
 
   const token = await getAccessToken();

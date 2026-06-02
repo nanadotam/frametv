@@ -590,23 +590,31 @@ export default function DisplayPage() {
   const modeId = activeMode.modeId as ModeId | null;
   useDisplayDeviceHeartbeat(modeId, authChecked && !locked);
 
-  // Transfer playback to this TV device
+  // Transfer or play last track on this TV device
   const handlePlayOnTV = useCallback(async () => {
     if (transferring) return;
     setTransferring(true);
     try {
+      const body: Record<string, unknown> = deviceId ? { device_id: deviceId } : {};
+      if (spotifyNow.isPlaying) {
+        // Something is already playing somewhere — transfer it here
+        body.action = 'transfer';
+      } else if (spotifyNow.current?.uri) {
+        // Nothing is playing — start the last known track here
+        body.action = 'play_track';
+        body.uri = spotifyNow.current.uri;
+      } else {
+        return;
+      }
       await fetch('/api/spotify/player', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'transfer',
-          ...(deviceId ? { device_id: deviceId } : {}),
-        }),
+        body: JSON.stringify(body),
       });
     } finally {
       setTransferring(false);
     }
-  }, [deviceId, transferring]);
+  }, [deviceId, transferring, spotifyNow.isPlaying, spotifyNow.current]);
 
   // Play a specific track on this TV device
   const handlePlayTrack = useCallback(async (uri: string, _name: string) => {
