@@ -6,6 +6,7 @@ import {
   SkipForward, SkipBack, Pause, Play, Tv, Sun, Radio, Clock,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Send, Zap,
   CalendarDays, Star, Shuffle, MonitorSmartphone, Loader2, Info,
+  Link2, Copy, RefreshCw, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -409,6 +410,113 @@ function QuickSettingsContent({
     default:
       return null;
   }
+}
+
+// ─── Share Live Link ──────────────────────────────────────────────────────────
+
+function ShareLinkCard() {
+  const [token, setToken]         = useState<string | null | undefined>(undefined);
+  const [loading, setLoading]     = useState(false);
+  const [copied, setCopied]       = useState(false);
+  const copiedTimer               = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    fetch('/api/share').then((r) => r.json()).then((j) => setToken(j.token ?? null));
+    return () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); };
+  }, []);
+
+  const shareUrl = token ? `${typeof window !== 'undefined' ? window.location.origin : ''}/s/${token}` : null;
+
+  const generate = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/share', { method: 'POST' });
+      const json = await res.json();
+      setToken(json.token ?? null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const revoke = async () => {
+    setLoading(true);
+    try {
+      await fetch('/api/share', { method: 'DELETE' });
+      setToken(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copy = () => {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl).catch(() => {});
+    setCopied(true);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Link2 size={15} className="text-primary" />
+          Share Live Link
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Anyone with this link can view your display live — no sign-in needed.
+        </p>
+
+        {token === undefined ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 size={12} className="animate-spin" /> Loading…
+          </div>
+        ) : token ? (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0 bg-background border border-border rounded-lg px-3 py-2 font-mono text-xs text-muted-foreground truncate select-all">
+              {shareUrl}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className={cn('shrink-0 gap-1.5', copied && 'border-green-500/40 text-green-400')}
+              onClick={copy}
+            >
+              {copied ? <CheckCircle2 size={13} /> : <Copy size={13} />}
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 gap-1.5"
+              onClick={generate}
+              disabled={loading}
+              title="Regenerate link (old link will stop working)"
+            >
+              {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/60"
+              onClick={revoke}
+              disabled={loading}
+              title="Revoke link"
+            >
+              <Trash2 size={13} />
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" onClick={generate} disabled={loading} className="gap-2">
+            {loading ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />}
+            Generate live link
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -1106,6 +1214,9 @@ export default function NowPlayingPage() {
           )}
         </Card>
       )}
+
+      {/* ── Share Live Link ── */}
+      <ShareLinkCard />
 
       {/* ── Playback + Brightness ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
