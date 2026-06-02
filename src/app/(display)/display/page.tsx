@@ -20,9 +20,16 @@ import { Maximize2, Minimize2, Search, X, Play, Loader2 } from 'lucide-react';
 
 // ─── Spotify modes ────────────────────────────────────────────────────────────
 
+// Modes where Spotify controls (play on TV, search) are shown
 const SPOTIFY_MODES = new Set([
   'slideshow-single', 'slideshow-grid', 'pinterest',
   'vinyl', 'coverflow',
+]);
+
+// Modes where the corner now-playing overlay is shown
+// (vinyl/coverflow are already full music displays — no overlay needed)
+const SPOTIFY_OVERLAY_MODES = new Set([
+  'slideshow-single', 'slideshow-grid', 'pinterest',
 ]);
 
 // ─── Fullscreen helpers ───────────────────────────────────────────────────────
@@ -278,6 +285,7 @@ function getDisplayClientId() {
 function useDisplayDeviceHeartbeat(activeModeId: string | null, enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
     const send = () => {
       fetch('/api/display-devices', {
@@ -300,18 +308,23 @@ function useDisplayDeviceHeartbeat(activeModeId: string | null, enabled: boolean
         }),
       }).catch(() => {});
     };
+    const sendAfterResize = () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(send, 500);
+    };
 
     send();
     const interval = window.setInterval(send, 30_000);
     document.addEventListener('fullscreenchange', send);
     document.addEventListener('visibilitychange', send);
-    window.addEventListener('resize', send);
+    window.addEventListener('resize', sendAfterResize);
 
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
       window.clearInterval(interval);
       document.removeEventListener('fullscreenchange', send);
       document.removeEventListener('visibilitychange', send);
-      window.removeEventListener('resize', send);
+      window.removeEventListener('resize', sendAfterResize);
     };
   }, [activeModeId, enabled]);
 }
@@ -653,7 +666,7 @@ export default function DisplayPage() {
 
       <ClockOverlay config={{ ...clockConfig, enabled: clockConfig.enabled && clockOn }} />
 
-      {spotifyOn && isSpotifyMode && (
+      {spotifyOn && modeId && SPOTIFY_OVERLAY_MODES.has(modeId) && (
         <SpotifyOverlay
           clockPosition={clockConfig.position}
           current={spotifyNow.current}

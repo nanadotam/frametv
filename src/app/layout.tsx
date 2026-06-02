@@ -4,7 +4,7 @@ import { Providers } from '@/components/providers';
 import './globals.css';
 import { cn } from "@/lib/utils";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans', preload: false });
 
 const dmSans = DM_Sans({
   variable: '--font-dm-sans',
@@ -16,12 +16,14 @@ const syne = Syne({
   variable: '--font-syne',
   subsets: ['latin'],
   display: 'swap',
+  preload: false,
 });
 
 const jetbrainsMono = JetBrains_Mono({
   variable: '--font-jetbrains-mono',
   subsets: ['latin'],
   display: 'swap',
+  preload: false,
 });
 
 const playfair = Playfair_Display({
@@ -29,6 +31,7 @@ const playfair = Playfair_Display({
   subsets: ['latin'],
   display: 'swap',
   style: ['normal', 'italic'],
+  preload: false,
 });
 
 const poppins = Poppins({
@@ -36,6 +39,7 @@ const poppins = Poppins({
   subsets: ['latin'],
   display: 'swap',
   weight: ['400', '600', '700', '800'],
+  preload: false,
 });
 
 export const metadata: Metadata = {

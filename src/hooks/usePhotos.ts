@@ -22,7 +22,8 @@ export function usePhotos(albumIds?: string[]): Photo[] {
   const { data } = useQuery({
     queryKey,
     queryFn: () => fetchPhotos(albumIds),
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {

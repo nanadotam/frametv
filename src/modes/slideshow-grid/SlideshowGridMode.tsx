@@ -6,6 +6,7 @@ import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { pickLayout, computeCellAR, type Layout } from './layout';
 import { getPhotoRotation, cellRotationStyle } from '@/lib/photoRotation';
+import { seedFocalCache, getFocal, focalToObjectPosition, detectAndPersistFocal } from '@/lib/focalPoint';
 import type { Photo } from '@/types/db';
 import { photoThumbUrl, photoFullUrl, getConnectionSpeed, IMG_SIZES } from '@/lib/image-urls';
 
@@ -129,13 +130,21 @@ function PhotoCell({ photo, dwellMs, kbIdx }: {
 
   useEffect(() => { setMainLoaded(false); }, [photo?.id]);
 
-  // 200px AR image already in cache from measureAR() — reuse as LQIP
   const lqipSrc = photo ? photoThumbUrl(photo, IMG_SIZES.ar) : null;
   const kb = KB_VARIANTS[kbIdx % KB_VARIANTS.length];
 
+  // Focal point → CSS object-position for smart face-aware cropping
+  const focal = photo ? getFocal(photo) : null;
+  const photoAR = photo ? getAR(photo.id) : 1;
+  const objPos = focalToObjectPosition(focal, photoAR);
+
+  // When manual rotation is applied, disable EXIF auto-rotation to prevent
+  // double-correction (browser imageOrientation + CSS transform).
+  const orientationOverride: React.CSSProperties =
+    rotation !== 0 ? { imageOrientation: 'none' } : {};
+
   return (
     <div style={{ position: 'absolute', inset: 0, background: '#111', overflow: 'hidden' }}>
-      {/* Ken Burns wrapper — starts animating once the image is painted */}
       <motion.div
         style={{ position: 'absolute', inset: 0 }}
         initial={{ scale: 1, x: '0%', y: '0%' }}
@@ -148,17 +157,22 @@ function PhotoCell({ photo, dwellMs, kbIdx }: {
         {lqipSrc && !mainLoaded && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={lqipSrc} aria-hidden alt=""
-            style={{ ...FILL, filter: 'blur(20px)', transform: 'scale(1.1)' }} />
+            style={{ ...FILL, ...orientationOverride, filter: 'blur(20px)', transform: 'scale(1.1)', objectPosition: objPos }} />
         )}
         {src && (
           <>
+            {/* Blurred background fill — keeps edges dark while sharp image fades in */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={src} aria-hidden alt=""
-              style={{ ...FILL, filter: 'blur(24px) brightness(0.55)', transform: `scale(1.15)${rotation ? ` rotate(${rotation}deg)` : ''}` }} />
+              style={{ ...FILL, ...orientationOverride, filter: 'blur(24px) brightness(0.55)', transform: `scale(1.15)${rotation ? ` rotate(${rotation}deg)` : ''}`, objectPosition: objPos }} />
+            {/* Sharp main image — fades in on load, triggers face detection */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={src} alt=""
-              style={{ ...FILL, zIndex: 1, ...rotStyle, opacity: mainLoaded ? 1 : 0, transition: 'opacity 0.4s ease' }}
-              onLoad={() => setMainLoaded(true)} />
+              style={{ ...FILL, ...orientationOverride, zIndex: 1, ...rotStyle, objectPosition: objPos, opacity: mainLoaded ? 1 : 0, transition: 'opacity 0.4s ease' }}
+              onLoad={(e) => {
+                setMainLoaded(true);
+                if (photo) detectAndPersistFocal(photo, e.currentTarget);
+              }} />
           </>
         )}
       </motion.div>
@@ -225,8 +239,10 @@ export default function SlideshowGridMode({
     initialized.current = true;
 
     photos.slice(0, 30).forEach(measureAR);
+    seedFocalCache(photos);
 
-    const initial = pickLayout(1, null, maxCells);
+    const initialARs = photos.slice(0, maxCells).map((p) => getAR(p.id));
+    const initial = pickLayout(initialARs, null, maxCells);
     prevCountRef.current = initial.count;
     layoutRef.current    = initial;
     setLayout(initial);
@@ -262,27 +278,31 @@ export default function SlideshowGridMode({
     function runCycle() {
       // maxCells is from the component scope (respects focusMode)
 
-      // Peek at upcoming photos for AR calculation
+      // Peek at upcoming photos for AR + focal seed
       const peekPhotos = Array.from({ length: maxCells }, (_, i) =>
         photos[(photoIdxRef.current + i) % photos.length]
       );
       peekPhotos.forEach(measureAR);
-      const avgRatio =
-        peekPhotos.reduce((sum, p) => sum + getAR(p.id), 0) / peekPhotos.length;
+      const peekARs = peekPhotos.map((p) => getAR(p.id));
 
-      // Pick new layout (prefer different count than last cycle)
-      const newLayout = pickLayout(avgRatio, prevCountRef.current, maxCells);
+      // Score every candidate layout against the actual incoming photo ARs
+      const newLayout = pickLayout(peekARs, prevCountRef.current, maxCells);
       prevCountRef.current = newLayout.count;
 
-      // Build a candidate pool from the next slice of the photo rotation,
-      // excluding photos currently on screen. Pool is 4× the cell count so
-      // there's enough variety for the AR-matching step below.
-      const excluded = new Set(recentlyUsedRef.current);
+      // Build a candidate pool from the next slice of the photo rotation.
+      // We only exclude recently-shown photos when the library is large enough
+      // that the exclusion won't leave the matcher with too few candidates —
+      // this prevents low-variety libraries from always producing bad fits.
+      const MIN_POOL = newLayout.count * 2;
+      const recentlyUsed = recentlyUsedRef.current;
+      const freshCount = photos.filter((p) => !recentlyUsed.has(p.id)).length;
+      const excluded = freshCount >= MIN_POOL ? recentlyUsed : new Set<string>();
+
       const POOL_SIZE = Math.min(photos.length, Math.max(newLayout.count * 4, 20));
       const pool: { photo: Photo; ar: number }[] = [];
 
       for (let i = 0; pool.length < POOL_SIZE; i++) {
-        if (i >= photos.length) break; // exhausted library
+        if (i >= photos.length) break;
         const p = photos[(photoIdxRef.current + i) % photos.length];
         if (!excluded.has(p.id) && !pool.find((c) => c.photo.id === p.id)) {
           pool.push({ photo: p, ar: getAR(p.id) });

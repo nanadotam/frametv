@@ -18,7 +18,8 @@ export function useSchedules(): Schedule[] {
   const { data } = useQuery({
     queryKey: ['schedules'],
     queryFn: fetchSchedules,
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {

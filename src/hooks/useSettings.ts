@@ -60,7 +60,8 @@ export function useSettings(): SettingsResult {
   const { data, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: fetchSettings,
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
 

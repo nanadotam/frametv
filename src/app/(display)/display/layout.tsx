@@ -16,14 +16,14 @@ import {
 // All clock overlay fonts downloaded at build time and self-hosted.
 // This replaces the Google Fonts CDN <link> tag which was unreliable in Safari,
 // blocked on some networks, and used the deprecated next/head API.
-const poppins       = Poppins({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-poppins',   display: 'swap' });
-const oswald        = Oswald({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-oswald',    display: 'swap' });
-const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-jetbrains', display: 'swap' });
-const pacifico      = Pacifico({ subsets: ['latin'], weight: ['400'],        variable: '--font-clock-pacifico',  display: 'swap' });
-const playfair      = Playfair_Display({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-playfair',  display: 'swap' });
-const dancing       = Dancing_Script({ subsets: ['latin'], weight: ['700'],        variable: '--font-clock-dancing',   display: 'swap' });
-const bebasNeue     = Bebas_Neue({ subsets: ['latin'], weight: ['400'],        variable: '--font-clock-bebas',     display: 'swap' });
-const syne          = Syne({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-syne',       display: 'swap' });
+const poppins       = Poppins({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-poppins',   display: 'swap', preload: false });
+const oswald        = Oswald({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-oswald',    display: 'swap', preload: false });
+const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-jetbrains', display: 'swap', preload: false });
+const pacifico      = Pacifico({ subsets: ['latin'], weight: ['400'],        variable: '--font-clock-pacifico',  display: 'swap', preload: false });
+const playfair      = Playfair_Display({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-playfair',  display: 'swap', preload: false });
+const dancing       = Dancing_Script({ subsets: ['latin'], weight: ['700'],        variable: '--font-clock-dancing',   display: 'swap', preload: false });
+const bebasNeue     = Bebas_Neue({ subsets: ['latin'], weight: ['400'],        variable: '--font-clock-bebas',     display: 'swap', preload: false });
+const syne          = Syne({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-clock-syne',       display: 'swap', preload: false });
 
 // All variable class names joined — applied to the wrapper so every descendant
 // (ClockOverlay, mode components) can reference these CSS custom properties.

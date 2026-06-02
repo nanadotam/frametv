@@ -9,6 +9,7 @@ let cache: Mode[] | null = null;
 const listeners: Set<(modes: Mode[]) => void> = new Set();
 let realtimeSubscribed = false;
 let browserSyncStarted = false;
+let inflight: Promise<void> | null = null;
 
 function notify(modes: Mode[]) {
   cache = modes;
@@ -16,6 +17,14 @@ function notify(modes: Mode[]) {
 }
 
 async function fetchModes() {
+  if (inflight) return inflight;
+  inflight = fetchModesInner().finally(() => {
+    inflight = null;
+  });
+  return inflight;
+}
+
+async function fetchModesInner() {
   const res = await fetch('/api/modes');
   if (!res.ok) return;
   const json = await res.json();
@@ -54,7 +63,7 @@ function subscribeBrowserSync() {
   window.addEventListener('focus', refetch);
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('storage', onStorage);
-  setInterval(refetch, 5_000);
+  setInterval(refetch, 60_000);
 
   if ('BroadcastChannel' in window) {
     const channel = new BroadcastChannel('frametv:modes');

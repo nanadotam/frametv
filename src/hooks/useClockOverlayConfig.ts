@@ -24,7 +24,7 @@ export function useClockOverlayConfig(): ClockOverlayConfig {
     };
 
     fetchConfig();
-    const interval = setInterval(fetchConfig, 5_000);
+    const interval = setInterval(fetchConfig, 60_000);
 
     const channel = supabase
       .channel('clock_overlay_setting')

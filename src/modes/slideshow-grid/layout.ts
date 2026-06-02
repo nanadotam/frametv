@@ -197,31 +197,52 @@ export function computeCellAR(area: GridArea): number {
 }
 
 /**
- * Pick a layout based on the average aspect ratio of incoming photos.
- * Prefers a different cell count than the previous cycle for visual variety.
- * Falls back gracefully when photos.length < desired count.
+ * Pick the layout that best fits the actual ARs of incoming photos.
+ *
+ * For each candidate layout we simulate the greedy match and sum the
+ * log-scale AR mismatches across all cells — the lowest total cost wins.
+ * A small penalty for re-using the same cell count as last cycle keeps
+ * the display visually varied without sacrificing fit quality.
+ *
+ * photoARs: individual cached ARs for the next batch of photos (order irrelevant).
  */
 export function pickLayout(
-  avgRatio: number,
+  photoARs: number[],
   prevCount: number | null,
   maxCells: number,
 ): Layout {
-  // Tag preference driven by photo aspect ratios
-  let preferred: LayoutTag;
-  if (avgRatio < 0.85)      preferred = 'portrait';
-  else if (avgRatio > 1.4)  preferred = 'landscape';
-  else                       preferred = 'balanced';
+  const eligible = ALL_LAYOUTS.filter(
+    (l) => l.count <= maxCells && l.count <= photoARs.length,
+  );
+  if (eligible.length === 0) return ALL_LAYOUTS[0];
 
-  // Only use layouts whose count fits available photos
-  const eligible = ALL_LAYOUTS.filter((l) => l.count <= maxCells);
+  type Scored = { layout: Layout; score: number };
 
-  // Prefer a different count than last cycle
-  const diffCount = eligible.filter((l) => l.count !== prevCount);
-  const pool = diffCount.length ? diffCount : eligible;
+  const scored: Scored[] = eligible.map((layout) => {
+    const remaining = [...photoARs];
+    let cost = 0;
 
-  // Within the pool, prefer matching tag; fall back to any
-  const tagged = pool.filter((l) => l.tag === preferred);
-  const final = tagged.length ? tagged : pool;
+    for (const area of layout.areas) {
+      const target = computeCellAR(area);
+      let bestIdx = 0;
+      let bestDiff = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const diff = Math.abs(Math.log(remaining[i] / target));
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+      cost += bestDiff;
+      remaining.splice(bestIdx, 1);
+    }
 
-  return final[Math.floor(Math.random() * final.length)];
+    // Mild penalty for repeating the same cell count (variety without sacrificing fit)
+    const varietyPenalty = layout.count === prevCount ? 0.25 : 0;
+    return { layout, score: cost + varietyPenalty };
+  });
+
+  // Sort by score ascending; randomise among layouts within 0.15 of the best
+  scored.sort((a, b) => a.score - b.score);
+  const threshold = scored[0].score + 0.15;
+  const topTier = scored.filter((s) => s.score <= threshold);
+
+  return topTier[Math.floor(Math.random() * topTier.length)].layout;
 }
