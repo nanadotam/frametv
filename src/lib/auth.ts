@@ -79,27 +79,78 @@ export function normalizeUsername(username: string) {
 export function getDeviceInfo(request: NextRequest, explicitDeviceName?: string | null): DeviceInfo {
   const userAgent = request.headers.get('user-agent') ?? '';
   const lower = userAgent.toLowerCase();
+
+  // ── Smart TV / streaming box detection (check before generic browser/OS) ──
+  const tvPlatform =
+    lower.includes('tizen')                            ? 'Samsung Smart TV' :
+    lower.includes('web0s') || lower.includes('webos') ? 'LG TV' :
+    lower.includes('viera')                            ? 'Panasonic TV' :
+    lower.includes('philipstv')                        ? 'Philips TV' :
+    lower.includes('bravia') || lower.includes('sonydt') ? 'Sony TV' :
+    lower.includes('hbbtv') || lower.includes('netcast') ? 'Smart TV' :
+    lower.includes('crkey')                            ? 'Chromecast' :
+    lower.includes('googletv') || lower.includes('google tv') ? 'Google TV' :
+    lower.includes('androidtv') || lower.includes('android tv') ? 'Android TV' :
+    lower.includes('appletv') || lower.includes('apple tv') ? 'Apple TV' :
+    lower.includes('roku')                             ? 'Roku' :
+    lower.includes('firetv') || lower.includes('fire tv') || lower.includes('aft') ? 'Amazon Fire TV' :
+    lower.includes('silk/')                            ? 'Amazon Fire Tablet' :
+    lower.includes('playstation 5') || lower.includes('ps5') ? 'PlayStation 5' :
+    lower.includes('playstation 4') || lower.includes('ps4') ? 'PlayStation 4' :
+    lower.includes('playstation')                      ? 'PlayStation' :
+    lower.includes('xbox')                             ? 'Xbox' :
+    null;
+
   const browser =
     lower.includes('edg/') ? 'Edge' :
-    lower.includes('chrome/') ? 'Chrome' :
+    lower.includes('chrome/') && !lower.includes('chromium') ? 'Chrome' :
+    lower.includes('chromium') ? 'Chromium' :
     lower.includes('safari/') && !lower.includes('chrome/') ? 'Safari' :
     lower.includes('firefox/') ? 'Firefox' :
     lower.includes('opr/') || lower.includes('opera') ? 'Opera' :
+    lower.includes('silk/') ? 'Silk' :
     'Unknown';
+
   const os =
-    lower.includes('iphone') || lower.includes('ipad') ? 'iOS' :
+    lower.includes('iphone') ? 'iOS' :
+    lower.includes('ipad') ? 'iPadOS' :
     lower.includes('android') ? 'Android' :
     lower.includes('mac os') ? 'macOS' :
     lower.includes('windows') ? 'Windows' :
     lower.includes('linux') ? 'Linux' :
+    lower.includes('cros') ? 'ChromeOS' :
     'Unknown';
-  const device_type =
+
+  const device_type: string =
+    tvPlatform ? 'tv' :
     lower.includes('ipad') || lower.includes('tablet') ? 'tablet' :
-    lower.includes('mobi') || lower.includes('iphone') || lower.includes('android') ? 'mobile' :
+    lower.includes('mobi') || lower.includes('iphone') || (lower.includes('android') && !lower.includes('tablet')) ? 'mobile' :
     'desktop';
 
+  // ── Build an intelligent display name ──
+  let device_name: string | null = explicitDeviceName?.trim() || null;
+  if (!device_name) {
+    if (tvPlatform) {
+      device_name = tvPlatform;
+    } else {
+      const deviceLabel =
+        lower.includes('iphone') ? 'iPhone' :
+        lower.includes('ipad') ? 'iPad' :
+        lower.includes('macbook') ? 'MacBook' :
+        lower.includes('mac os') ? 'Mac' :
+        lower.includes('windows') ? 'Windows PC' :
+        lower.includes('android') ? 'Android' :
+        lower.includes('linux') ? 'Linux PC' :
+        lower.includes('cros') ? 'Chromebook' :
+        null;
+      device_name = deviceLabel && browser !== 'Unknown'
+        ? `${deviceLabel} · ${browser}`
+        : deviceLabel ?? (browser !== 'Unknown' ? browser : null);
+    }
+  }
+
   return {
-    device_name: explicitDeviceName?.trim() || null,
+    device_name,
     ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || null,
     user_agent: userAgent || null,
     browser,

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Search, Play, Pause, SkipForward, SkipBack, Volume2,
-  Music2, Loader2, Radio,
+  Music2, Loader2, Radio, Tv, Laptop, Smartphone, Speaker,
+  RefreshCw, MonitorSmartphone,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,9 +12,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
 import { cn } from '@/lib/utils';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
+import type { SpotifyDevice } from '@/app/api/spotify/devices/route';
 import PageGuide from '@/components/admin/PageGuide';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -29,6 +32,15 @@ async function playerAction(action: string, extra: Record<string, unknown> = {})
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, ...extra }),
   });
+}
+
+function deviceIcon(type: string) {
+  const t = type.toLowerCase();
+  if (t === 'computer' || t === 'laptop') return <Laptop size={14} className="shrink-0" />;
+  if (t === 'smartphone') return <Smartphone size={14} className="shrink-0" />;
+  if (t === 'speaker' || t === 'cast_audio') return <Speaker size={14} className="shrink-0" />;
+  if (t === 'tv' || t === 'castvideo') return <Tv size={14} className="shrink-0" />;
+  return <MonitorSmartphone size={14} className="shrink-0" />;
 }
 
 // ─── Now Playing card ─────────────────────────────────────────────────────────
@@ -54,27 +66,20 @@ function NowPlayingCard({
     <Card className="overflow-hidden border-primary/20">
       <CardContent className="p-0">
         <div className="flex gap-0">
-          {/* Album art — square, flush left */}
           <div className="relative shrink-0 w-28 h-28 md:w-32 md:h-32">
             {track.albumArtUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={track.albumArtUrl}
-                alt={track.albumName}
-                className="w-full h-full object-cover"
-              />
+              <img src={track.albumArtUrl} alt={track.albumName} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full bg-primary/15 flex items-center justify-center">
                 <Music2 size={28} className="text-primary/50" />
               </div>
             )}
-            {/* Playing pulse dot */}
             {isPlaying && (
               <span className="absolute bottom-2 right-2 w-3 h-3 rounded-full bg-green-400 shadow-lg shadow-green-400/50 animate-pulse" />
             )}
           </div>
 
-          {/* Right side: info + controls */}
           <div className="flex-1 min-w-0 p-4 flex flex-col justify-between gap-3">
             <div className="min-w-0">
               <p className="font-bold text-sm leading-tight truncate">{track.name}</p>
@@ -82,7 +87,6 @@ function NowPlayingCard({
               <p className="text-xs text-muted-foreground/50 truncate mt-0.5">{track.albumName}</p>
             </div>
 
-            {/* Progress */}
             <div className="space-y-1">
               <div className="h-1 rounded-full bg-muted overflow-hidden">
                 <div
@@ -96,7 +100,6 @@ function NowPlayingCard({
               </div>
             </div>
 
-            {/* Transport controls */}
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -105,8 +108,6 @@ function NowPlayingCard({
               >
                 <SkipBack size={16} />
               </button>
-
-              {/* Play / Pause — prominent circle */}
               <button
                 type="button"
                 onClick={isPlaying ? onPause : onPlay}
@@ -116,7 +117,6 @@ function NowPlayingCard({
                   ? <Pause size={18} fill="currentColor" />
                   : <Play size={18} fill="currentColor" className="translate-x-0.5" />}
               </button>
-
               <button
                 type="button"
                 onClick={onNext}
@@ -124,8 +124,6 @@ function NowPlayingCard({
               >
                 <SkipForward size={16} />
               </button>
-
-              {/* Playing badge */}
               <div className="ml-auto">
                 <Badge
                   variant="outline"
@@ -179,7 +177,6 @@ function TrackRow({
       )}
       onClick={handle}
     >
-      {/* Art + play overlay */}
       <div className="relative w-10 h-10 shrink-0 rounded-lg overflow-hidden bg-muted">
         {track.albumArtUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -195,8 +192,6 @@ function TrackRow({
             : <Play size={13} className="text-white fill-white" />}
         </div>
       </div>
-
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <p className={cn('font-semibold text-sm truncate', isActive && 'text-primary')}>
           {track.name}
@@ -205,9 +200,184 @@ function TrackRow({
           {track.artists.join(', ')} · {track.albumName}
         </p>
       </div>
-
       <span className="text-xs text-muted-foreground/60 tabular-nums shrink-0">{fmtMs(track.durationMs)}</span>
     </motion.div>
+  );
+}
+
+// ─── Device selector ──────────────────────────────────────────────────────────
+
+function DeviceSelector() {
+  const [devices, setDevices] = useState<SpotifyDevice[]>([]);
+  const [frameTvDeviceId, setFrameTvDeviceId] = useState<string | null>(null);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [transferring, setTransferring] = useState<string | null>(null);
+  const [notConnected, setNotConnected] = useState(false);
+
+  const loadDevices = useCallback(async () => {
+    setLoadingDevices(true);
+    try {
+      const res = await fetch('/api/spotify/devices');
+      if (res.status === 401) { setNotConnected(true); return; }
+      if (res.ok) {
+        const data = await res.json();
+        setDevices(data.devices ?? []);
+        setFrameTvDeviceId(data.frameTvDeviceId ?? null);
+        setNotConnected(false);
+      }
+    } finally {
+      setLoadingDevices(false);
+    }
+  }, []);
+
+  useEffect(() => { loadDevices(); }, [loadDevices]);
+
+  const transfer = async (deviceId?: string) => {
+    const key = deviceId ?? 'frametv';
+    setTransferring(key);
+    try {
+      await playerAction('transfer', deviceId ? { device_id: deviceId } : {});
+      await loadDevices();
+    } finally {
+      setTransferring(null);
+    }
+  };
+
+  if (notConnected) return null;
+
+  const frameTvEntry = frameTvDeviceId
+    ? devices.find((d) => d.id === frameTvDeviceId)
+    : null;
+  const otherDevices = devices.filter((d) => d.id !== frameTvDeviceId);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Tv size={14} className="text-primary" />
+            Audio Output
+          </CardTitle>
+          <button
+            type="button"
+            onClick={loadDevices}
+            disabled={loadingDevices}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            title="Refresh devices"
+          >
+            <RefreshCw size={13} className={loadingDevices ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {loadingDevices && devices.length === 0 && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5 py-2">
+            <Loader2 size={11} className="animate-spin" /> Loading devices…
+          </p>
+        )}
+
+        {/* FrameTV device — highlighted */}
+        {frameTvDeviceId && (
+          <div className={cn(
+            'flex items-center justify-between p-3 rounded-xl border',
+            frameTvEntry?.is_active
+              ? 'bg-green-500/10 border-green-500/30'
+              : 'bg-primary/8 border-primary/20'
+          )}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className={cn(
+                'flex size-8 items-center justify-center rounded-lg border',
+                frameTvEntry?.is_active
+                  ? 'bg-green-500/15 border-green-500/30 text-green-400'
+                  : 'bg-primary/15 border-primary/25 text-primary'
+              )}>
+                <Tv size={14} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">
+                  {frameTvEntry?.name ?? 'FrameTV Browser'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {frameTvEntry?.is_active ? 'Currently playing here' : 'Registered TV device'}
+                  {frameTvEntry?.volume_percent != null && ` · ${frameTvEntry.volume_percent}%`}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant={frameTvEntry?.is_active ? 'secondary' : 'default'}
+              className={cn('shrink-0 gap-1.5', frameTvEntry?.is_active && 'bg-green-500/20 text-green-300 border-green-500/30 hover:bg-green-500/30')}
+              onClick={() => transfer()}
+              disabled={transferring !== null || frameTvEntry?.is_active}
+            >
+              {transferring === 'frametv' && <Loader2 size={12} className="animate-spin" />}
+              {frameTvEntry?.is_active ? 'Playing' : 'Send to TV'}
+            </Button>
+          </div>
+        )}
+
+        {/* Other Spotify devices */}
+        {otherDevices.length > 0 && (
+          <>
+            {frameTvDeviceId && <Separator />}
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium px-1 pt-1">
+              Other Spotify devices
+            </p>
+            {otherDevices.map((device) => (
+              <div
+                key={device.id}
+                className={cn(
+                  'flex items-center justify-between p-3 rounded-xl border transition-colors',
+                  device.is_active ? 'bg-accent border-border' : 'border-border'
+                )}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className={cn(
+                    'flex size-7 items-center justify-center rounded-lg text-muted-foreground',
+                    device.is_active && 'text-foreground'
+                  )}>
+                    {deviceIcon(device.type)}
+                  </span>
+                  <div className="min-w-0">
+                    <p className={cn('text-sm font-medium truncate', device.is_active && 'font-semibold')}>
+                      {device.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {device.type.toLowerCase().replace(/_/g, ' ')}
+                      {device.is_active && ' · Active'}
+                      {device.volume_percent != null && ` · ${device.volume_percent}%`}
+                    </p>
+                  </div>
+                </div>
+                {!device.is_active && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 gap-1.5"
+                    onClick={() => transfer(device.id)}
+                    disabled={transferring !== null}
+                  >
+                    {transferring === device.id && <Loader2 size={12} className="animate-spin" />}
+                    Play here
+                  </Button>
+                )}
+                {device.is_active && (
+                  <Badge variant="outline" className="text-[10px] border-green-500/30 text-green-400 bg-green-500/10 gap-1">
+                    <Radio size={8} className="animate-pulse" /> Playing
+                  </Badge>
+                )}
+              </div>
+            ))}
+          </>
+        )}
+
+        {!loadingDevices && devices.length === 0 && !frameTvDeviceId && (
+          <p className="text-sm text-muted-foreground py-2">
+            No Spotify devices found. Open Spotify on any device to see it here.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -256,9 +426,9 @@ export default function MusicPage() {
         steps={[
           'Connect Spotify in Settings first.',
           'Open the display tab on your TV and leave it running — it registers as a Spotify device.',
+          'Use Audio Output to route sound to the FrameTV browser or any other Spotify device.',
           'Type a song, artist, or album in the search box.',
-          'Click a result to play it on the TV immediately.',
-          'Use "Send to TV" to transfer existing Spotify playback to the FrameTV device.',
+          'Click a result to play it on the active device.',
         ]}
       />
 
@@ -306,6 +476,9 @@ export default function MusicPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Audio Output / Device Selector */}
+      <DeviceSelector />
 
       {/* Volume */}
       <Card>

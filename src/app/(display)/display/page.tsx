@@ -8,13 +8,24 @@ import { useModes } from '@/hooks/useModes';
 import { useAutoTheme } from '@/hooks/useAutoTheme';
 import { useAutoDim } from '@/hooks/useAutoDim';
 import { useClockOverlayConfig } from '@/hooks/useClockOverlayConfig';
+import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
 import { MODES } from '@/modes/index';
 import type { ModeId } from '@/modes/types';
+import type { SpotifyTrack } from '@/lib/spotify/now-playing';
 import ClockOverlay from '@/components/display/ClockOverlay';
 import SpotifyOverlay from '@/components/display/SpotifyOverlay';
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { Input } from '@/components/ui/input';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { Maximize2, Minimize2, Search, X, Play, Loader2 } from 'lucide-react';
+
+// ─── Spotify modes ────────────────────────────────────────────────────────────
+
+const SPOTIFY_MODES = new Set([
+  'slideshow-single', 'slideshow-grid', 'pinterest',
+  'vinyl', 'coverflow',
+]);
+
+// ─── Fullscreen helpers ───────────────────────────────────────────────────────
 
 type FullscreenElement = HTMLElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
@@ -50,6 +61,8 @@ function exitFullscreen() {
   const exit = document.exitFullscreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
   return Promise.resolve(exit?.call(document));
 }
+
+// ─── Loading / PIN gate ───────────────────────────────────────────────────────
 
 function LoadingSkeleton() {
   return (
@@ -152,6 +165,8 @@ function DisplayPinGate({ onUnlock }: { onUnlock: () => void }) {
   );
 }
 
+// ─── Cinema mode ──────────────────────────────────────────────────────────────
+
 function useCinemaMode() {
   const [cinema, setCinema] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -187,7 +202,6 @@ function useCinemaMode() {
     if (cinema) exit(); else enter();
   }, [cinema, enter, exit]);
 
-  // Sync state when the user presses Escape (browser exits fullscreen automatically)
   useEffect(() => {
     setSupported(isFullscreenSupported());
     const onFsChange = () => {
@@ -206,7 +220,6 @@ function useCinemaMode() {
     };
   }, [cinema, showToast]);
 
-  // F key shortcut
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'f' || e.key === 'F') toggle();
@@ -217,6 +230,8 @@ function useCinemaMode() {
 
   return { cinema, toast, toggle, enter, supported };
 }
+
+// ─── Fullscreen prompt ────────────────────────────────────────────────────────
 
 function useFullscreenPrompt(enabled: boolean) {
   const storageKey = 'frametv:display-fullscreen-prompt-dismissed';
@@ -244,6 +259,8 @@ function useFullscreenPrompt(enabled: boolean) {
 
   return { visible, dismiss };
 }
+
+// ─── Device heartbeat ─────────────────────────────────────────────────────────
 
 function getDisplayClientId() {
   const key = 'frametv:display-device-id';
@@ -299,15 +316,205 @@ function useDisplayDeviceHeartbeat(activeModeId: string | null, enabled: boolean
   }, [activeModeId, enabled]);
 }
 
+// ─── Spotify search panel ─────────────────────────────────────────────────────
+
+function SpotifySearchPanel({
+  onClose,
+  onPlay,
+}: {
+  onClose: () => void;
+  onPlay: (uri: string, name: string) => Promise<void>;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SpotifyTrack[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [playingUri, setPlayingUri] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim()) { setResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(query)}`);
+        if (res.ok) setResults((await res.json()).tracks ?? []);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
+
+  const handlePlay = async (track: SpotifyTrack) => {
+    setPlayingUri(track.uri);
+    await onPlay(track.uri, track.name);
+    setPlayingUri(null);
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        bottom: 88,
+        left: 28,
+        width: 360,
+        maxHeight: 320,
+        background: 'rgba(0,0,0,0.88)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        borderRadius: 16,
+        border: '1px solid rgba(255,255,255,0.12)',
+        overflow: 'hidden',
+        zIndex: 61,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      {/* Search input row */}
+      <div style={{
+        padding: '10px 14px',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        display: 'flex',
+        gap: 8,
+        alignItems: 'center',
+        flexShrink: 0,
+      }}>
+        <Search size={14} color="rgba(255,255,255,0.45)" style={{ flexShrink: 0 }} />
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search Spotify…"
+          style={{
+            flex: 1,
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            color: '#fff',
+            fontSize: '0.85rem',
+            fontWeight: 500,
+          }}
+        />
+        {searching && <Loader2 size={13} color="rgba(255,255,255,0.4)" style={{ flexShrink: 0, animation: 'spin 1s linear infinite' }} />}
+        <button
+          onClick={onClose}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 2,
+            display: 'flex',
+            color: 'rgba(255,255,255,0.4)',
+            flexShrink: 0,
+          }}
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Results */}
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {results.map((track) => (
+          <button
+            key={track.id}
+            onClick={() => handlePlay(track)}
+            disabled={playingUri !== null}
+            style={{
+              width: '100%',
+              padding: '9px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              background: 'transparent',
+              border: 'none',
+              cursor: playingUri ? 'wait' : 'pointer',
+              color: '#fff',
+              textAlign: 'left',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <div style={{ position: 'relative', flexShrink: 0, width: 36, height: 36, borderRadius: 6, overflow: 'hidden', background: 'rgba(255,255,255,0.08)' }}>
+              {track.albumArtUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={track.albumArtUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              )}
+              {playingUri === track.uri && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Loader2 size={14} color="#fff" style={{ animation: 'spin 1s linear infinite' }} />
+                </div>
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.82rem', fontWeight: 600, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.name}</p>
+              <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artists.join(', ')}</p>
+            </div>
+            <Play size={13} color="rgba(255,255,255,0.3)" style={{ flexShrink: 0 }} />
+          </button>
+        ))}
+
+        {!searching && query.trim() && results.length === 0 && (
+          <p style={{ padding: '18px 14px', color: 'rgba(255,255,255,0.38)', fontSize: '0.82rem', textAlign: 'center', margin: 0 }}>
+            No results for &ldquo;{query}&rdquo;
+          </p>
+        )}
+
+        {!query && (
+          <p style={{ padding: '18px 14px', color: 'rgba(255,255,255,0.38)', fontSize: '0.82rem', textAlign: 'center', margin: 0 }}>
+            Type to search Spotify
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Button base style ────────────────────────────────────────────────────────
+
+const BTN: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '7px',
+  padding: '8px 16px',
+  borderRadius: '999px',
+  background: 'rgba(0,0,0,0.45)',
+  backdropFilter: 'blur(12px)',
+  WebkitBackdropFilter: 'blur(12px)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  color: '#fff',
+  fontSize: '0.78rem',
+  fontWeight: 500,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  cursor: 'pointer',
+  opacity: 0.35,
+  transition: 'opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease',
+};
+
+function resetBtn(e: React.MouseEvent<HTMLButtonElement>) {
+  e.currentTarget.style.opacity = '0.35';
+  e.currentTarget.style.background = 'rgba(0,0,0,0.45)';
+  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function DisplayPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [locked, setLocked] = useState(false);
   const [clockOn, setClockOn] = useState(true);
   const [spotifyOn, setSpotifyOn] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
-
-  // Modes where the Spotify overlay makes sense (photo/visual backgrounds)
-  const SPOTIFY_MODES = new Set(['slideshow-single', 'slideshow-grid', 'pinterest']);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [transferring, setTransferring] = useState(false);
 
   const logoutDisplay = useCallback(async () => {
     setLoggingOut(true);
@@ -318,6 +525,7 @@ export default function DisplayPage() {
       setLocked(true);
     }
   }, []);
+
   const displayState = useDisplayStateRealtime();
   const activeMode = useActiveMode();
   const modes = useModes();
@@ -326,9 +534,9 @@ export default function DisplayPage() {
   const clockConfig = useClockOverlayConfig();
   const { cinema, toast, toggle: toggleCinema, enter: enterCinema, supported: fullscreenSupported } = useCinemaMode();
   const fullscreenPrompt = useFullscreenPrompt(authChecked && !locked);
-  useSpotifyPlayer(); // Load Web Playback SDK silently; registers TV as Spotify device
+  const { deviceId } = useSpotifyPlayer();
+  const spotifyNow = useSpotifyNowPlaying();
 
-  // Sync local toggle with the persisted config on first load
   useEffect(() => {
     setClockOn(clockConfig.enabled);
   }, [clockConfig.enabled]);
@@ -345,8 +553,6 @@ export default function DisplayPage() {
       });
   }, []);
 
-  // Dispatch skip / reshuffle events when photo_skip changes in DB.
-  // A delta >= 1000 is treated as a reshuffle signal (sent by /api/display-state/reshuffle).
   const prevSkipRef = useRef<number | null>(null);
   useEffect(() => {
     const skip = displayState?.photo_skip ?? 0;
@@ -371,6 +577,37 @@ export default function DisplayPage() {
   const modeId = activeMode.modeId as ModeId | null;
   useDisplayDeviceHeartbeat(modeId, authChecked && !locked);
 
+  // Transfer playback to this TV device
+  const handlePlayOnTV = useCallback(async () => {
+    if (transferring) return;
+    setTransferring(true);
+    try {
+      await fetch('/api/spotify/player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'transfer',
+          ...(deviceId ? { device_id: deviceId } : {}),
+        }),
+      });
+    } finally {
+      setTransferring(false);
+    }
+  }, [deviceId, transferring]);
+
+  // Play a specific track on this TV device
+  const handlePlayTrack = useCallback(async (uri: string, _name: string) => {
+    await fetch('/api/spotify/player', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'play_track',
+        uri,
+        ...(deviceId ? { device_id: deviceId } : {}),
+      }),
+    });
+  }, [deviceId]);
+
   if (authChecked && locked) {
     return <DisplayPinGate onUnlock={() => { setLocked(false); window.location.reload(); }} />;
   }
@@ -384,12 +621,17 @@ export default function DisplayPage() {
   }
 
   const ModeComponent = modeId && MODES[modeId] ? MODES[modeId] : null;
-
   const brightness: number = (displayState.brightness as number) ?? 100;
   const isPaused: boolean = (displayState.is_paused as boolean) ?? false;
-  // Look up the mode's config from the modes table (keyed by modeId)
   const modeRow = modes.find((m) => m.id === modeId);
   const config: Record<string, unknown> = (modeRow?.config as Record<string, unknown>) ?? {};
+
+  const isSpotifyMode = modeId && SPOTIFY_MODES.has(modeId);
+  const hasSpotifyTrack = Boolean(spotifyNow.current);
+  const showPlayOnTV = spotifyOn && isSpotifyMode && hasSpotifyTrack;
+  const playOnTVLabel = spotifyNow.isPlaying
+    ? (transferring ? 'Sending…' : 'Play here')
+    : (hasSpotifyTrack ? 'Play last' : null);
 
   return (
     <div
@@ -409,15 +651,18 @@ export default function DisplayPage() {
         <LoadingSkeleton />
       )}
 
-      {/* Clock overlay — shown when toggled on; visible even in cinema mode */}
       <ClockOverlay config={{ ...clockConfig, enabled: clockConfig.enabled && clockOn }} />
 
-      {/* Spotify overlay — only on photo modes, only when toggled on */}
-      {spotifyOn && modeId && SPOTIFY_MODES.has(modeId) && (
-        <SpotifyOverlay clockPosition={clockConfig.position} />
+      {spotifyOn && isSpotifyMode && (
+        <SpotifyOverlay
+          clockPosition={clockConfig.position}
+          current={spotifyNow.current}
+          queue={spotifyNow.queue}
+          history={spotifyNow.history}
+          isPlaying={spotifyNow.isPlaying}
+        />
       )}
 
-      {/* Dim overlay — hidden in cinema mode */}
       {!cinema && dim && (
         <div className="fixed inset-0 bg-black/40 pointer-events-none" />
       )}
@@ -469,7 +714,15 @@ export default function DisplayPage() {
         </div>
       )}
 
-      {/* Floating controls — bottom-left, hidden in cinema mode */}
+      {/* Spotify search panel — above the controls bar */}
+      {searchOpen && isSpotifyMode && (
+        <SpotifySearchPanel
+          onClose={() => setSearchOpen(false)}
+          onPlay={handlePlayTrack}
+        />
+      )}
+
+      {/* Floating controls */}
       {!cinema && (
         <div
           style={{
@@ -482,63 +735,38 @@ export default function DisplayPage() {
             gap: '10px',
           }}
         >
-          {/* Clock toggle */}
+          {/* Fullscreen */}
           <button
             onClick={(e) => { e.stopPropagation(); toggleCinema(); }}
             onDoubleClick={(e) => e.stopPropagation()}
             title={cinema ? 'Exit fullscreen' : 'Enter fullscreen'}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              padding: '8px 16px',
-              borderRadius: '999px',
-              background: 'rgba(0,0,0,0.55)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255,255,255,0.16)',
-              color: '#fff',
-              fontSize: '0.78rem',
-              fontWeight: 600,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-              opacity: 0.55,
-              transition: 'opacity 0.2s ease',
+            style={BTN}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '1';
+              e.currentTarget.style.background = 'rgba(124,58,237,0.22)';
+              e.currentTarget.style.borderColor = 'rgba(124,58,237,0.5)';
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.55')}
+            onMouseLeave={resetBtn}
           >
             {cinema ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             {cinema ? 'Exit full' : 'Fullscreen'}
           </button>
 
-          {/* Clock toggle */}
+          {/* Clock */}
           <button
             onClick={(e) => { e.stopPropagation(); setClockOn((v) => !v); }}
             onDoubleClick={(e) => e.stopPropagation()}
             title={clockOn ? 'Hide clock' : 'Show clock'}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              padding: '8px 16px',
-              borderRadius: '999px',
-              background: 'rgba(0,0,0,0.45)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255,255,255,0.12)',
+              ...BTN,
               color: clockOn ? '#fff' : 'rgba(255,255,255,0.35)',
-              fontSize: '0.78rem',
-              fontWeight: 500,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-              opacity: 0.35,
-              transition: 'opacity 0.2s ease, color 0.2s ease',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '1';
+              e.currentTarget.style.background = 'rgba(14,165,233,0.18)';
+              e.currentTarget.style.borderColor = 'rgba(14,165,233,0.5)';
+            }}
+            onMouseLeave={resetBtn}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
@@ -547,35 +775,23 @@ export default function DisplayPage() {
             {clockOn ? 'Clock on' : 'Clock off'}
           </button>
 
-          {/* Spotify overlay toggle — only shown on modes that support it */}
-          {modeId && SPOTIFY_MODES.has(modeId) && (
+          {/* Music toggle — only on Spotify modes */}
+          {isSpotifyMode && (
             <button
-              onClick={(e) => { e.stopPropagation(); setSpotifyOn((v) => !v); }}
+              onClick={(e) => { e.stopPropagation(); setSpotifyOn((v) => !v); if (searchOpen) setSearchOpen(false); }}
               onDoubleClick={(e) => e.stopPropagation()}
               title={spotifyOn ? 'Hide music overlay' : 'Show music overlay'}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '7px',
-                padding: '8px 16px',
-                borderRadius: '999px',
-                background: 'rgba(0,0,0,0.45)',
-                backdropFilter: 'blur(12px)',
-                WebkitBackdropFilter: 'blur(12px)',
-                border: '1px solid rgba(255,255,255,0.12)',
+                ...BTN,
                 color: spotifyOn ? '#fff' : 'rgba(255,255,255,0.35)',
-                fontSize: '0.78rem',
-                fontWeight: 500,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                cursor: 'pointer',
-                opacity: 0.35,
-                transition: 'opacity 0.2s ease, color 0.2s ease',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '1';
+                e.currentTarget.style.background = 'rgba(29,185,84,0.18)';
+                e.currentTarget.style.borderColor = 'rgba(29,185,84,0.5)';
+              }}
+              onMouseLeave={resetBtn}
             >
-              {/* Music note icon */}
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 18V5l12-2v13" />
                 <circle cx="6" cy="18" r="3" />
@@ -585,78 +801,90 @@ export default function DisplayPage() {
             </button>
           )}
 
-          {/* Shuffle photos */}
-          <button
-            onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('frametv:reshuffle')); }}
-            onDoubleClick={(e) => e.stopPropagation()}
-            title="Shuffle photos"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              padding: '8px 16px',
-              borderRadius: '999px',
-              background: 'rgba(0,0,0,0.45)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              color: '#fff',
-              fontSize: '0.78rem',
-              fontWeight: 500,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-              opacity: 0.35,
-              transition: 'opacity 0.2s ease',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
-          >
-            {/* Shuffle icon */}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16 3 21 3 21 8" />
-              <line x1="4" y1="20" x2="21" y2="3" />
-              <polyline points="21 16 21 21 16 21" />
-              <line x1="15" y1="15" x2="21" y2="21" />
-            </svg>
-            Shuffle
-          </button>
+          {/* Play on TV / Play last */}
+          {showPlayOnTV && playOnTVLabel && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handlePlayOnTV(); }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              disabled={transferring}
+              title="Play on this TV"
+              style={{
+                ...BTN,
+                color: '#1db954',
+                borderColor: 'rgba(29,185,84,0.25)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '1';
+                e.currentTarget.style.background = 'rgba(29,185,84,0.22)';
+                e.currentTarget.style.borderColor = 'rgba(29,185,84,0.6)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '0.35';
+                e.currentTarget.style.background = 'rgba(0,0,0,0.45)';
+                e.currentTarget.style.borderColor = 'rgba(29,185,84,0.25)';
+              }}
+            >
+              {transferring
+                ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                : <Play size={14} fill="currentColor" />}
+              {playOnTVLabel}
+            </button>
+          )}
 
-          {/* Log out of display */}
+          {/* Search — only when music is on */}
+          {spotifyOn && isSpotifyMode && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setSearchOpen((v) => !v); }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              title="Search Spotify"
+              style={{
+                ...BTN,
+                padding: '8px 12px',
+                color: searchOpen ? '#fff' : undefined,
+                background: searchOpen ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.45)',
+                borderColor: searchOpen ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '1';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = searchOpen ? '1' : '0.35';
+                e.currentTarget.style.background = searchOpen ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.45)';
+                e.currentTarget.style.borderColor = searchOpen ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)';
+              }}
+            >
+              {searchOpen ? <X size={14} /> : <Search size={14} />}
+            </button>
+          )}
+
+          {/* Log out */}
           <button
             onClick={(e) => { e.stopPropagation(); logoutDisplay(); }}
             onDoubleClick={(e) => e.stopPropagation()}
             disabled={loggingOut}
             title="Log out of display"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              padding: '8px 16px',
-              borderRadius: '999px',
-              background: 'rgba(0,0,0,0.45)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              color: '#fff',
-              fontSize: '0.78rem',
-              fontWeight: 500,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              cursor: loggingOut ? 'wait' : 'pointer',
-              opacity: 0.35,
-              transition: 'opacity 0.2s ease',
+            style={{ ...BTN, cursor: loggingOut ? 'wait' : 'pointer' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '1';
+              e.currentTarget.style.background = 'rgba(220,38,38,0.2)';
+              e.currentTarget.style.borderColor = 'rgba(220,38,38,0.55)';
+              e.currentTarget.style.color = '#fca5a5';
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.35')}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = '0.35';
+              e.currentTarget.style.background = 'rgba(0,0,0,0.45)';
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+              e.currentTarget.style.color = '#fff';
+            }}
           >
-            {/* Door/exit icon */}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            {loggingOut ? 'Logging out…' : 'Log out of display'}
+            {loggingOut ? 'Logging out…' : 'Log out'}
           </button>
         </div>
       )}

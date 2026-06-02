@@ -64,19 +64,39 @@ export async function POST(request: NextRequest) {
       fullscreen_supported: typeof body.fullscreen_supported === 'boolean' ? body.fullscreen_supported : null,
       fullscreen_active: typeof body.fullscreen_active === 'boolean' ? body.fullscreen_active : null,
       visibility_state: stringOrNull(body.visibility_state),
+      first_seen_at: now,
       last_seen_at: now,
       ...device,
     };
 
     const supabase = createServiceClient();
-    const { data, error } = await supabase
+
+    // Two-step: check for existing row so we can preserve first_seen_at on updates.
+    const { data: existing } = await supabase
       .from('display_devices')
-      .upsert(row, {
-        onConflict: 'user_id,client_id',
-        ignoreDuplicates: false,
-      })
-      .select()
-      .single();
+      .select('id')
+      .eq('user_id', auth.user.id)
+      .eq('client_id', clientId)
+      .maybeSingle();
+
+    // On update, omit first_seen_at so the original session-start timestamp is kept.
+    const { first_seen_at: _fsa, ...updateRow } = row;
+
+    let data, error;
+    if (existing) {
+      ({ data, error } = await supabase
+        .from('display_devices')
+        .update(updateRow)
+        .eq('id', existing.id)
+        .select()
+        .single());
+    } else {
+      ({ data, error } = await supabase
+        .from('display_devices')
+        .insert(row)
+        .select()
+        .single());
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ device: data });

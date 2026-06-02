@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Music2 } from 'lucide-react';
-import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
 import type { ClockPosition } from './ClockOverlay';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
 
@@ -13,13 +12,10 @@ function overlayPosition(clockPos: ClockPosition): string {
   return clockPos.includes('right') ? 'bottom-6 left-8' : 'bottom-6 right-8';
 }
 
-// A wide, feathered corner vignette that blends into any photo background.
-// Gradient runs from the nearest corner outward — direction flips based on side.
 function cornerGradient(clockPos: ClockPosition): React.CSSProperties {
-  const fromLeft = clockPos.includes('right'); // overlay is on the left when clock is right
+  const fromLeft = clockPos.includes('right');
   return {
     position: 'absolute',
-    // Extend well beyond the content so the fade starts far from the albums
     top: '-70px',
     bottom: '-20px',
     left: fromLeft ? '-60px' : '-20px',
@@ -125,18 +121,19 @@ interface RowState {
 
 interface SpotifyOverlayProps {
   clockPosition: ClockPosition;
+  current: SpotifyTrack | null;
+  queue: SpotifyTrack[];
+  history: SpotifyTrack[];
+  isPlaying: boolean;
 }
 
-export default function SpotifyOverlay({ clockPosition }: SpotifyOverlayProps) {
-  const { current, queue, history, isPlaying } = useSpotifyNowPlaying();
+export default function SpotifyOverlay({ clockPosition, current, queue, history, isPlaying }: SpotifyOverlayProps) {
   const [row, setRow] = useState<RowState | null>(null);
   const [pulsing, setPulsing] = useState(false);
   const rowKeyRef = useRef(0);
 
-  // Build/update the three-slot row whenever the current track changes
   useEffect(() => {
     if (!current) return;
-
     setRow((prev) => {
       if (prev?.current.id === current.id) return prev;
       rowKeyRef.current += 1;
@@ -149,7 +146,6 @@ export default function SpotifyOverlay({ clockPosition }: SpotifyOverlayProps) {
     });
   }, [current, history, queue]);
 
-  // Keep next slot fresh as queue updates
   useEffect(() => {
     const nextId = queue[0]?.id;
     setRow((prev) => {
@@ -159,7 +155,6 @@ export default function SpotifyOverlay({ clockPosition }: SpotifyOverlayProps) {
     });
   }, [queue]);
 
-  // Pulse current album when track is near its end (< 6 seconds remaining)
   useEffect(() => {
     if (!current) return;
     const remaining = current.durationMs - current.progressMs;
@@ -175,10 +170,8 @@ export default function SpotifyOverlay({ clockPosition }: SpotifyOverlayProps) {
       className={`fixed ${posClass} z-50 pointer-events-none select-none`}
       style={{ maxWidth: 320 }}
     >
-      {/* Wide, soft corner vignette — blends into any photo */}
       <div aria-hidden style={cornerGradient(clockPosition)} />
 
-      {/* Album trio */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginBottom: 10 }}>
         <AnimatePresence mode="popLayout">
           {row.prev && (
@@ -195,7 +188,6 @@ export default function SpotifyOverlay({ clockPosition }: SpotifyOverlayProps) {
         </AnimatePresence>
       </div>
 
-      {/* Track label */}
       <div style={{ paddingLeft: row.prev ? 82 : 0 }}>
         <motion.p
           key={row.current.id + '-title'}

@@ -6,7 +6,7 @@ import {
   SkipForward, SkipBack, Pause, Play, Tv, Sun, Radio, Clock,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Send, Zap,
   CalendarDays, Star, Shuffle, MonitorSmartphone, Loader2, Info,
-  Link2, Copy, RefreshCw, Trash2,
+  Link2, Copy, RefreshCw, Trash2, Wifi, MapPin, Monitor,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,8 +61,13 @@ function rendererLabel(renderer: string | null | undefined) {
   return 'Display renderer';
 }
 
-function shortDeviceLabel(device: DisplayDevice) {
-  return device.label || device.device_name || `${device.browser ?? 'Browser'} on ${device.os ?? 'Unknown OS'}`;
+function smartDeviceLabel(device: DisplayDevice) {
+  if (device.label) return device.label;
+  if (device.device_name) return device.device_name;
+  const browser = device.browser && device.browser !== 'Unknown' ? device.browser : null;
+  const os = device.os && device.os !== 'Unknown' ? device.os : null;
+  if (browser && os) return `${os} · ${browser}`;
+  return browser ?? os ?? 'Unknown Device';
 }
 
 function timeAgo(ts: string, now: number) {
@@ -71,6 +76,23 @@ function timeAgo(ts: string, now: number) {
   if (diff < 60_000) return `${Math.round(diff / 1000)}s ago`;
   if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`;
   return `${Math.round(diff / 3_600_000)}h ago`;
+}
+
+function watchDuration(firstSeenAt: string | null | undefined, now: number) {
+  if (!firstSeenAt) return null;
+  const ms = Math.max(0, now - new Date(firstSeenAt).getTime());
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return `${h}h ${m}m`;
+}
+
+function deviceTypeIcon(device: DisplayDevice) {
+  const t = device.device_type;
+  if (t === 'tv') return <Tv size={14} className="shrink-0" />;
+  if (t === 'mobile') return <MonitorSmartphone size={14} className="shrink-0" />;
+  return <Monitor size={14} className="shrink-0" />;
 }
 
 function ModeIcon({ mode, className, size = 18 }: { mode: { icon: ComponentType<{ size?: number; className?: string; strokeWidth?: number }> }; className?: string; size?: number }) {
@@ -539,6 +561,7 @@ export default function NowPlayingPage() {
   const [modes, setModes]                   = useState<Mode[]>([]);
   const [displayDevices, setDisplayDevices] = useState<DisplayDevice[]>([]);
   const [deviceNow, setDeviceNow]           = useState(0);
+  const [myClientId, setMyClientId]         = useState<string | null>(null);
   const [modeConfig, setModeConfig]         = useState<Cfg>({});
   const [loading, setLoading]               = useState(false);
   const [fetchError, setFetchError]         = useState<string | null>(null);
@@ -552,6 +575,7 @@ export default function NowPlayingPage() {
   const [pendingAlbumIds, setPendingAlbumIds] = useState<Set<string>>(new Set());
   const [playbackPending, setPlaybackPending] = useState<PlaybackAction | null>(null);
   const [devicesOpen, setDevicesOpen]       = useState(false);
+  const [statusOpen, setStatusOpen]         = useState(false);
 
   const modeConfigTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const brightnessTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -626,6 +650,38 @@ export default function NowPlayingPage() {
       if (brightnessSavedTimer.current) clearTimeout(brightnessSavedTimer.current);
       if (quickSavedTimer.current) clearTimeout(quickSavedTimer.current);
     };
+  }, []);
+
+  // ── Admin device heartbeat ─────────────────────────────────────────────────
+  useEffect(() => {
+    let clientId = localStorage.getItem('frametv_admin_client_id');
+    if (!clientId) {
+      clientId = `admin-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      localStorage.setItem('frametv_admin_client_id', clientId);
+    }
+    setMyClientId(clientId);
+
+    const sendBeat = () => {
+      fetch('/api/display-devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: clientId,
+          route: 'admin',
+          renderer: 'admin-ui',
+          viewport_width: window.innerWidth,
+          viewport_height: window.innerHeight,
+          screen_width: window.screen.width,
+          screen_height: window.screen.height,
+          device_pixel_ratio: window.devicePixelRatio,
+          visibility_state: document.visibilityState,
+        }),
+      }).catch(() => {});
+    };
+
+    sendBeat();
+    const interval = setInterval(sendBeat, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   // Sync modeConfig when active mode or modes list changes
@@ -824,7 +880,10 @@ export default function NowPlayingPage() {
   const enabledSchedules = schedules.filter((s) => s.is_enabled);
   const nextSchedule = enabledSchedules[0] ?? null;
   const activeDevices = displayDevices.filter((d) => deviceNow - new Date(d.last_seen_at).getTime() < 90_000);
-  const liveDevice = activeDevices[0] ?? displayDevices[0] ?? null;
+  // Separate display viewers from admin browsers
+  const viewerDevices = displayDevices.filter((d) => d.route !== 'admin');
+  const activeViewers = viewerDevices.filter((d) => deviceNow - new Date(d.last_seen_at).getTime() < 90_000);
+  const liveDevice = activeViewers[0] ?? viewerDevices[0] ?? activeDevices[0] ?? displayDevices[0] ?? null;
   const htmlTvUnsupportedMode =
     liveDevice?.renderer === 'html-tv' &&
     Boolean(displayState?.active_mode_id) &&
@@ -833,7 +892,7 @@ export default function NowPlayingPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-5">
+    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-4">
 
       <PageGuide
         pageKey="remote"
@@ -850,242 +909,140 @@ export default function NowPlayingPage() {
       />
 
       {/* ── Header ── */}
-      <div className="flex items-start justify-between pt-2">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Remote</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Control what&apos;s on the TV</p>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-card border border-border rounded-full px-3 py-1.5">
-          {isConnected
-            ? <><CheckCircle2 size={12} className="text-green-500" /> Live</>
-            : <><AlertCircle size={12} className="text-yellow-500" /> No DB</>}
+      <div className="flex items-center justify-between pt-2">
+        <h1 className="text-xl font-bold tracking-tight">Remote</h1>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-card border border-border rounded-full px-3 py-1.5">
+            {isConnected
+              ? <><CheckCircle2 size={12} className="text-green-500" /> Live</>
+              : <><AlertCircle size={12} className="text-yellow-500" /> No DB</>}
+          </div>
+          <a
+            href="/display"
+            target="_blank"
+            className="flex items-center gap-1 text-xs text-muted-foreground bg-card border border-border rounded-full px-3 py-1.5 hover:text-foreground hover:border-foreground/30 transition-colors"
+          >
+            <Tv size={11} /> Open ↗
+          </a>
         </div>
       </div>
 
-      {/* ── Connection warning ── */}
+      {/* ── Error banners ── */}
       {fetchError && (
-        <div className="flex items-start gap-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-sm text-yellow-200">
-          <AlertCircle size={16} className="mt-0.5 shrink-0 text-yellow-400" />
+        <div className="flex items-start gap-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 text-sm text-yellow-200">
+          <AlertCircle size={15} className="mt-0.5 shrink-0 text-yellow-400" />
           <div>
-            <p className="font-medium">Not connected to database</p>
+            <p className="font-medium text-xs">Not connected to database</p>
             <p className="text-xs text-yellow-300/80 mt-0.5">{fetchError}</p>
           </div>
         </div>
       )}
-
       {actionError && (
-        <div className="flex items-start gap-3 bg-destructive/10 border border-destructive/30 rounded-xl p-4 text-sm text-destructive">
-          <AlertCircle size={16} className="mt-0.5 shrink-0" />
-          <div>
-            <p className="font-medium">Command did not sync</p>
-            <p className="text-xs mt-0.5 opacity-80">{actionError}</p>
-          </div>
+        <div className="flex items-start gap-3 bg-destructive/10 border border-destructive/30 rounded-xl p-3 text-sm text-destructive">
+          <AlertCircle size={15} className="mt-0.5 shrink-0" />
+          <p className="text-xs">{actionError}</p>
         </div>
       )}
 
-      {/* ── Status Card ── */}
-      <Card className="border-primary/20">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Tv size={15} className="text-primary" />
-              Currently on the TV
-            </CardTitle>
+      {/* ── Compact Status Bar ── */}
+      <Card className="border-primary/20 overflow-hidden">
+        {/* Always-visible row */}
+        <button
+          type="button"
+          onClick={() => setStatusOpen((o) => !o)}
+          className="w-full px-4 py-3 text-left"
+        >
+          <div className="flex items-center gap-3">
+            {/* Mode */}
+            {activeMode ? (
+              <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg border', modeTone(activeMode.id).iconBg, modeTone(activeMode.id).iconBorder, modeTone(activeMode.id).text)}>
+                <ModeIcon mode={activeMode} size={16} />
+              </span>
+            ) : (
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted">
+                <Tv size={15} className="text-muted-foreground" />
+              </span>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate leading-tight">
+                {activeMode?.label ?? 'No mode'}
+                {pendingModeId && <Loader2 size={11} className="inline ml-1.5 animate-spin text-primary" />}
+              </p>
+              <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
+                {activeAlbums.length > 0
+                  ? activeAlbums.map((a) => a.name).join(', ')
+                  : 'No albums active'}
+              </p>
+            </div>
+            {/* Play/pause badge */}
             <Badge
+              variant="outline"
               className={cn(
-                'text-xs gap-1',
+                'shrink-0 text-xs gap-1',
                 isPaused
                   ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
                   : 'bg-green-500/20 text-green-300 border-green-500/30'
               )}
-              variant="outline"
             >
-              <Radio size={10} className={isPaused ? '' : 'animate-pulse'} />
+              <Radio size={9} className={isPaused ? '' : 'animate-pulse'} />
               {isPaused ? 'Paused' : 'Playing'}
             </Badge>
+            {statusOpen
+              ? <ChevronUp size={15} className="text-muted-foreground shrink-0" />
+              : <ChevronDown size={15} className="text-muted-foreground shrink-0" />}
           </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Mode + Albums */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-background rounded-lg p-3 border border-border">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5">Mode</p>
-              {activeMode ? (
-                <div className="flex items-center gap-2">
-                  <span className={cn('flex size-8 items-center justify-center rounded-lg border', modeTone(activeMode.id).iconBg, modeTone(activeMode.id).iconBorder, modeTone(activeMode.id).text)}>
-                    <ModeIcon mode={activeMode} size={16} />
-                  </span>
-                  <span className="font-semibold text-sm">{activeMode.label}</span>
-                  {pendingModeId && <Loader2 size={13} className="animate-spin text-primary" />}
-                </div>
-              ) : (
-                <span className="text-sm text-muted-foreground italic">None</span>
-              )}
-            </div>
-            <div className="bg-background rounded-lg p-3 border border-border">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5">Albums</p>
-              {activeAlbums.length > 0 ? (
+        </button>
+
+        {/* Expanded detail */}
+        {statusOpen && (
+          <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
+            {htmlTvUnsupportedMode && (
+              <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-200">
+                <Info size={14} className="mt-0.5 shrink-0 text-yellow-300" />
+                <p className="text-xs leading-relaxed">
+                  TV-safe renderer active. {activeMode?.label} is not supported — the TV will show a compatibility notice.
+                </p>
+              </div>
+            )}
+
+            {/* Albums list */}
+            {activeAlbums.length > 0 && (
+              <div>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1.5">Active albums</p>
                 <div className="flex flex-wrap gap-1">
                   {activeAlbums.map((a) => (
                     <Badge key={a.id} variant="secondary" className="text-xs">{a.name}</Badge>
                   ))}
                 </div>
-              ) : (
-                <span className="text-sm text-muted-foreground italic">None</span>
-              )}
-            </div>
-            <div className="bg-background rounded-lg p-3 border border-border">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5">Live device</p>
-              {liveDevice ? (
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className={cn('w-2 h-2 rounded-full shrink-0', activeDevices.includes(liveDevice) ? 'bg-green-500' : 'bg-muted-foreground/40')} />
-                    <span className="font-semibold text-sm truncate">{shortDeviceLabel(liveDevice)}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">{rendererLabel(liveDevice.renderer)}</p>
-                </div>
-              ) : (
-                <span className="text-sm text-muted-foreground italic">No device yet</span>
-              )}
-            </div>
-          </div>
-
-          {htmlTvUnsupportedMode && (
-            <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-200">
-              <Info size={15} className="mt-0.5 shrink-0 text-yellow-300" />
-              <p className="text-xs leading-relaxed">
-                This TV is using the TV-safe renderer. {activeMode?.label ?? 'This mode'} is not supported there yet, so the TV will show a compatibility message instead of silently changing modes.
-              </p>
-            </div>
-          )}
-
-          <Separator />
-
-          {/* Clock overlay shortcut */}
-          <div className="flex items-center justify-between py-0.5">
-            <div className="flex items-center gap-2">
-              <Clock size={14} className="text-muted-foreground" />
-              <span className="text-sm font-medium">Clock overlay</span>
-            </div>
-            <Switch
-              checked={clockConfig.enabled}
-              onCheckedChange={toggleClock}
-              disabled={!isConnected}
-            />
-          </div>
-
-          {/* Schedule shortcut */}
-          {schedules.length > 0 && (
-            <>
-              <Separator />
-              <div className="flex items-center justify-between py-0.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <CalendarDays size={14} className="text-muted-foreground shrink-0" />
-                  {nextSchedule ? (
-                    <div className="min-w-0">
-                      <span className="text-sm font-medium truncate block">{nextSchedule.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {nextSchedule.start_time}–{nextSchedule.end_time}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">No active schedule</span>
-                  )}
-                </div>
-                {nextSchedule && (
-                  <Switch
-                    checked={nextSchedule.is_enabled}
-                    onCheckedChange={() => toggleSchedule(nextSchedule)}
-                  />
-                )}
               </div>
-            </>
-          )}
-
-          {lastUpdated && (
-            <p className="text-xs text-muted-foreground/50 text-right">
-              Updated {lastUpdated.toLocaleTimeString()}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Display Devices ── */}
-      <Card>
-        <button
-          type="button"
-          onClick={() => setDevicesOpen((open) => !open)}
-          className="w-full px-5 py-4 text-left"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <MonitorSmartphone size={15} className="text-primary" />
-              Display devices / diagnostics
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">
-                {activeDevices.length} active
-              </Badge>
-              {devicesOpen
-                ? <ChevronUp size={16} className="text-muted-foreground" />
-                : <ChevronDown size={16} className="text-muted-foreground" />}
-            </div>
-          </div>
-          {liveDevice && !devicesOpen && (
-            <p className="mt-2 text-xs text-muted-foreground truncate">
-              {shortDeviceLabel(liveDevice)} · {rendererLabel(liveDevice.renderer)} · seen {timeAgo(liveDevice.last_seen_at, deviceNow)}
-            </p>
-          )}
-        </button>
-        {devicesOpen && (
-          <CardContent className="space-y-2 pt-0">
-            <Separator className="mb-3" />
-            {displayDevices.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Open the display on a TV or browser to register a device heartbeat.
-              </p>
-            ) : (
-              displayDevices.slice(0, 6).map((device) => {
-                const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
-                const unsupported = device.renderer === 'html-tv' && Boolean(device.active_mode_id) && !TV_SAFE_MODES.has(device.active_mode_id ?? '');
-                return (
-                  <div
-                    key={device.id}
-                    className={cn(
-                      'flex items-start justify-between gap-3 bg-background rounded-lg border p-3',
-                      unsupported ? 'border-yellow-500/30' : 'border-border'
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={cn('w-2 h-2 rounded-full', active ? 'bg-green-500' : 'bg-muted-foreground/40')} />
-                        <p className="text-sm font-semibold truncate">{shortDeviceLabel(device)}</p>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1 truncate">
-                        {rendererLabel(device.renderer)} · {device.active_mode_id ?? 'unknown mode'} · {device.browser ?? 'Unknown browser'} · {device.os ?? 'Unknown OS'}
-                      </p>
-                      <p className="text-xs text-muted-foreground/70 mt-0.5">
-                        {device.viewport_width ?? '?'}×{device.viewport_height ?? '?'} viewport
-                        {device.fullscreen_active ? ' · fullscreen' : device.fullscreen_supported === false ? ' · fullscreen unsupported' : ''}
-                      </p>
-                      {unsupported && (
-                        <p className="text-xs text-yellow-300 mt-1">
-                          This mode needs the full renderer on this device.
-                        </p>
-                      )}
-                    </div>
-                    <span className="text-[11px] text-muted-foreground shrink-0">
-                      {timeAgo(device.last_seen_at, deviceNow)}
-                    </span>
-                  </div>
-                );
-              })
             )}
-          </CardContent>
+
+            {/* Toggles row */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Clock size={13} className="text-muted-foreground" />
+                <span className="text-sm">Clock</span>
+                <Switch checked={clockConfig.enabled} onCheckedChange={toggleClock} disabled={!isConnected} />
+              </div>
+              {nextSchedule && (
+                <div className="flex items-center gap-2">
+                  <CalendarDays size={13} className="text-muted-foreground" />
+                  <span className="text-sm truncate max-w-[120px]">{nextSchedule.name}</span>
+                  <Switch checked={nextSchedule.is_enabled} onCheckedChange={() => toggleSchedule(nextSchedule)} />
+                </div>
+              )}
+            </div>
+
+            {lastUpdated && (
+              <p className="text-[11px] text-muted-foreground/50 text-right">
+                Updated {lastUpdated.toLocaleTimeString()}
+              </p>
+            )}
+          </div>
         )}
       </Card>
 
-      {/* ── Album Quick-Toggle ── */}
+      {/* ── Source Albums ── */}
       {visibleAlbums.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium px-1">
@@ -1117,7 +1074,7 @@ export default function NowPlayingPage() {
             })}
           </div>
           {pendingAlbumIds.size > 0 && (
-            <p className="text-xs text-primary px-1">Syncing album selection to TV...</p>
+            <p className="text-xs text-primary px-1">Syncing album selection to TV…</p>
           )}
         </div>
       )}
@@ -1186,21 +1143,16 @@ export default function NowPlayingPage() {
             onClick={() => setQuickOpen((o) => !o)}
             className="w-full flex items-center justify-between px-5 py-4 text-left"
           >
-            <div className="flex items-center gap-2">
-              <Zap size={15} className="text-primary" />
-              <span className="text-sm font-semibold">Quick settings for current mode</span>
-              <span className="text-xs text-muted-foreground">· {activeMode.label}</span>
-              {quickSaveStatus === 'saving' && (
-                <span className="text-xs text-primary flex items-center gap-1">
-                  <Loader2 size={11} className="animate-spin" /> Saving
-                </span>
-              )}
-              {quickSaveStatus === 'saved' && <span className="text-xs text-green-500">Saved</span>}
-              {quickSaveStatus === 'error' && <span className="text-xs text-destructive">Could not save</span>}
+            <div className="flex items-center gap-2 min-w-0">
+              <Zap size={15} className="text-primary shrink-0" />
+              <span className="text-sm font-semibold truncate">Settings · {activeMode.label}</span>
+              {quickSaveStatus === 'saving' && <Loader2 size={11} className="animate-spin text-primary shrink-0" />}
+              {quickSaveStatus === 'saved' && <span className="text-xs text-green-500 shrink-0">Saved</span>}
+              {quickSaveStatus === 'error' && <span className="text-xs text-destructive shrink-0">Error</span>}
             </div>
             {quickOpen
-              ? <ChevronUp size={16} className="text-muted-foreground" />
-              : <ChevronDown size={16} className="text-muted-foreground" />}
+              ? <ChevronUp size={16} className="text-muted-foreground shrink-0" />
+              : <ChevronDown size={16} className="text-muted-foreground shrink-0" />}
           </button>
           {quickOpen && (
             <CardContent className="pt-0 pb-5 px-5">
@@ -1215,121 +1167,249 @@ export default function NowPlayingPage() {
         </Card>
       )}
 
+      {/* ── Playback ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Playback</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Button
+            size="lg"
+            className={cn(
+              'w-full h-14 text-base font-semibold gap-2 transition-all',
+              isPaused
+                ? 'bg-green-600 hover:bg-green-500 text-white'
+                : 'bg-yellow-600 hover:bg-yellow-500 text-white'
+            )}
+            onClick={togglePause}
+            disabled={!displayState || Boolean(playbackPending)}
+          >
+            {playbackPending === 'pause'
+              ? <><Loader2 size={18} className="animate-spin" /> Syncing</>
+              : isPaused ? <><Play size={18} /> Resume</> : <><Pause size={18} /> Pause</>}
+          </Button>
+          <div className="grid grid-cols-3 gap-2">
+            <Button variant="outline" size="lg" className="h-12 gap-1.5" onClick={prevPhoto}
+              disabled={!displayState || isPaused || Boolean(playbackPending)}>
+              {playbackPending === 'prev' ? <Loader2 size={16} className="animate-spin" /> : <SkipBack size={16} />}
+              Prev
+            </Button>
+            <Button variant="outline" size="lg" className="h-12 gap-1.5" onClick={nextPhoto}
+              disabled={!displayState || isPaused || Boolean(playbackPending)}>
+              {playbackPending === 'next' ? <Loader2 size={16} className="animate-spin" /> : <SkipForward size={16} />}
+              Next
+            </Button>
+            <Button variant="outline" size="lg"
+              className="h-12 gap-1.5 border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-400"
+              onClick={reshufflePhotos}
+              disabled={!displayState || Boolean(playbackPending)}>
+              {playbackPending === 'shuffle' ? <Loader2 size={16} className="animate-spin" /> : <Shuffle size={16} />}
+              Shuffle
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Brightness ── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Sun size={14} className="text-primary" />
+              Brightness
+            </CardTitle>
+            <div className="flex items-center gap-1.5 bg-primary/15 rounded-full px-3 py-1">
+              {brightnessSync === 'saving'
+                ? <Loader2 size={12} className="text-primary animate-spin" />
+                : <Sun size={12} className="text-primary" />}
+              <span className="text-sm font-bold text-primary tabular-nums">{brightness}%</span>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Gradient bar — touchable visual */}
+          <div className="relative h-10 rounded-xl overflow-hidden bg-gradient-to-r from-zinc-900 via-zinc-600 to-yellow-200">
+            <div
+              className="absolute inset-0 bg-black transition-none"
+              style={{ opacity: (100 - brightness) / 100 * 0.85 }}
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-xs font-bold text-white/80 drop-shadow tabular-nums">{brightness}%</span>
+            </div>
+          </div>
+          <Slider
+            min={5} max={100} step={1}
+            value={[brightness]}
+            onValueChange={(vals) => scheduleBrightness(Number(Array.isArray(vals) ? vals[0] : vals))}
+            onValueCommitted={(vals) => commitBrightness(Number(Array.isArray(vals) ? vals[0] : vals))}
+            className="w-full [&_[role=slider]]:h-6 [&_[role=slider]]:w-6 [&_[data-orientation=horizontal]]:h-3"
+            disabled={!displayState}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Dim</span>
+            <p className={cn('text-xs', brightnessSync === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
+              {brightnessSync === 'saving' ? 'Syncing…' : brightnessSync === 'saved' ? 'Saved ✓' : brightnessSync === 'error' ? 'Could not sync' : ''}
+            </p>
+            <span>Full</span>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* ── Share Live Link ── */}
       <ShareLinkCard />
 
-      {/* ── Playback + Brightness ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Playback */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Playback</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button
-              size="lg"
-              className={cn(
-                'w-full h-14 text-base font-semibold gap-2 transition-all',
-                isPaused
-                  ? 'bg-green-600 hover:bg-green-500 text-white'
-                  : 'bg-yellow-600 hover:bg-yellow-500 text-white'
-              )}
-              onClick={togglePause}
-              disabled={!displayState || Boolean(playbackPending)}
-            >
-              {playbackPending === 'pause'
-                ? <><Loader2 size={18} className="animate-spin" /> Syncing</>
-                : isPaused ? <><Play size={18} /> Resume</> : <><Pause size={18} /> Pause</>}
-            </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                size="lg"
-                className="h-12 gap-2"
-                onClick={prevPhoto}
-                disabled={!displayState || isPaused || Boolean(playbackPending)}
-              >
-                {playbackPending === 'prev' ? <Loader2 size={16} className="animate-spin" /> : <SkipBack size={16} />}
-                Prev
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="h-12 gap-2"
-                onClick={nextPhoto}
-                disabled={!displayState || isPaused || Boolean(playbackPending)}
-              >
-                {playbackPending === 'next' ? <Loader2 size={16} className="animate-spin" /> : <SkipForward size={16} />}
-                Next
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full h-12 gap-2 border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-400 transition-all"
-              onClick={reshufflePhotos}
-              disabled={!displayState || Boolean(playbackPending)}
-            >
-              {playbackPending === 'shuffle' ? <Loader2 size={16} className="animate-spin" /> : <Shuffle size={16} />}
-              Shuffle Photos
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Brightness */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm">Brightness</CardTitle>
-              <div className="flex items-center gap-1.5 bg-primary/15 rounded-full px-3 py-1">
-                {brightnessSync === 'saving'
-                  ? <Loader2 size={13} className="text-primary animate-spin" />
-                  : <Sun size={13} className="text-primary" />}
-                <span className="text-sm font-bold text-primary">{brightness}%</span>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Slider
-              min={5} max={100} step={1}
-              value={[brightness]}
-              onValueChange={(vals) => scheduleBrightness(Number(Array.isArray(vals) ? vals[0] : vals))}
-              onValueCommitted={(vals) => commitBrightness(Number(Array.isArray(vals) ? vals[0] : vals))}
-              className="w-full"
-              disabled={!displayState}
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Dim (5%)</span>
-              <span>Full (100%)</span>
-            </div>
-            <div
-              className="w-full h-2 rounded-full bg-gradient-to-r from-zinc-800 to-yellow-300 opacity-80"
-              style={{ clipPath: `inset(0 ${100 - brightness}% 0 0 round 999px)` }}
-            />
-            <p className={cn(
-              'text-xs min-h-4',
-              brightnessSync === 'error' ? 'text-destructive' : 'text-muted-foreground'
-            )}>
-              {brightnessSync === 'saving'
-                ? 'Syncing to TV...'
-                : brightnessSync === 'saved'
-                ? 'Brightness saved'
-                : brightnessSync === 'error'
-                ? 'Could not sync brightness'
-                : ' '}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="flex gap-3 pb-4">
-        <a
-          href="/display"
-          target="_blank"
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      {/* ── Active Devices (bottom) ── */}
+      <div className="space-y-2 pb-6">
+        <button
+          type="button"
+          onClick={() => setDevicesOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-1"
         >
-          <Tv size={12} /> Open display ↗
-        </a>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+            Viewing devices
+          </p>
+          <div className="flex items-center gap-2">
+            {activeDevices.length > 0 && (
+              <span className={cn('text-xs font-medium', activeViewers.length > 0 ? 'text-green-400' : 'text-muted-foreground')}>
+                {activeViewers.length} live
+              </span>
+            )}
+            {devicesOpen
+              ? <ChevronUp size={14} className="text-muted-foreground" />
+              : <ChevronDown size={14} className="text-muted-foreground" />}
+          </div>
+        </button>
+
+        {/* Horizontal chip summary (always visible) */}
+        {displayDevices.length > 0 ? (
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0">
+            {displayDevices.slice(0, 8).map((device) => {
+              const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
+              const isMe = device.client_id === myClientId;
+              const isAdmin = device.route === 'admin';
+              const duration = active && !isAdmin ? watchDuration(device.first_seen_at, deviceNow) : null;
+              return (
+                <div
+                  key={device.id}
+                  className={cn(
+                    'flex items-center gap-2 shrink-0 rounded-full border px-3 py-2 text-xs',
+                    active
+                      ? isAdmin
+                        ? 'bg-primary/10 border-primary/30 text-foreground'
+                        : 'bg-green-500/10 border-green-500/30 text-foreground'
+                      : 'bg-card border-border text-muted-foreground'
+                  )}
+                >
+                  <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', active ? (isAdmin ? 'bg-primary' : 'bg-green-500') : 'bg-muted-foreground/40')} />
+                  <span className="font-medium truncate max-w-[120px]">{smartDeviceLabel(device)}</span>
+                  {isMe && <span className="text-[10px] bg-primary/20 text-primary rounded-full px-1.5 py-0.5 shrink-0">You</span>}
+                  {duration && <span className="text-[10px] text-green-400 shrink-0">{duration}</span>}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground px-1">
+            Open the display on a TV or browser to see devices here.
+          </p>
+        )}
+
+        {/* Expanded full detail */}
+        {devicesOpen && displayDevices.length > 0 && (
+          <div className="space-y-4 mt-2">
+            {/* Display viewers */}
+            {viewerDevices.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium px-1">Display viewers</p>
+                {viewerDevices.slice(0, 10).map((device) => {
+                  const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
+                  const duration = active ? watchDuration(device.first_seen_at, deviceNow) : null;
+                  const unsupported = device.renderer === 'html-tv' && Boolean(device.active_mode_id) && !TV_SAFE_MODES.has(device.active_mode_id ?? '');
+                  const location = [device.city, device.country].filter(Boolean).join(', ');
+                  return (
+                    <div
+                      key={device.id}
+                      className={cn(
+                        'bg-card rounded-xl border p-3 space-y-1.5',
+                        unsupported ? 'border-yellow-500/30' : active ? 'border-green-500/20' : 'border-border'
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={cn('w-2 h-2 rounded-full shrink-0', active ? 'bg-green-500 animate-pulse' : 'bg-muted-foreground/40')} />
+                          <span className="text-muted-foreground shrink-0">{deviceTypeIcon(device)}</span>
+                          <p className="text-sm font-semibold truncate">{smartDeviceLabel(device)}</p>
+                        </div>
+                        {active
+                          ? <span className="text-[10px] bg-green-500/15 text-green-400 border border-green-500/30 rounded-full px-2 py-0.5 shrink-0">{duration ?? 'Live'}</span>
+                          : <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(device.last_seen_at, deviceNow)}</span>}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {[device.browser, device.os, rendererLabel(device.renderer), device.active_mode_id].filter(Boolean).join(' · ')}
+                      </p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        {device.ip && (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70 font-mono">
+                            <Wifi size={9} />{device.ip}
+                          </span>
+                        )}
+                        {location && (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                            <MapPin size={9} />{location}
+                          </span>
+                        )}
+                        {device.viewport_width && (
+                          <span className="text-[11px] text-muted-foreground/70">
+                            {device.viewport_width}×{device.viewport_height}{device.fullscreen_active ? ' · fs' : ''}
+                          </span>
+                        )}
+                      </div>
+                      {unsupported && <p className="text-xs text-yellow-300">Needs full renderer for this mode.</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Admin browsers */}
+            {displayDevices.filter((d) => d.route === 'admin').length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium px-1">Admin browsers</p>
+                {displayDevices.filter((d) => d.route === 'admin').map((device) => {
+                  const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
+                  const isMe = device.client_id === myClientId;
+                  const location = [device.city, device.country].filter(Boolean).join(', ');
+                  return (
+                    <div key={device.id} className={cn('bg-card rounded-xl border p-3 space-y-1.5', isMe ? 'border-primary/30' : 'border-border')}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={cn('w-2 h-2 rounded-full shrink-0', active ? 'bg-primary' : 'bg-muted-foreground/40')} />
+                          <span className="text-muted-foreground shrink-0">{deviceTypeIcon(device)}</span>
+                          <p className="text-sm font-semibold truncate">{smartDeviceLabel(device)}</p>
+                          {isMe && <span className="text-[10px] bg-primary/20 text-primary border border-primary/30 rounded-full px-2 py-0.5 shrink-0">You</span>}
+                        </div>
+                        <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(device.last_seen_at, deviceNow)}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        <p className="text-xs text-muted-foreground">{[device.browser, device.os].filter(Boolean).join(' · ')}</p>
+                        {device.ip && (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70 font-mono">
+                            <Wifi size={9} />{device.ip}
+                          </span>
+                        )}
+                        {location && (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                            <MapPin size={9} />{location}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
