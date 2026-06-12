@@ -495,26 +495,26 @@ const BTN: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '7px',
-  padding: '8px 16px',
+  padding: '7px 14px',
   borderRadius: '999px',
-  background: 'rgba(0,0,0,0.45)',
-  backdropFilter: 'blur(12px)',
-  WebkitBackdropFilter: 'blur(12px)',
-  border: '1px solid rgba(255,255,255,0.12)',
-  color: '#fff',
-  fontSize: '0.78rem',
+  background: 'rgba(255,255,255,0.08)',
+  backdropFilter: 'blur(14px)',
+  WebkitBackdropFilter: 'blur(14px)',
+  border: '1px solid rgba(255,255,255,0.14)',
+  color: 'rgba(255,255,255,0.7)',
+  fontSize: '0.75rem',
   fontWeight: 500,
-  letterSpacing: '0.06em',
+  letterSpacing: '0.05em',
   textTransform: 'uppercase',
   cursor: 'pointer',
-  opacity: 0.35,
-  transition: 'opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease',
+  opacity: 1,
+  transition: 'background 0.18s ease, border-color 0.18s ease, color 0.18s ease',
 };
 
 function resetBtn(e: React.MouseEvent<HTMLButtonElement>) {
-  e.currentTarget.style.opacity = '0.35';
-  e.currentTarget.style.background = 'rgba(0,0,0,0.45)';
-  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+  e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)';
+  e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -527,6 +527,7 @@ export default function DisplayPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [transferring, setTransferring] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
 
   const logoutDisplay = useCallback(async () => {
     setLoggingOut(true);
@@ -546,7 +547,27 @@ export default function DisplayPage() {
   const clockConfig = useClockOverlayConfig();
   const { cinema, toast, toggle: toggleCinema, enter: enterCinema, supported: fullscreenSupported } = useCinemaMode();
   const fullscreenPrompt = useFullscreenPrompt(authChecked && !locked);
-  const { deviceId, isReady: spotifyReady, isConnecting: spotifyConnecting, isPremiumRequired, playUri, activate: activateSpotify } = useSpotifyPlayer();
+  const { deviceId, isReady: spotifyReady, isConnecting: spotifyConnecting, isPremiumRequired, error: spotifyError, playUri, activate: activateSpotify } = useSpotifyPlayer();
+
+  // Unlock Web Audio on any first tap — required for autoplay policy on TVs/Xbox
+  const handlePageInteraction = useCallback(() => {
+    if (audioUnlocked) return;
+    activateSpotify();
+    // Also directly resume any suspended AudioContext
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (AC) {
+        const ctx = new AC();
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start(0);
+        setTimeout(() => ctx.close().catch(() => {}), 500);
+      }
+    } catch {}
+    setAudioUnlocked(true);
+  }, [audioUnlocked, activateSpotify]);
   const spotifyNow = useSpotifyNowPlaying();
 
   useEffect(() => {
@@ -647,6 +668,7 @@ export default function DisplayPage() {
     <div
       className="w-screen h-screen bg-black overflow-hidden relative"
       style={{ cursor: cinema ? 'none' : undefined }}
+      onClick={handlePageInteraction}
       onDoubleClick={toggleCinema}
     >
       {ModeComponent ? (
@@ -754,17 +776,33 @@ export default function DisplayPage() {
         />
       )}
 
+      {/* Bottom scrim — gradient starts exactly at the screen edge */}
+      {!cinema && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 120,
+            background: 'linear-gradient(to top, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.18) 55%, transparent 100%)',
+            zIndex: 58,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
       {/* Floating controls */}
       {!cinema && (
         <div
           style={{
             position: 'fixed',
-            bottom: '28px',
-            left: '28px',
+            bottom: '22px',
+            left: '24px',
             zIndex: 60,
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
+            gap: '8px',
           }}
         >
           {/* Fullscreen */}
@@ -774,7 +812,6 @@ export default function DisplayPage() {
             title={cinema ? 'Exit fullscreen' : 'Enter fullscreen'}
             style={BTN}
             onMouseEnter={(e) => {
-              e.currentTarget.style.opacity = '1';
               e.currentTarget.style.background = 'rgba(124,58,237,0.22)';
               e.currentTarget.style.borderColor = 'rgba(124,58,237,0.5)';
             }}
@@ -794,7 +831,6 @@ export default function DisplayPage() {
               color: clockOn ? '#fff' : 'rgba(255,255,255,0.35)',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.opacity = '1';
               e.currentTarget.style.background = 'rgba(14,165,233,0.18)';
               e.currentTarget.style.borderColor = 'rgba(14,165,233,0.5)';
             }}
@@ -820,7 +856,6 @@ export default function DisplayPage() {
               }
               style={{ ...BTN, color: spotifyOn ? '#fff' : 'rgba(255,255,255,0.35)' }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.opacity = '1';
                 e.currentTarget.style.background = 'rgba(29,185,84,0.18)';
                 e.currentTarget.style.borderColor = 'rgba(29,185,84,0.5)';
               }}
@@ -859,13 +894,11 @@ export default function DisplayPage() {
                 borderColor: 'rgba(29,185,84,0.25)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.opacity = '1';
                 e.currentTarget.style.background = 'rgba(29,185,84,0.22)';
                 e.currentTarget.style.borderColor = 'rgba(29,185,84,0.6)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.opacity = '0.35';
-                e.currentTarget.style.background = 'rgba(0,0,0,0.45)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
                 e.currentTarget.style.borderColor = 'rgba(29,185,84,0.25)';
               }}
             >
@@ -884,20 +917,18 @@ export default function DisplayPage() {
               title="Search Spotify"
               style={{
                 ...BTN,
-                padding: '8px 12px',
+                padding: '7px 12px',
                 color: searchOpen ? '#fff' : undefined,
-                background: searchOpen ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.45)',
-                borderColor: searchOpen ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)',
+                background: searchOpen ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
+                borderColor: searchOpen ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.14)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.opacity = '1';
-                e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.opacity = searchOpen ? '1' : '0.35';
-                e.currentTarget.style.background = searchOpen ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.45)';
-                e.currentTarget.style.borderColor = searchOpen ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)';
+                e.currentTarget.style.background = searchOpen ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)';
+                e.currentTarget.style.borderColor = searchOpen ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.14)';
               }}
             >
               {searchOpen ? <X size={14} /> : <Search size={14} />}
@@ -912,16 +943,14 @@ export default function DisplayPage() {
             title="Log out of display"
             style={{ ...BTN, cursor: loggingOut ? 'wait' : 'pointer' }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.opacity = '1';
               e.currentTarget.style.background = 'rgba(220,38,38,0.2)';
               e.currentTarget.style.borderColor = 'rgba(220,38,38,0.55)';
               e.currentTarget.style.color = '#fca5a5';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.opacity = '0.35';
-              e.currentTarget.style.background = 'rgba(0,0,0,0.45)';
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
-              e.currentTarget.style.color = '#fff';
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)';
+              e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -931,6 +960,33 @@ export default function DisplayPage() {
             </svg>
             {loggingOut ? 'Logging out…' : 'Log out'}
           </button>
+        </div>
+      )}
+
+      {/* Spotify SDK debug strip — visible on Spotify modes so you can diagnose from the TV */}
+      {!cinema && isSpotifyMode && (
+        <div style={{
+          position: 'fixed',
+          bottom: 8,
+          right: 12,
+          zIndex: 55,
+          fontSize: '0.6rem',
+          fontWeight: 600,
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          color: spotifyError || isPremiumRequired
+            ? 'rgba(239,68,68,0.7)'
+            : spotifyReady
+            ? 'rgba(29,185,84,0.6)'
+            : 'rgba(255,255,255,0.25)',
+          pointerEvents: 'none',
+          userSelect: 'none',
+        }}>
+          {isPremiumRequired ? '⚠ Spotify Premium required'
+            : spotifyError ? `⚠ SDK: ${spotifyError}`
+            : spotifyReady ? `● Spotify ready · ${deviceId?.slice(0, 8)}`
+            : spotifyConnecting ? '○ Spotify connecting…'
+            : '○ Spotify not connected'}
         </div>
       )}
 
