@@ -611,10 +611,10 @@ const JS = `
 
   function pollPairStatus() {
     if (pairBusy || !pairCode) return;
+    pairBusy = true;
     get('/api/auth/pair/status?code=' + pairCode, function (data, ok) {
-      if (!ok || !data) return;
+      if (!ok || !data) { pairBusy = false; return; }
       if (data.status === 'approved') {
-        pairBusy = true;
         stopPairing();
         post('/api/auth/pair/consume', JSON.stringify({ code: pairCode }), function (cData, cOk) {
           if (cOk) {
@@ -627,6 +627,8 @@ const JS = `
         });
       } else if (data.status === 'expired' || data.status === 'invalid') {
         beginPairing();
+      } else {
+        pairBusy = false;
       }
     });
   }

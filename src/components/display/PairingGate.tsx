@@ -22,15 +22,20 @@ export default function PairingGate({ onUnlock, onUsePin }: { onUnlock: () => vo
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const clearTimers = () => {
       if (pollRef.current) clearInterval(pollRef.current);
       if (tickRef.current) clearInterval(tickRef.current);
+      if (retryTimer) clearTimeout(retryTimer);
     };
 
     const begin = async () => {
       clearTimers();
+      consumingRef.current = false;
       setState('loading');
+      setCode('');
+      setQrDataUrl('');
       try {
         const { code: newCode, expires_at } = await startPairing();
         if (cancelled) return;
@@ -67,6 +72,7 @@ export default function PairingGate({ onUnlock, onUsePin }: { onUnlock: () => vo
                 setState('approved');
                 onUnlock();
               } else {
+                consumingRef.current = false;
                 begin();
               }
             } else if (json.status === 'expired' || json.status === 'invalid') {
@@ -77,7 +83,9 @@ export default function PairingGate({ onUnlock, onUsePin }: { onUnlock: () => vo
           }
         }, 2000);
       } catch {
-        if (!cancelled) setState('error');
+        if (cancelled) return;
+        setState('error');
+        retryTimer = setTimeout(begin, 4000);
       }
     };
 

@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     .update({ status: 'consumed' })
     .eq('code', code)
     .eq('status', 'approved')
+    .gt('expires_at', new Date().toISOString())
     .select('user_id')
     .maybeSingle();
 

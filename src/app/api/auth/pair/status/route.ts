@@ -21,8 +21,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: 'invalid' });
   }
 
-  if (data.status === 'pending' && new Date(data.expires_at).getTime() < Date.now()) {
-    await supabase.from('tv_pairing_codes').update({ status: 'expired' }).eq('code', code).eq('status', 'pending');
+  const isStale = (data.status === 'pending' || data.status === 'approved') && new Date(data.expires_at).getTime() < Date.now();
+  if (isStale) {
+    await supabase.from('tv_pairing_codes').update({ status: 'expired' }).eq('code', code).eq('status', data.status);
     return NextResponse.json({ status: 'expired' });
   }
 
