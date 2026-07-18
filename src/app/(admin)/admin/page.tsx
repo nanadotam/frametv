@@ -20,6 +20,7 @@ import { invalidateModes } from '@/hooks/useModes';
 import type { DisplayState, Album, Schedule, Mode, DisplayDevice } from '@/types/db';
 import PageGuide from '@/components/admin/PageGuide';
 import PairTvForm from '@/components/admin/PairTvForm';
+import { SCRAPBOOK_BACKGROUNDS } from '@/modes/scrapbook/ScrapbookMode';
 import { Modal } from '@/components/admin/Modal';
 import { MODE_CATEGORIES, MODE_CATEGORY_BY_ID, MODE_METADATA, MODE_ORDER } from '@/lib/modeMetadata';
 
@@ -224,6 +225,14 @@ function ScrapbookQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg
           ]}
           value={tapeFrequency}
           onSelect={(v) => onChange({ ...cfg, tapeFrequency: v })}
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Background</p>
+        <ChipRow
+          options={Object.entries(SCRAPBOOK_BACKGROUNDS).map(([value, meta]) => ({ label: meta.label, value }))}
+          value={(cfg.background as string) ?? 'plain'}
+          onSelect={(v) => onChange({ ...cfg, background: v })}
         />
       </div>
       <div className="flex items-center justify-between">

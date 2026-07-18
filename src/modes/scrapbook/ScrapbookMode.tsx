@@ -7,22 +7,68 @@ import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { getPhotoRotation, cellRotationStyle } from '@/lib/photoRotation';
 import type { Photo } from '@/types/db';
-import { photoThumbUrl, IMG_SIZES } from '@/lib/image-urls';
+import { photoThumbUrl, getConnectionSpeed, IMG_SIZES } from '@/lib/image-urls';
+
+export type ScrapbookBackground = 'plain' | 'cork' | 'denim' | 'chalkboard' | 'velvet' | 'kraft';
 
 interface ScrapbookConfig {
   intervalSeconds?: number;
   maxOnScreen?: number;
   tapeFrequency?: number;
   showDate?: boolean;
+  background?: ScrapbookBackground;
 }
+
+// Pure CSS textures — no image assets to host, painted once (not animated),
+// so they cost nothing extra on low-end devices.
+export const SCRAPBOOK_BACKGROUNDS: Record<ScrapbookBackground, { label: string; css: string }> = {
+  plain: {
+    label: 'Plain',
+    css: 'radial-gradient(ellipse at 50% 30%, rgba(255,255,255,.05), transparent 60%), #0a0a0a',
+  },
+  cork: {
+    label: 'Cork board',
+    css:
+      'radial-gradient(circle at 1px 1px, rgba(0,0,0,.16) 1px, transparent 0) 0 0/8px 8px, ' +
+      'linear-gradient(160deg, #c49a6c, #8a6239)',
+  },
+  denim: {
+    label: 'Denim',
+    css:
+      'repeating-linear-gradient(45deg, rgba(255,255,255,.05) 0 2px, transparent 2px 4px), ' +
+      'repeating-linear-gradient(-45deg, rgba(0,0,0,.08) 0 2px, transparent 2px 4px), ' +
+      'linear-gradient(160deg, #4f6d8f, #2c435c)',
+  },
+  chalkboard: {
+    label: 'Chalkboard',
+    css:
+      'radial-gradient(circle at 1px 1px, rgba(255,255,255,.045) 1px, transparent 0) 0 0/5px 5px, ' +
+      'linear-gradient(160deg, #1f2f28, #14201b)',
+  },
+  velvet: {
+    label: 'Velvet',
+    css:
+      'radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.06), transparent 55%), ' +
+      'radial-gradient(ellipse at 70% 80%, rgba(120,20,60,.25), transparent 60%), ' +
+      'linear-gradient(160deg, #2a0f1e, #120610)',
+  },
+  kraft: {
+    label: 'Kraft paper',
+    css:
+      'repeating-linear-gradient(0deg, rgba(0,0,0,.025) 0 1px, transparent 1px 3px), ' +
+      'linear-gradient(160deg, #cbb08a, #a9885f)',
+  },
+};
 
 interface PlacedPolaroid {
   key: number;
   photo: Photo;
+  src: string;
   x: number; // percent
   y: number; // percent
   rotation: number; // degrees, settled resting angle
   tossFrom: number; // degrees, extra rotation during the toss-in
+  restScale: number; // final resting size, slight per-card variance
   hasTape: boolean;
   tapeCorner: 'left' | 'right';
   z: number;
@@ -30,24 +76,57 @@ interface PlacedPolaroid {
 
 let placementCounter = 0;
 
+// Low-end signal: few CPU cores or little RAM (Chrome/Android TV report these).
+// Falls back to "capable" when the browser doesn't expose them (e.g. Safari).
+function isLowEndDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const lowMemory = typeof nav.deviceMemory === 'number' && nav.deviceMemory <= 4;
+  const lowCores = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
+  return lowMemory || lowCores;
+}
+
+// A ~300px CSS box at 2x DPI only needs ~600px source — thumb_large (800px) was
+// overkill and slower to decode on weak devices. Drop a size tier when the
+// connection is slow or the device looks low-end.
+function pickImageSize(): number {
+  const slow = getConnectionSpeed() === 'slow';
+  return slow || isLowEndDevice() ? IMG_SIZES.thumb_small : IMG_SIZES.thumb_medium;
+}
+
+// Resolves once the image has loaded, failed, or timed out — never rejects,
+// so a slow/broken photo can't stall the toss queue forever.
+function preloadImage(src: string, timeoutMs = 2500): Promise<void> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const timer = setTimeout(resolve, timeoutMs);
+    img.onload = () => { clearTimeout(timer); resolve(); };
+    img.onerror = () => { clearTimeout(timer); resolve(); };
+    img.src = src;
+  });
+}
+
+function clamp(v: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, v));
+}
+
+// A real handful of tossed photos isn't evenly spaced — some land in loose
+// clusters, some land apart. Occasionally drop near an existing photo
+// (with plenty of overlap allowed) instead of always hunting for empty
+// space, which is what made earlier placements look grid-like.
 function randomPosition(existing: { x: number; y: number }[]) {
-  const PAD = 14;
-  let best = { x: 50, y: 50 };
-  let bestScore = -1;
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const x = PAD + Math.random() * (100 - PAD * 2);
-    const y = PAD + Math.random() * (100 - PAD * 2);
-    const minDist = existing.reduce(
-      (min, p) => Math.min(min, Math.hypot(p.x - x, p.y - y)),
-      Infinity
-    );
-    if (minDist > bestScore) {
-      bestScore = minDist;
-      best = { x, y };
-    }
-    if (minDist > 16) break;
+  const PAD = 10;
+  if (existing.length > 0 && Math.random() < 0.35) {
+    const anchor = existing[Math.floor(Math.random() * existing.length)];
+    return {
+      x: clamp(anchor.x + (Math.random() - 0.5) * 28, PAD, 100 - PAD),
+      y: clamp(anchor.y + (Math.random() - 0.5) * 28, PAD, 100 - PAD),
+    };
   }
-  return best;
+  return {
+    x: PAD + Math.random() * (100 - PAD * 2),
+    y: PAD + Math.random() * (100 - PAD * 2),
+  };
 }
 
 function formatCaption(photo: Photo): string {
@@ -85,16 +164,15 @@ function PolaroidCard({ item, showDate }: { item: PlacedPolaroid; showDate: bool
 
   return (
     <motion.div
-      layout
       initial={{
         opacity: 0,
-        y: -140,
-        scale: 0.72,
+        y: -90,
+        scale: item.restScale * 0.85,
         rotate: item.rotation + item.tossFrom,
       }}
-      animate={{ opacity: 1, y: 0, scale: 1, rotate: item.rotation }}
-      exit={{ opacity: 0, scale: 0.88, y: 24, transition: { duration: 0.45 } }}
-      transition={{ type: 'spring', stiffness: 170, damping: 15, mass: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: item.restScale, rotate: item.rotation }}
+      exit={{ opacity: 0, scale: item.restScale * 0.92, y: 18, transition: { duration: 0.35, ease: [0.4, 0, 1, 1] } }}
+      transition={{ type: 'spring', duration: 0.55, bounce: 0.22 }}
       style={{
         position: 'absolute',
         left: `${item.x}%`,
@@ -103,6 +181,7 @@ function PolaroidCard({ item, showDate }: { item: PlacedPolaroid; showDate: bool
         translateY: '-50%',
         zIndex: item.z,
         width: 'clamp(200px, 20vw, 300px)',
+        willChange: 'transform, opacity',
       }}
     >
       <div
@@ -114,6 +193,20 @@ function PolaroidCard({ item, showDate }: { item: PlacedPolaroid; showDate: bool
           boxShadow: '0 18px 40px rgba(0,0,0,.5), 0 3px 10px rgba(0,0,0,.3)',
         }}
       >
+        {/* Soft landing glow — pure opacity, cheap on every GPU, plays once on mount */}
+        <motion.div
+          aria-hidden
+          initial={{ opacity: 0.55 }}
+          animate={{ opacity: 0 }}
+          transition={{ duration: 0.7, delay: 0.15 }}
+          style={{
+            position: 'absolute',
+            inset: -18,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(255,255,255,.35), transparent 70%)',
+            pointerEvents: 'none',
+          }}
+        />
         {item.hasTape && <TapeStrip corner={item.tapeCorner} />}
         <div
           style={{
@@ -126,7 +219,7 @@ function PolaroidCard({ item, showDate }: { item: PlacedPolaroid; showDate: bool
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={photoThumbUrl(item.photo, IMG_SIZES.thumb_large)}
+            src={item.src}
             alt=""
             style={{
               width: '100%',
@@ -165,9 +258,17 @@ function PolaroidCard({ item, showDate }: { item: PlacedPolaroid; showDate: bool
 export default function ScrapbookMode({ config, brightness, isPaused, albumIds, onReady }: ModeProps) {
   const cfg = config as ScrapbookConfig;
   const intervalSeconds = Math.max(2, cfg.intervalSeconds ?? 6);
-  const maxOnScreen = Math.max(2, Math.min(cfg.maxOnScreen ?? 7, 14));
   const tapeFrequency = typeof cfg.tapeFrequency === 'number' ? cfg.tapeFrequency : 0.35;
   const showDate = cfg.showDate ?? true;
+  const background = SCRAPBOOK_BACKGROUNDS[cfg.background ?? 'plain']?.css ?? SCRAPBOOK_BACKGROUNDS.plain.css;
+
+  // Cap concurrent on-screen (and therefore concurrently-animating) cards
+  // harder on low-end devices, regardless of the configured value.
+  const [maxOnScreen] = useState(() => {
+    const configured = Math.max(2, Math.min(cfg.maxOnScreen ?? 7, 14));
+    return isLowEndDevice() ? Math.min(configured, 5) : configured;
+  });
+  const [imageSize] = useState(pickImageSize);
 
   const { photos: allPhotos } = usePhotoRotation({ albumIds, shuffle: true });
   const [placed, setPlaced] = useState<PlacedPolaroid[]>([]);
@@ -176,6 +277,8 @@ export default function ScrapbookMode({ config, brightness, isPaused, albumIds, 
   const indexRef = useRef(0);
   const placedRef = useRef<PlacedPolaroid[]>([]);
   const isPausedRef = useRef(isPaused);
+  const tossingRef = useRef(false);
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     photosRef.current = allPhotos;
@@ -190,16 +293,25 @@ export default function ScrapbookMode({ config, brightness, isPaused, albumIds, 
   }, [placed]);
 
   // Toss the first polaroid in immediately, then keep tossing on an interval.
+  // Each toss preloads its image fully before entering — a single load at a
+  // time, in order, so nothing pops in half-loaded and low-bandwidth devices
+  // never have more than one photo fetch in flight.
   useEffect(() => {
+    cancelledRef.current = false;
     if (allPhotos.length === 0) return;
 
-    const tossOne = () => {
-      if (isPausedRef.current) return;
+    const tossOne = async () => {
+      if (isPausedRef.current || tossingRef.current) return;
       const photos = photosRef.current;
       if (photos.length === 0) return;
+      tossingRef.current = true;
 
       const photo = photos[indexRef.current % photos.length];
       indexRef.current += 1;
+      const src = photoThumbUrl(photo, imageSize);
+
+      await preloadImage(src);
+      if (cancelledRef.current) return;
 
       const pos = randomPosition(placedRef.current.map((p) => ({ x: p.x, y: p.y })));
       placementCounter += 1;
@@ -207,10 +319,12 @@ export default function ScrapbookMode({ config, brightness, isPaused, albumIds, 
       const next: PlacedPolaroid = {
         key: placementCounter,
         photo,
+        src,
         x: pos.x,
         y: pos.y,
         rotation: -12 + Math.random() * 24,
-        tossFrom: Math.random() > 0.5 ? 40 + Math.random() * 20 : -(40 + Math.random() * 20),
+        tossFrom: Math.random() > 0.5 ? 22 + Math.random() * 16 : -(22 + Math.random() * 16),
+        restScale: 0.93 + Math.random() * 0.12,
         hasTape: Math.random() < tapeFrequency,
         tapeCorner: Math.random() > 0.5 ? 'left' : 'right',
         z: placementCounter,
@@ -220,12 +334,16 @@ export default function ScrapbookMode({ config, brightness, isPaused, albumIds, 
         const updated = [...prev, next];
         return updated.length > maxOnScreen ? updated.slice(updated.length - maxOnScreen) : updated;
       });
+      tossingRef.current = false;
     };
 
     tossOne();
     const timer = setInterval(tossOne, intervalSeconds * 1000);
-    return () => clearInterval(timer);
-  }, [allPhotos.length, intervalSeconds, maxOnScreen, tapeFrequency]);
+    return () => {
+      cancelledRef.current = true;
+      clearInterval(timer);
+    };
+  }, [allPhotos.length, intervalSeconds, maxOnScreen, tapeFrequency, imageSize]);
 
   useEffect(() => {
     if (placed.length > 0) onReady?.();
@@ -244,8 +362,7 @@ export default function ScrapbookMode({ config, brightness, isPaused, albumIds, 
       className="relative w-full h-full overflow-hidden"
       style={{
         opacity: brightness / 100,
-        background:
-          'radial-gradient(ellipse at 50% 30%, rgba(255,255,255,.05), transparent 60%), #0a0a0a',
+        background,
       }}
     >
       <AnimatePresence>
