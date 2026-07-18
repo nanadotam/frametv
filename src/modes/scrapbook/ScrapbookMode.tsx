@@ -110,22 +110,44 @@ function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
-// A real handful of tossed photos isn't evenly spaced — some land in loose
-// clusters, some land apart. Occasionally drop near an existing photo
-// (with plenty of overlap allowed) instead of always hunting for empty
-// space, which is what made earlier placements look grid-like.
-function randomPosition(existing: { x: number; y: number }[]) {
-  const PAD = 10;
-  if (existing.length > 0 && Math.random() < 0.35) {
-    const anchor = existing[Math.floor(Math.random() * existing.length)];
-    return {
-      x: clamp(anchor.x + (Math.random() - 0.5) * 28, PAD, 100 - PAD),
-      y: clamp(anchor.y + (Math.random() - 0.5) * 28, PAD, 100 - PAD),
-    };
+// ── Spatial layout ──────────────────────────────────────────────────────────
+// Pure random x/y (or "cluster near an existing card") drifts toward hot
+// spots over a long run — the more cards land somewhere, the more likely
+// the next one lands nearby too, so two or three spots fill up while most
+// of the screen stays empty.
+//
+// Instead we divide the screen into a grid sized to the on-screen count and
+// hand out cells from a shuffled "bag": every cell gets used exactly once
+// before any cell repeats (same trick Tetris uses for piece order), which
+// guarantees full-screen coverage no matter how long the mode runs. Each
+// card still gets a healthy jitter within (and slightly beyond) its cell so
+// the grid itself is never visible.
+function gridDims(cellCount: number) {
+  const cols = Math.max(2, Math.round(Math.sqrt(cellCount * (16 / 9))));
+  const rows = Math.max(2, Math.ceil(cellCount / cols));
+  return { cols, rows };
+}
+
+function shuffledBag(size: number): number[] {
+  const bag = Array.from({ length: size }, (_, i) => i);
+  for (let i = bag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [bag[i], bag[j]] = [bag[j], bag[i]];
   }
+  return bag;
+}
+
+function positionForCell(cellIndex: number, cols: number, rows: number) {
+  const PAD = 8;
+  const col = cellIndex % cols;
+  const row = Math.floor(cellIndex / cols);
+  const cellW = 100 / cols;
+  const cellH = 100 / rows;
+  const cx = col * cellW + cellW / 2;
+  const cy = row * cellH + cellH / 2;
   return {
-    x: PAD + Math.random() * (100 - PAD * 2),
-    y: PAD + Math.random() * (100 - PAD * 2),
+    x: clamp(cx + (Math.random() - 0.5) * cellW * 0.8, PAD, 100 - PAD),
+    y: clamp(cy + (Math.random() - 0.5) * cellH * 0.8, PAD, 100 - PAD),
   };
 }
 
@@ -257,7 +279,7 @@ function PolaroidCard({ item, showDate }: { item: PlacedPolaroid; showDate: bool
 
 export default function ScrapbookMode({ config, brightness, isPaused, albumIds, onReady }: ModeProps) {
   const cfg = config as ScrapbookConfig;
-  const intervalSeconds = Math.max(2, cfg.intervalSeconds ?? 6);
+  const intervalSeconds = Math.max(1, cfg.intervalSeconds ?? 6);
   const tapeFrequency = typeof cfg.tapeFrequency === 'number' ? cfg.tapeFrequency : 0.35;
   const showDate = cfg.showDate ?? true;
   const background = SCRAPBOOK_BACKGROUNDS[cfg.background ?? 'plain']?.css ?? SCRAPBOOK_BACKGROUNDS.plain.css;
@@ -265,7 +287,7 @@ export default function ScrapbookMode({ config, brightness, isPaused, albumIds, 
   // Cap concurrent on-screen (and therefore concurrently-animating) cards
   // harder on low-end devices, regardless of the configured value.
   const [maxOnScreen] = useState(() => {
-    const configured = Math.max(2, Math.min(cfg.maxOnScreen ?? 7, 14));
+    const configured = Math.max(2, Math.min(cfg.maxOnScreen ?? 7, 30));
     return isLowEndDevice() ? Math.min(configured, 5) : configured;
   });
   const [imageSize] = useState(pickImageSize);
@@ -292,6 +314,23 @@ export default function ScrapbookMode({ config, brightness, isPaused, albumIds, 
     placedRef.current = placed;
   }, [placed]);
 
+  // Grid cell "bag" for placement — sized to how many cards are ever on
+  // screen at once, reshuffled each time it empties. See gridDims/shuffledBag
+  // above for why this replaced plain random x/y.
+  const gridRef = useRef<{ cols: number; rows: number; bag: number[] }>({ cols: 0, rows: 0, bag: [] });
+
+  const nextCellPosition = () => {
+    const { cols, rows } = gridDims(maxOnScreen);
+    const grid = gridRef.current;
+    if (grid.cols !== cols || grid.rows !== rows || grid.bag.length === 0) {
+      grid.cols = cols;
+      grid.rows = rows;
+      grid.bag = shuffledBag(cols * rows);
+    }
+    const cellIndex = grid.bag.pop()!;
+    return positionForCell(cellIndex, cols, rows);
+  };
+
   // Toss the first polaroid in immediately, then keep tossing on an interval.
   // Each toss preloads its image fully before entering — a single load at a
   // time, in order, so nothing pops in half-loaded and low-bandwidth devices
@@ -313,7 +352,7 @@ export default function ScrapbookMode({ config, brightness, isPaused, albumIds, 
       await preloadImage(src);
       if (cancelledRef.current) return;
 
-      const pos = randomPosition(placedRef.current.map((p) => ({ x: p.x, y: p.y })));
+      const pos = nextCellPosition();
       placementCounter += 1;
 
       const next: PlacedPolaroid = {

@@ -192,6 +192,8 @@ function ScrapbookQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg
         <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Toss interval</p>
         <ChipRow
           options={[
+            { label: '1s', value: 1 },
+            { label: '2s', value: 2 },
             { label: '3s', value: 3 },
             { label: '6s', value: 6 },
             { label: '10s', value: 10 },
@@ -209,6 +211,9 @@ function ScrapbookQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg
             { label: '7', value: 7 },
             { label: '10', value: 10 },
             { label: '14', value: 14 },
+            { label: '20', value: 20 },
+            { label: '25', value: 25 },
+            { label: '30', value: 30 },
           ]}
           value={maxOnScreen}
           onSelect={(v) => onChange({ ...cfg, maxOnScreen: v })}
