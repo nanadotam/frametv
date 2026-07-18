@@ -14,6 +14,7 @@ interface SlideshowGridConfig {
   cellIntervalSeconds?: number;
   focusMode?: boolean;
   staggerMs?: number;
+  maxCells?: number;
 }
 
 interface CellState {
@@ -211,14 +212,14 @@ export default function SlideshowGridMode({
   albumIds,
 }: ModeProps) {
   const cfg = config as SlideshowGridConfig;
-  const cellInterval =
-    ((cfg.cellIntervalSeconds ??
+  const cellInterval = Math.max(5, (cfg.cellIntervalSeconds ??
       (config as Record<string, unknown>).intervalSeconds as number) ?? 300) * 1000;
   const focusMode = cfg.focusMode ?? false;
   const staggerMs = cfg.staggerMs ?? 1000;
+  const configuredMaxCells = Math.max(3, Math.min(cfg.maxCells ?? 6, 12));
 
   const { photos } = usePhotoRotation({ albumIds, shuffle: true });
-  const maxCells  = Math.min(photos.length, focusMode ? 1 : 6);
+  const maxCells  = Math.min(photos.length, focusMode ? 1 : configuredMaxCells);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [cells,  setCells]  = useState<CellState[]>([]);
   // isReady gates the cascade effect without putting `layout` in its deps
@@ -242,7 +243,7 @@ export default function SlideshowGridMode({
     seedFocalCache(photos);
 
     const initialARs = photos.slice(0, maxCells).map((p) => getAR(p.id));
-    const initial = pickLayout(initialARs, null, maxCells);
+    const initial = pickLayout(initialARs, null, maxCells, focusMode);
     prevCountRef.current = initial.count;
     layoutRef.current    = initial;
     setLayout(initial);
@@ -286,7 +287,7 @@ export default function SlideshowGridMode({
       const peekARs = peekPhotos.map((p) => getAR(p.id));
 
       // Score every candidate layout against the actual incoming photo ARs
-      const newLayout = pickLayout(peekARs, prevCountRef.current, maxCells);
+      const newLayout = pickLayout(peekARs, prevCountRef.current, maxCells, focusMode);
       prevCountRef.current = newLayout.count;
 
       // Build a candidate pool from the next slice of the photo rotation.

@@ -39,6 +39,25 @@ const INTERVAL_OPTIONS = [
   { label: '30m',  value: 1800 },
 ];
 
+// Grid mode cycles individual cells rather than dwelling on one full-screen
+// photo, so much shorter intervals read naturally — hence its own scale.
+const GRID_INTERVAL_OPTIONS = [
+  { label: '5s',  value: 5 },
+  { label: '10s', value: 10 },
+  { label: '30s', value: 30 },
+  { label: '1m',  value: 60 },
+  { label: '2m',  value: 120 },
+  { label: '5m',  value: 300 },
+];
+
+const GRID_CELL_OPTIONS = [
+  { label: '3',  value: 3 },
+  { label: '6',  value: 6 },
+  { label: '8',  value: 8 },
+  { label: '9',  value: 9 },
+  { label: '12', value: 12 },
+];
+
 const MODES_WITH_SETTINGS = new Set([
   'slideshow-single', 'slideshow-grid', 'pinterest', 'scrapbook',
   'clock-text', 'flipboard', 'unsplash-mood', 'easel',
@@ -168,6 +187,45 @@ function SlideshowQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg
           ]}
           value={(cfg.transition as string) ?? 'fade'}
           onSelect={(v) => onChange({ ...cfg, transition: v })}
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Shuffle</span>
+        <Switch
+          checked={(cfg.shuffle as boolean) ?? true}
+          onCheckedChange={(v) => onChange({ ...cfg, shuffle: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function GridQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) => void }) {
+  const intervalSec = (cfg.cellIntervalSeconds as number) ?? (cfg.intervalSeconds as number) ?? 30;
+  const closest = GRID_INTERVAL_OPTIONS.reduce((p, c) =>
+    Math.abs(c.value - intervalSec) < Math.abs(p.value - intervalSec) ? c : p
+  );
+  const maxCells = (cfg.maxCells as number) ?? 6;
+  const closestCells = GRID_CELL_OPTIONS.reduce((p, c) =>
+    Math.abs(c.value - maxCells) < Math.abs(p.value - maxCells) ? c : p
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Cell interval</p>
+        <ChipRow
+          options={GRID_INTERVAL_OPTIONS}
+          value={closest.value}
+          onSelect={(v) => onChange({ ...cfg, cellIntervalSeconds: v, intervalSeconds: undefined })}
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Photos on screen</p>
+        <ChipRow
+          options={GRID_CELL_OPTIONS}
+          value={closestCells.value}
+          onSelect={(v) => onChange({ ...cfg, maxCells: v })}
         />
       </div>
       <div className="flex items-center justify-between">
@@ -479,8 +537,9 @@ function QuickSettingsContent({
 }) {
   switch (modeId) {
     case 'slideshow-single':
-    case 'slideshow-grid':
       return <SlideshowQuickSettings cfg={cfg} onChange={onChange} />;
+    case 'slideshow-grid':
+      return <GridQuickSettings cfg={cfg} onChange={onChange} />;
     case 'pinterest':
       return <PinterestQuickSettings cfg={cfg} onChange={onChange} />;
     case 'scrapbook':

@@ -81,6 +81,71 @@ function SlideshowConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
   );
 }
 
+// Grid mode cycles individual cells rather than dwelling on one full-screen
+// photo, so it needs a faster interval scale than the single-photo slideshow.
+const GRID_INTERVAL_OPTIONS: { label: string; value: number }[] = [
+  { label: '5 seconds',  value: 5   },
+  { label: '10 seconds', value: 10  },
+  { label: '30 seconds', value: 30  },
+  { label: '1 minute',   value: 60  },
+  { label: '2 minutes',  value: 120 },
+  { label: '5 minutes',  value: 300 },
+];
+
+const GRID_CELL_OPTIONS = [3, 6, 8, 9, 12];
+
+function GridConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
+  const intervalSec = (cfg.cellIntervalSeconds as number) ?? (cfg.intervalSeconds as number) ?? 30;
+  const closestOption = GRID_INTERVAL_OPTIONS.reduce((prev, cur) =>
+    Math.abs(cur.value - intervalSec) < Math.abs(prev.value - intervalSec) ? cur : prev
+  );
+  const maxCells = (cfg.maxCells as number) ?? 6;
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1.5">
+        <Label>Cell interval</Label>
+        <Select
+          value={String(closestOption.value)}
+          onValueChange={(v) => onChange({ ...cfg, cellIntervalSeconds: Number(v), intervalSeconds: undefined })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {GRID_INTERVAL_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Photos on screen</Label>
+        <Select
+          value={String(maxCells)}
+          onValueChange={(v) => onChange({ ...cfg, maxCells: Number(v) })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {GRID_CELL_OPTIONS.map((n) => (
+              <SelectItem key={n} value={String(n)}>{n} photos</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Layouts always fill the grid with this many photos at once — the mode picks the
+          best-fitting mosaic for their aspect ratios instead of falling back to fullscreen.
+        </p>
+      </div>
+      <div className="flex items-center justify-between">
+        <Label>Shuffle photos</Label>
+        <Switch
+          checked={(cfg.shuffle as boolean) ?? true}
+          onCheckedChange={(v) => onChange({ ...cfg, shuffle: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function PinterestConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
   // Normalise legacy string speed ("0.5x", "1x", "2x") to number
   const speedNum = typeof cfg.speed === 'number'
@@ -405,8 +470,9 @@ function VinylConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange
 function ModeConfigForm({ mode, cfg, onChange }: { mode: Mode; cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
   switch (mode.id) {
     case 'slideshow-single':
-    case 'slideshow-grid':
       return <SlideshowConfig cfg={cfg} onChange={onChange} />;
+    case 'slideshow-grid':
+      return <GridConfig cfg={cfg} onChange={onChange} />;
     case 'pinterest':
       return <PinterestConfig cfg={cfg} onChange={onChange} />;
     case 'clock-text':

@@ -183,6 +183,69 @@ export const ALL_LAYOUTS: Layout[] = [
       { colStart: 5,  colEnd: 13, rowStart: 5, rowEnd: 7 }, // wide bottom-right
     ],
   },
+
+  // ── 8-cell ──────────────────────────────────────────────────────────────
+  {
+    count: 8, tag: 'balanced',                            // 4×2 equal grid
+    areas: [
+      { colStart: 1,  colEnd: 4,  rowStart: 1, rowEnd: 4 },
+      { colStart: 4,  colEnd: 7,  rowStart: 1, rowEnd: 4 },
+      { colStart: 7,  colEnd: 10, rowStart: 1, rowEnd: 4 },
+      { colStart: 10, colEnd: 13, rowStart: 1, rowEnd: 4 },
+      { colStart: 1,  colEnd: 4,  rowStart: 4, rowEnd: 7 },
+      { colStart: 4,  colEnd: 7,  rowStart: 4, rowEnd: 7 },
+      { colStart: 7,  colEnd: 10, rowStart: 4, rowEnd: 7 },
+      { colStart: 10, colEnd: 13, rowStart: 4, rowEnd: 7 },
+    ],
+  },
+  {
+    count: 8, tag: 'balanced',                            // two heroes + 6 mosaic
+    areas: [
+      { colStart: 1, colEnd: 5,  rowStart: 1, rowEnd: 4 }, // top-left hero
+      { colStart: 5, colEnd: 9,  rowStart: 1, rowEnd: 4 }, // top-mid hero
+      { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 3 },
+      { colStart: 9, colEnd: 13, rowStart: 3, rowEnd: 4 },
+      { colStart: 1, colEnd: 4,  rowStart: 4, rowEnd: 7 },
+      { colStart: 4, colEnd: 7,  rowStart: 4, rowEnd: 7 },
+      { colStart: 7, colEnd: 10, rowStart: 4, rowEnd: 7 },
+      { colStart: 10, colEnd: 13, rowStart: 4, rowEnd: 7 },
+    ],
+  },
+
+  // ── 9-cell ──────────────────────────────────────────────────────────────
+  {
+    count: 9, tag: 'balanced',                            // 3×3 equal grid
+    areas: [
+      { colStart: 1, colEnd: 5,  rowStart: 1, rowEnd: 3 },
+      { colStart: 5, colEnd: 9,  rowStart: 1, rowEnd: 3 },
+      { colStart: 9, colEnd: 13, rowStart: 1, rowEnd: 3 },
+      { colStart: 1, colEnd: 5,  rowStart: 3, rowEnd: 5 },
+      { colStart: 5, colEnd: 9,  rowStart: 3, rowEnd: 5 },
+      { colStart: 9, colEnd: 13, rowStart: 3, rowEnd: 5 },
+      { colStart: 1, colEnd: 5,  rowStart: 5, rowEnd: 7 },
+      { colStart: 5, colEnd: 9,  rowStart: 5, rowEnd: 7 },
+      { colStart: 9, colEnd: 13, rowStart: 5, rowEnd: 7 },
+    ],
+  },
+
+  // ── 12-cell ─────────────────────────────────────────────────────────────
+  {
+    count: 12, tag: 'balanced',                           // 4×3 dense mosaic
+    areas: [
+      { colStart: 1,  colEnd: 4,  rowStart: 1, rowEnd: 3 },
+      { colStart: 4,  colEnd: 7,  rowStart: 1, rowEnd: 3 },
+      { colStart: 7,  colEnd: 10, rowStart: 1, rowEnd: 3 },
+      { colStart: 10, colEnd: 13, rowStart: 1, rowEnd: 3 },
+      { colStart: 1,  colEnd: 4,  rowStart: 3, rowEnd: 5 },
+      { colStart: 4,  colEnd: 7,  rowStart: 3, rowEnd: 5 },
+      { colStart: 7,  colEnd: 10, rowStart: 3, rowEnd: 5 },
+      { colStart: 10, colEnd: 13, rowStart: 3, rowEnd: 5 },
+      { colStart: 1,  colEnd: 4,  rowStart: 5, rowEnd: 7 },
+      { colStart: 4,  colEnd: 7,  rowStart: 5, rowEnd: 7 },
+      { colStart: 7,  colEnd: 10, rowStart: 5, rowEnd: 7 },
+      { colStart: 10, colEnd: 13, rowStart: 5, rowEnd: 7 },
+    ],
+  },
 ];
 
 /**
@@ -199,10 +262,18 @@ export function computeCellAR(area: GridArea): number {
 /**
  * Pick the layout that best fits the actual ARs of incoming photos.
  *
- * For each candidate layout we simulate the greedy match and sum the
- * log-scale AR mismatches across all cells — the lowest total cost wins.
+ * For each candidate layout we simulate the greedy match and average the
+ * log-scale AR mismatch across all cells — the lowest average cost wins.
+ * Averaging (rather than summing) matters once layouts of very different
+ * cell counts compete: a summed cost always favors layouts with fewer
+ * areas to mismatch, so a 1-cell "fullscreen" layout would win almost
+ * every cycle regardless of fit, collapsing the grid into a slideshow.
  * A small penalty for re-using the same cell count as last cycle keeps
  * the display visually varied without sacrificing fit quality.
+ *
+ * The single-cell layout is excluded unless the caller explicitly wants
+ * it (allowSingle) — grid mode should stick to genuine multi-photo
+ * layouts; true fullscreen belongs to focus mode / slideshow-single.
  *
  * photoARs: individual cached ARs for the next batch of photos (order irrelevant).
  */
@@ -210,9 +281,10 @@ export function pickLayout(
   photoARs: number[],
   prevCount: number | null,
   maxCells: number,
+  allowSingle = false,
 ): Layout {
   const eligible = ALL_LAYOUTS.filter(
-    (l) => l.count <= maxCells && l.count <= photoARs.length,
+    (l) => l.count <= maxCells && l.count <= photoARs.length && (allowSingle || l.count > 1),
   );
   if (eligible.length === 0) return ALL_LAYOUTS[0];
 
@@ -234,9 +306,12 @@ export function pickLayout(
       remaining.splice(bestIdx, 1);
     }
 
+    // Average cost per cell — keeps layouts of different sizes comparable.
+    const avgCost = cost / layout.areas.length;
+
     // Mild penalty for repeating the same cell count (variety without sacrificing fit)
     const varietyPenalty = layout.count === prevCount ? 0.25 : 0;
-    return { layout, score: cost + varietyPenalty };
+    return { layout, score: avgCost + varietyPenalty };
   });
 
   // Sort by score ascending; randomise among layouts within 0.15 of the best
