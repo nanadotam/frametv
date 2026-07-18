@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Album,
+  Camera,
   CheckSquare,
   Clock3,
   Columns3,
@@ -131,6 +132,13 @@ export const MODE_METADATA: Record<string, ModeMeta> = {
     category: 'photos',
     icon: Columns3,
   },
+  scrapbook: {
+    id: 'scrapbook',
+    label: 'Scrapbook',
+    description: 'Polaroids tossed and taped across the screen, 2000s style',
+    category: 'photos',
+    icon: Camera,
+  },
   coverflow: {
     id: 'coverflow',
     label: 'Cover Flow',
@@ -193,6 +201,7 @@ export const MODE_ORDER = [
   'slideshow-single',
   'slideshow-grid',
   'pinterest',
+  'scrapbook',
   'coverflow',
   'vinyl',
   'clock-text',

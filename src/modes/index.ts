@@ -18,6 +18,11 @@ const PinterestMode = dynamic(
   { ssr: true }
 );
 
+const ScrapbookMode = dynamic(
+  () => import('./scrapbook/ScrapbookMode'),
+  { ssr: false }
+);
+
 const ClockTextMode = dynamic(
   () => import('./clock-text/ClockTextMode'),
   { ssr: true }
@@ -62,6 +67,7 @@ export const MODES: Record<ModeId, ComponentType<ModeProps>> = {
   'slideshow-single': SlideshowSingleMode,
   'slideshow-grid': SlideshowGridMode,
   pinterest: PinterestMode,
+  scrapbook: ScrapbookMode,
   'clock-text': ClockTextMode,
   flipboard: FlipboardMode,
   coverflow: CoverFlowMode,

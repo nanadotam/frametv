@@ -2,6 +2,7 @@ export type ModeId =
   | 'slideshow-single'
   | 'slideshow-grid'
   | 'pinterest'
+  | 'scrapbook'
   | 'clock-text'
   | 'flipboard'
   | 'coverflow'

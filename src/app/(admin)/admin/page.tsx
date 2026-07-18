@@ -39,7 +39,7 @@ const INTERVAL_OPTIONS = [
 ];
 
 const MODES_WITH_SETTINGS = new Set([
-  'slideshow-single', 'slideshow-grid', 'pinterest',
+  'slideshow-single', 'slideshow-grid', 'pinterest', 'scrapbook',
   'clock-text', 'flipboard', 'unsplash-mood', 'easel',
   'vinyl', 'scripture',
 ]);
@@ -174,6 +174,63 @@ function SlideshowQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg
         <Switch
           checked={(cfg.shuffle as boolean) ?? true}
           onCheckedChange={(v) => onChange({ ...cfg, shuffle: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ScrapbookQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) => void }) {
+  const intervalSec = (cfg.intervalSeconds as number) ?? 6;
+  const maxOnScreen = (cfg.maxOnScreen as number) ?? 7;
+  const tapeFrequency = typeof cfg.tapeFrequency === 'number' ? cfg.tapeFrequency : 0.35;
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Toss interval</p>
+        <ChipRow
+          options={[
+            { label: '3s', value: 3 },
+            { label: '6s', value: 6 },
+            { label: '10s', value: 10 },
+            { label: '20s', value: 20 },
+          ]}
+          value={intervalSec}
+          onSelect={(v) => onChange({ ...cfg, intervalSeconds: v })}
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Polaroids on screen</p>
+        <ChipRow
+          options={[
+            { label: '4', value: 4 },
+            { label: '7', value: 7 },
+            { label: '10', value: 10 },
+            { label: '14', value: 14 },
+          ]}
+          value={maxOnScreen}
+          onSelect={(v) => onChange({ ...cfg, maxOnScreen: v })}
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Washi tape</p>
+        <ChipRow
+          options={[
+            { label: 'None', value: 0 },
+            { label: 'A little', value: 0.2 },
+            { label: 'Some', value: 0.35 },
+            { label: 'Lots', value: 0.6 },
+          ]}
+          value={tapeFrequency}
+          onSelect={(v) => onChange({ ...cfg, tapeFrequency: v })}
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Show date caption</span>
+        <Switch
+          checked={(cfg.showDate as boolean) ?? true}
+          onCheckedChange={(v) => onChange({ ...cfg, showDate: v })}
         />
       </div>
     </div>
@@ -412,6 +469,8 @@ function QuickSettingsContent({
       return <SlideshowQuickSettings cfg={cfg} onChange={onChange} />;
     case 'pinterest':
       return <PinterestQuickSettings cfg={cfg} onChange={onChange} />;
+    case 'scrapbook':
+      return <ScrapbookQuickSettings cfg={cfg} onChange={onChange} />;
     case 'clock-text':
       return <ClockQuickSettings cfg={cfg} onChange={onChange} />;
     case 'flipboard':
