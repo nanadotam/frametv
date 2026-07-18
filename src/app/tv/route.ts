@@ -139,6 +139,20 @@ html,body{
   appearance:none;
 }
 .ftv-btn:focus{outline:3px solid rgba(255,255,255,.45);outline-offset:3px}
+.ftv-link-btn{
+  display:block;width:100%;text-align:center;
+  background:transparent;border:none;color:rgba(255,255,255,.45);
+  font-size:.95rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;font-family:inherit;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+}
+.ftv-pair-code{
+  font-family:'Courier New',monospace;font-weight:700;
+  letter-spacing:.3em;font-size:3.2rem;text-align:center;
+  background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.14);
+  border-radius:14px;padding:24px 10px;
+}
+.ftv-pair-timer{text-align:center;font-size:1rem;color:rgba(255,255,255,.35)}
 
 /* Display ───────────────────────────────────────────────────────────────── */
 #ftv-display{
@@ -390,6 +404,11 @@ const JS = `
     D.pinUser  = grab('ftv-pin-user');
     D.pinCode  = grab('ftv-pin-code');
     D.pinErr   = grab('ftv-pin-error');
+    D.pinToPair = grab('ftv-pin-to-pair');
+    D.pairGate = grab('ftv-pair-gate');
+    D.pairCodeEl = grab('ftv-pair-code');
+    D.pairTimer = grab('ftv-pair-timer');
+    D.pairToPin = grab('ftv-pair-to-pin');
     D.display  = grab('ftv-display');
     D.imgA     = grab('ftv-img-a');
     D.imgB     = grab('ftv-img-b');
@@ -514,14 +533,21 @@ const JS = `
   }
 
   /* ── auth ───────────────────────────────────────────────────────────────── */
+  var pairCode  = null;
+  var pairPoll  = null;
+  var pairTick  = null;
+  var pairBusy  = false;
+
   function checkAuth() {
     get('/api/auth/me', function (data, ok) {
       if (ok && data && data.user) { launch(); }
-      else                         { showPin(); }
+      else                         { showPair(); }
     });
   }
 
   function showPin() {
+    stopPairing();
+    hide(D.pairGate);
     hide(D.loading);
     showFlex(D.pinGate);
     if (D.pinUser) D.pinUser.focus();
@@ -541,6 +567,66 @@ const JS = `
         launch();
       } else {
         if (D.pinErr) D.pinErr.textContent = (data && data.error) || 'Incorrect credentials.';
+      }
+    });
+  }
+
+  /* ── device pairing (code-only; no QR on this compat renderer) ─────────── */
+  function stopPairing() {
+    if (pairPoll) { clearInterval(pairPoll); pairPoll = null; }
+    if (pairTick) { clearInterval(pairTick); pairTick = null; }
+    pairBusy = false;
+  }
+
+  function showPair() {
+    hide(D.pinGate);
+    hide(D.loading);
+    showFlex(D.pairGate);
+    beginPairing();
+  }
+
+  function beginPairing() {
+    stopPairing();
+    if (D.pairCodeEl) D.pairCodeEl.textContent = '——————';
+    if (D.pairTimer) D.pairTimer.textContent = '';
+    post('/api/auth/pair/start', null, function (data, ok) {
+      if (!ok || !data || !data.code) {
+        setTimeout(beginPairing, 4000);
+        return;
+      }
+      pairCode = data.code;
+      if (D.pairCodeEl) D.pairCodeEl.textContent = data.code;
+
+      var expiresAt = new Date(data.expires_at).getTime();
+      pairTick = setInterval(function () {
+        var secs = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+        var m = Math.floor(secs / 60);
+        var s = secs % 60;
+        if (D.pairTimer) D.pairTimer.textContent = 'Code expires in ' + m + ':' + (s < 10 ? '0' : '') + s;
+      }, 1000);
+
+      pairPoll = setInterval(pollPairStatus, 2000);
+    });
+  }
+
+  function pollPairStatus() {
+    if (pairBusy || !pairCode) return;
+    get('/api/auth/pair/status?code=' + pairCode, function (data, ok) {
+      if (!ok || !data) return;
+      if (data.status === 'approved') {
+        pairBusy = true;
+        stopPairing();
+        post('/api/auth/pair/consume', JSON.stringify({ code: pairCode }), function (cData, cOk) {
+          if (cOk) {
+            hide(D.pairGate);
+            showFlex(D.loading);
+            launch();
+          } else {
+            beginPairing();
+          }
+        });
+      } else if (data.status === 'expired' || data.status === 'invalid') {
+        beginPairing();
       }
     });
   }
@@ -1063,6 +1149,8 @@ const JS = `
   function boot() {
     cacheDom();
     if (D.pinForm) D.pinForm.addEventListener('submit', onPinSubmit);
+    if (D.pinToPair) D.pinToPair.addEventListener('click', function () { hide(D.pinGate); showPair(); });
+    if (D.pairToPin) D.pairToPin.addEventListener('click', showPin);
     if (D.fullBtn) D.fullBtn.addEventListener('click', toggleFullscreen);
     if (D.fullPromptBtn) D.fullPromptBtn.addEventListener('click', function () {
       dismissFullscreenPrompt();
@@ -1136,7 +1224,20 @@ function buildPage(): string {
       >
       <p id="ftv-pin-error" class="ftv-error" role="alert"></p>
       <button class="ftv-btn" type="submit">&#9654;&#xFE0E;&nbsp;&nbsp;View Display</button>
+      <button id="ftv-pin-to-pair" class="ftv-link-btn" type="button">Pair with a code instead</button>
     </form>
+  </div>
+</div>
+
+<!-- Pairing gate (default unauthenticated view) -->
+<div id="ftv-pair-gate" style="display:none">
+  <div class="ftv-pin-wrap">
+    <div class="ftv-logo">&#128250;</div>
+    <h1 class="ftv-title">FrameTV</h1>
+    <p class="ftv-subtitle">On your phone, sign in and enter this code</p>
+    <div id="ftv-pair-code" class="ftv-pair-code">&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;</div>
+    <p id="ftv-pair-timer" class="ftv-pair-timer"></p>
+    <button id="ftv-pair-to-pin" class="ftv-link-btn" type="button">Sign in with PIN instead</button>
   </div>
 </div>
 

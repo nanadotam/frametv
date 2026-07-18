@@ -68,6 +68,19 @@ export function hashSessionToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
 }
 
+// Excludes visually ambiguous characters (0/O, 1/I/L) so codes are easy to
+// read off a TV screen and type on a phone.
+const PAIRING_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+export function createPairingCode() {
+  const bytes = randomBytes(6);
+  return Array.from(bytes, (b) => PAIRING_CODE_CHARS[b % PAIRING_CODE_CHARS.length]).join('');
+}
+
+export function normalizePairingCode(code: string) {
+  return code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -230,7 +243,7 @@ export async function requireDisplayUser(request: NextRequest) {
 
 export async function recordAuthEvent(
   request: NextRequest,
-  event_type: 'signup' | 'login' | 'pin_unlock' | 'logout' | 'failed_login' | 'failed_pin',
+  event_type: 'signup' | 'login' | 'pin_unlock' | 'logout' | 'failed_login' | 'failed_pin' | 'tv_pair_approved' | 'tv_pair_consumed',
   values: { user_id?: string | null; email?: string | null; device_name?: string | null } = {}
 ) {
   const supabase = createServiceClient();

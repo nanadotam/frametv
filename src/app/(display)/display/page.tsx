@@ -14,6 +14,7 @@ import type { ModeId } from '@/modes/types';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
 import ClockOverlay from '@/components/display/ClockOverlay';
 import SpotifyOverlay from '@/components/display/SpotifyOverlay';
+import PairingGate from '@/components/display/PairingGate';
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { Input } from '@/components/ui/input';
 import { Maximize2, Minimize2, Search, X, Play, Loader2 } from 'lucide-react';
@@ -84,7 +85,7 @@ function LoadingSkeleton() {
   );
 }
 
-function DisplayPinGate({ onUnlock }: { onUnlock: () => void }) {
+function DisplayPinGate({ onUnlock, onUsePairing }: { onUnlock: () => void; onUsePairing: () => void }) {
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -166,6 +167,14 @@ function DisplayPinGate({ onUnlock }: { onUnlock: () => void }) {
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
         >
           {loading ? 'Unlocking…' : '▶  View Display'}
+        </button>
+
+        <button
+          type="button"
+          onClick={onUsePairing}
+          className="block w-full text-center text-sm font-medium uppercase tracking-[0.1em] text-white/45 hover:text-white transition-colors"
+        >
+          Pair with a code instead
         </button>
       </form>
     </div>
@@ -522,6 +531,7 @@ function resetBtn(e: React.MouseEvent<HTMLButtonElement>) {
 export default function DisplayPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [usePinGate, setUsePinGate] = useState(false);
   const [clockOn, setClockOn] = useState(true);
   const [spotifyOn, setSpotifyOn] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -640,7 +650,10 @@ export default function DisplayPage() {
   }, [playUri, activateSpotify]);
 
   if (authChecked && locked) {
-    return <DisplayPinGate onUnlock={() => { setLocked(false); window.location.reload(); }} />;
+    const onUnlock = () => { setLocked(false); window.location.reload(); };
+    return usePinGate
+      ? <DisplayPinGate onUnlock={onUnlock} onUsePairing={() => setUsePinGate(false)} />
+      : <PairingGate onUnlock={onUnlock} onUsePin={() => setUsePinGate(true)} />;
   }
 
   if (!displayState) {
