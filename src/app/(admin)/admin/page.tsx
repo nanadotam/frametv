@@ -6,7 +6,7 @@ import {
   SkipForward, SkipBack, Pause, Play, Tv, Sun, Radio, Clock,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Send, Zap,
   CalendarDays, Star, Shuffle, MonitorSmartphone, Loader2, Info,
-  Link2, Copy, RefreshCw, Trash2, Wifi, MapPin, Monitor,
+  Link2, Copy, RefreshCw, Trash2, Wifi, MapPin, Monitor, QrCode,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils';
 import { invalidateModes } from '@/hooks/useModes';
 import type { DisplayState, Album, Schedule, Mode, DisplayDevice } from '@/types/db';
 import PageGuide from '@/components/admin/PageGuide';
+import PairTvForm from '@/components/admin/PairTvForm';
+import { Modal } from '@/components/admin/Modal';
 import { MODE_CATEGORIES, MODE_CATEGORY_BY_ID, MODE_METADATA, MODE_ORDER } from '@/lib/modeMetadata';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -576,6 +578,7 @@ export default function NowPlayingPage() {
   const [playbackPending, setPlaybackPending] = useState<PlaybackAction | null>(null);
   const [devicesOpen, setDevicesOpen]       = useState(false);
   const [statusOpen, setStatusOpen]         = useState(false);
+  const [pairOpen, setPairOpen]             = useState(false);
 
   const modeConfigTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const brightnessTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -917,6 +920,13 @@ export default function NowPlayingPage() {
               ? <><CheckCircle2 size={12} className="text-green-500" /> Live</>
               : <><AlertCircle size={12} className="text-yellow-500" /> No DB</>}
           </div>
+          <button
+            type="button"
+            onClick={() => setPairOpen(true)}
+            className="flex items-center gap-1 text-xs text-muted-foreground bg-card border border-border rounded-full px-3 py-1.5 hover:text-foreground hover:border-primary/40 transition-colors"
+          >
+            <QrCode size={11} /> Pair a TV
+          </button>
           <a
             href="/display"
             target="_blank"
@@ -926,6 +936,10 @@ export default function NowPlayingPage() {
           </a>
         </div>
       </div>
+
+      <Modal open={pairOpen} onOpenChange={setPairOpen} title="Pair a TV">
+        <PairTvForm />
+      </Modal>
 
       {/* ── Error banners ── */}
       {fetchError && (

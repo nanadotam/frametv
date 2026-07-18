@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import PageGuide from '@/components/admin/PageGuide';
+import PairTvForm from '@/components/admin/PairTvForm';
 
 interface Settings {
   latitude: number;
@@ -107,32 +108,6 @@ export default function SettingsPage() {
   const [pinConfirm, setPinConfirm]         = useState('');
   const [pinSaving, setPinSaving]           = useState(false);
   const [pinResult, setPinResult]           = useState<{ ok: boolean; msg: string } | null>(null);
-
-  // TV pairing state
-  const [pairCode, setPairCode]             = useState('');
-  const [pairSaving, setPairSaving]         = useState(false);
-  const [pairResult, setPairResult]         = useState<{ ok: boolean; msg: string } | null>(null);
-
-  const approvePairCode = useCallback(async () => {
-    setPairSaving(true);
-    setPairResult(null);
-    try {
-      const res = await fetch('/api/auth/pair/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: pairCode }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Unable to pair.');
-      setPairResult({ ok: true, msg: 'TV signed in.' });
-      setPairCode('');
-      setTimeout(() => setPairResult(null), 4000);
-    } catch (err) {
-      setPairResult({ ok: false, msg: err instanceof Error ? err.message : 'Unable to pair.' });
-    } finally {
-      setPairSaving(false);
-    }
-  }, [pairCode]);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -773,31 +748,7 @@ export default function SettingsPage() {
 
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Pair a TV</p>
-            <p className="text-sm text-muted-foreground mb-3">
-              Enter the 6-character code shown on your TV screen — or open{' '}
-              <span className="font-mono">frametv.app/pair/CODE</span> directly by scanning its QR code.
-            </p>
-            <div className="flex items-center gap-2">
-              <Input
-                value={pairCode}
-                onChange={(e) => setPairCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
-                placeholder="ABC123"
-                className="font-mono tracking-[0.3em] uppercase"
-                maxLength={6}
-              />
-              <Button
-                size="sm"
-                onClick={approvePairCode}
-                disabled={pairSaving || pairCode.length < 6}
-              >
-                {pairSaving ? 'Pairing…' : pairResult?.ok ? <><CheckCircle2 size={14} /> Paired</> : 'Pair'}
-              </Button>
-            </div>
-            {pairResult && (
-              <p className={cn('text-sm mt-2', pairResult.ok ? 'text-green-400' : 'text-red-400')}>
-                {pairResult.msg}
-              </p>
-            )}
+            <PairTvForm />
           </div>
         </CardContent>
       </Card>
