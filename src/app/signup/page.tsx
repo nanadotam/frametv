@@ -2,14 +2,12 @@
 
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import AuthShell from '@/components/auth/AuthShell';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 
 export default function SignupPage() {
-  const router = useRouter();
   const [form, setForm] = useState({
     name: '',
     username: '',
@@ -33,8 +31,7 @@ export default function SignupPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Unable to create account.');
-      router.replace('/onboarding');
-      router.refresh();
+      window.location.href = '/onboarding';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create account.');
     } finally {

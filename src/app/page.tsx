@@ -1,12 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Tv, Settings, Monitor, Zap, Images, LayoutGrid, CalendarDays, LogOut } from 'lucide-react';
 
 export default function Home() {
-  const router = useRouter();
   const [isSignedIn, setIsSignedIn] = useState(false);
 
   useEffect(() => {
@@ -19,9 +17,7 @@ export default function Home() {
 
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
-    setIsSignedIn(false);
-    router.replace('/');
-    router.refresh();
+    window.location.href = '/';
   };
 
   return (

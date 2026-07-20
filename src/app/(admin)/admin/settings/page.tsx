@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv, Clock, CalendarDays, ChevronRight, LockKeyhole, RefreshCw, Music2 } from 'lucide-react';
+import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv, Clock, CalendarDays, ChevronRight, LockKeyhole, RefreshCw, Music2, UserCircle2, LogOut, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,9 +10,25 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import PageGuide from '@/components/admin/PageGuide';
 import PairTvForm from '@/components/admin/PairTvForm';
+
+interface AccountUser {
+  id: string;
+  email: string;
+  username: string;
+  name: string;
+}
 
 interface Settings {
   latitude: number;
@@ -109,6 +125,14 @@ export default function SettingsPage() {
   const [pinSaving, setPinSaving]           = useState(false);
   const [pinResult, setPinResult]           = useState<{ ok: boolean; msg: string } | null>(null);
 
+  // Account state
+  const [account, setAccount]               = useState<AccountUser | null>(null);
+  const [signingOut, setSigningOut]         = useState(false);
+  const [deleteOpen, setDeleteOpen]         = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleting, setDeleting]             = useState(false);
+  const [deleteError, setDeleteError]       = useState('');
+
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const params = new URLSearchParams((globalThis as any).location?.search ?? '');
@@ -148,6 +172,39 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => { fetchSettings(); }, [fetchSettings]);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (json?.kind === 'admin' && json.user) setAccount(json.user);
+      })
+      .catch(() => {});
+  }, []);
+
+  const signOut = async () => {
+    setSigningOut(true);
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/login';
+  };
+
+  const deleteAccount = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const res = await fetch('/api/auth/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Failed to delete account.');
+      window.location.href = '/login';
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete account.');
+      setDeleting(false);
+    }
+  };
 
   // ── Auto-save helpers ──────────────────────────────────────────────────────
 
@@ -307,6 +364,63 @@ export default function SettingsPage() {
           </a>.
         </div>
       )}
+
+      {/* ── Account ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <UserCircle2 size={15} className="text-primary" /> Account
+          </CardTitle>
+          {account && <CardDescription>{account.name} · {account.email}</CardDescription>}
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button size="sm" variant="outline" className="w-full" onClick={signOut} disabled={signingOut}>
+            <LogOut size={14} /> {signingOut ? 'Signing out…' : 'Sign out'}
+          </Button>
+
+          <Dialog open={deleteOpen} onOpenChange={(open) => {
+            setDeleteOpen(open);
+            if (!open) { setDeletePassword(''); setDeleteError(''); }
+          }}>
+            <DialogTrigger render={
+              <Button size="sm" variant="outline" className="w-full border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-400">
+                <Trash2 size={14} /> Delete account
+              </Button>
+            } />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete your account?</DialogTitle>
+                <DialogDescription>
+                  This permanently deletes your account and everything in it — photos, albums, modes,
+                  schedules, and settings. This can&apos;t be undone.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-1.5">
+                <Label>Confirm your password</Label>
+                <Input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Your account password"
+                />
+              </div>
+
+              {deleteError && <p className="text-sm text-red-400">{deleteError}</p>}
+
+              <DialogFooter>
+                <Button
+                  variant="destructive"
+                  onClick={deleteAccount}
+                  disabled={deleting || !deletePassword}
+                >
+                  {deleting ? 'Deleting…' : 'Permanently delete account'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      </Card>
 
       {/* ── Schedule shortcut ── */}
       <Link

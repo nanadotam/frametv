@@ -2,14 +2,13 @@
 
 import { FormEvent, Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import AuthShell from '@/components/auth/AuthShell';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get('next') || '/';
 
@@ -35,8 +34,7 @@ function LoginForm() {
 
       if (!res.ok) throw new Error(json.error ?? 'Unable to sign in.');
 
-      router.replace(next);
-      router.refresh();
+      window.location.href = next;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in.');
     } finally {

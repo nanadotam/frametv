@@ -243,7 +243,7 @@ export async function requireDisplayUser(request: NextRequest) {
 
 export async function recordAuthEvent(
   request: NextRequest,
-  event_type: 'signup' | 'login' | 'pin_unlock' | 'logout' | 'failed_login' | 'failed_pin' | 'tv_pair_approved' | 'tv_pair_consumed',
+  event_type: 'signup' | 'login' | 'pin_unlock' | 'logout' | 'failed_login' | 'failed_pin' | 'tv_pair_approved' | 'tv_pair_consumed' | 'account_deleted',
   values: { user_id?: string | null; email?: string | null; device_name?: string | null } = {}
 ) {
   const supabase = createServiceClient();

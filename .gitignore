@@ -41,3 +41,4 @@ yarn-error.log*
 next-env.d.ts
 TV_COMPATIBILITY.md
 docs/
+supabase/migrations/012_account_deletion_event.sql

@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useRouter } from 'next/navigation';
 import { Tv, Images, LayoutGrid, Settings, Home, Radio, LogOut, Music2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -23,12 +22,10 @@ const SECONDARY_NAV = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
 
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
-    router.refresh();
+    window.location.href = '/login';
   };
 
   return (
