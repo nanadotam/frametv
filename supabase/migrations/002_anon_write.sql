@@ -1,2 +1,0 @@
--- No-op: RLS is disabled on all tables (see 001_initial.sql).
--- Single-user personal app — no auth required.
