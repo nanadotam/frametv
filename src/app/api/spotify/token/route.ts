@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   const auth = await requireDisplayUser(request);
   if (auth.response) return auth.response;
 
-  const token = await getAccessToken();
+  const token = await getAccessToken(auth.user.id);
   if (!token) return NextResponse.json({ error: 'Spotify not connected' }, { status: 401 });
 
   return NextResponse.json({ token });

@@ -1,10 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireDisplayUser } from '@/lib/auth';
 import { getAccessToken } from '@/lib/spotify/auth';
 import { getNowPlayingWithQueue } from '@/lib/spotify/now-playing';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireDisplayUser(request);
+  if (auth.response) return auth.response;
+
   try {
-    const accessToken = await getAccessToken();
+    const accessToken = await getAccessToken(auth.user.id);
 
     if (!accessToken) {
       return NextResponse.json({ current: null, reason: 'not_authenticated' });

@@ -27,7 +27,7 @@ export function getSpotifyAuthUrl(origin: string): string {
   return `${SPOTIFY_ACCOUNTS_BASE}/authorize?${params.toString()}`;
 }
 
-export async function exchangeCode(code: string, origin: string, userId?: string): Promise<void> {
+export async function exchangeCode(code: string, origin: string, userId: string): Promise<void> {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -51,35 +51,33 @@ export async function exchangeCode(code: string, origin: string, userId?: string
   }
 
   const tokens = await res.json();
-  await saveSpotifyTokens(tokens);
+  await saveSpotifyTokens(tokens, userId);
 
-  if (userId) {
-    try {
-      const profileRes = await fetch('https://api.spotify.com/v1/me', {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      });
-      if (profileRes.ok) {
-        const p = await profileRes.json();
-        const { userSettingKey } = await import('@/lib/userData');
-        const supabase = createServiceClient();
-        await supabase.from('settings').upsert(
-          {
-            key: userSettingKey(userId, 'spotify_profile'),
-            user_id: userId,
-            value: {
-              display_name: p.display_name ?? null,
-              email: p.email ?? null,
-              image_url: (p.images as Array<{ url: string }>)?.[0]?.url ?? null,
-              spotify_id: p.id ?? null,
-            },
-            updated_at: new Date().toISOString(),
+  try {
+    const profileRes = await fetch('https://api.spotify.com/v1/me', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (profileRes.ok) {
+      const p = await profileRes.json();
+      const { userSettingKey } = await import('@/lib/userData');
+      const supabase = createServiceClient();
+      await supabase.from('settings').upsert(
+        {
+          key: userSettingKey(userId, 'spotify_profile'),
+          user_id: userId,
+          value: {
+            display_name: p.display_name ?? null,
+            email: p.email ?? null,
+            image_url: (p.images as Array<{ url: string }>)?.[0]?.url ?? null,
+            spotify_id: p.id ?? null,
           },
-          { onConflict: 'key' }
-        );
-      }
-    } catch {
-      // Profile fetch is non-critical — tokens are already saved
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'key' }
+      );
     }
+  } catch {
+    // Profile fetch is non-critical — tokens are already saved
   }
 }
 
@@ -88,26 +86,26 @@ async function saveSpotifyTokens(tokens: {
   refresh_token?: string;
   expires_in: number;
   scope?: string;
-}): Promise<void> {
+}, userId: string): Promise<void> {
   const supabase = createServiceClient();
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
   const { error } = await supabase.from('spotify_auth').upsert({
-    id: 1,
+    user_id: userId,
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token ?? null,
     expires_at: expiresAt,
     scope: tokens.scope ?? SCOPES,
-  });
+  }, { onConflict: 'user_id' });
   if (error) throw new Error(`Failed to save Spotify tokens: ${error.message}`);
 }
 
-export async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken(userId: string): Promise<string | null> {
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('spotify_auth')
     .select('*')
-    .eq('id', 1)
+    .eq('user_id', userId)
     .maybeSingle();
 
   if (error || !data?.access_token) return null;
@@ -117,7 +115,7 @@ export async function getAccessToken(): Promise<string | null> {
 
   if (expiresAt - Date.now() < fiveMinutes && data.refresh_token) {
     try {
-      const newToken = await refreshToken(data.refresh_token);
+      const newToken = await refreshToken(data.refresh_token, userId);
       return newToken;
     } catch {
       return null;
@@ -127,7 +125,7 @@ export async function getAccessToken(): Promise<string | null> {
   return data.access_token;
 }
 
-export async function refreshToken(refreshTokenValue: string): Promise<string> {
+export async function refreshToken(refreshTokenValue: string, userId: string): Promise<string> {
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: refreshTokenValue,
@@ -155,12 +153,12 @@ export async function refreshToken(refreshTokenValue: string): Promise<string> {
   const supabase = createServiceClient();
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
   await supabase.from('spotify_auth').upsert({
-    id: 1,
+    user_id: userId,
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token ?? refreshTokenValue,
     expires_at: expiresAt,
     scope: tokens.scope,
-  });
+  }, { onConflict: 'user_id' });
 
   return tokens.access_token;
 }

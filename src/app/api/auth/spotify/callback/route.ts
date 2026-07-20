@@ -19,10 +19,16 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const user = await getAdminUser(request);
+  if (!user) {
+    return NextResponse.redirect(
+      new URL('/login?next=/admin/settings', request.url)
+    );
+  }
+
   try {
     const origin = new URL(request.url).origin;
-    const user = await getAdminUser(request);
-    await exchangeCode(code, origin, user?.id);
+    await exchangeCode(code, origin, user.id);
     return NextResponse.redirect(
       new URL('/admin/settings?spotify=connected', request.url)
     );

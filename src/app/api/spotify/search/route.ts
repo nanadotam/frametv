@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   const q = new URL(request.url).searchParams.get('q')?.trim();
   if (!q) return NextResponse.json({ tracks: [] });
 
-  const token = await getAccessToken();
+  const token = await getAccessToken(auth.user.id);
   if (!token) return NextResponse.json({ error: 'Spotify not connected' }, { status: 401 });
 
   const data = await spotifyFetch<SearchResponse>(
