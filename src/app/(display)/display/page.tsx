@@ -17,7 +17,7 @@ import SpotifyOverlay from '@/components/display/SpotifyOverlay';
 import PairingGate from '@/components/display/PairingGate';
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { Input } from '@/components/ui/input';
-import { Maximize2, Minimize2, Search, X, Play, Loader2 } from 'lucide-react';
+import { Maximize2, Minimize2, Search, X, Play, Loader2, PictureInPicture2 } from 'lucide-react';
 
 // ─── Spotify modes ────────────────────────────────────────────────────────────
 
@@ -245,6 +245,125 @@ function useCinemaMode() {
   }, [toggle]);
 
   return { cinema, toast, toggle, enter, supported };
+}
+
+// ─── Picture-in-Picture (live tab capture, forced to 16:9) ───────────────────
+
+type DisplayMediaOptions = MediaStreamConstraints & { preferCurrentTab?: boolean };
+
+function usePictureInPictureCapture() {
+  const [active, setActive] = useState(false);
+  const [supported, setSupported] = useState(false);
+
+  const captureStreamRef = useRef<MediaStream | null>(null);
+  const sourceVideoRef = useRef<HTMLVideoElement | null>(null);
+  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setSupported(
+      typeof document !== 'undefined' &&
+      'pictureInPictureEnabled' in document &&
+      document.pictureInPictureEnabled &&
+      typeof navigator !== 'undefined' &&
+      Boolean(navigator.mediaDevices?.getDisplayMedia)
+    );
+  }, []);
+
+  const stop = useCallback(() => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+
+    captureStreamRef.current?.getTracks().forEach((t) => t.stop());
+    captureStreamRef.current = null;
+
+    if (sourceVideoRef.current) {
+      sourceVideoRef.current.srcObject = null;
+      sourceVideoRef.current = null;
+    }
+
+    const pipVideo = pipVideoRef.current;
+    if (pipVideo) {
+      const stream = pipVideo.srcObject as MediaStream | null;
+      stream?.getTracks().forEach((t) => t.stop());
+      pipVideo.srcObject = null;
+      pipVideoRef.current = null;
+    }
+
+    if (document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(() => {});
+    }
+
+    setActive(false);
+  }, []);
+
+  const start = useCallback(async () => {
+    if (!supported || active) return;
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: 'browser', frameRate: 30 },
+        audio: false,
+        preferCurrentTab: true,
+      } as DisplayMediaOptions);
+      captureStreamRef.current = displayStream;
+
+      const sourceVideo = document.createElement('video');
+      sourceVideo.muted = true;
+      sourceVideo.playsInline = true;
+      sourceVideo.srcObject = displayStream;
+      await sourceVideo.play();
+      sourceVideoRef.current = sourceVideo;
+
+      // Force a stable 16:9 frame regardless of the captured window's real aspect ratio.
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      const ctx = canvas.getContext('2d');
+
+      const draw = () => {
+        const video = sourceVideoRef.current;
+        if (ctx && video && video.videoWidth && video.videoHeight) {
+          const targetRatio = 16 / 9;
+          const srcRatio = video.videoWidth / video.videoHeight;
+          let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight;
+          if (srcRatio > targetRatio) {
+            sw = video.videoHeight * targetRatio;
+            sx = (video.videoWidth - sw) / 2;
+          } else if (srcRatio < targetRatio) {
+            sh = video.videoWidth / targetRatio;
+            sy = (video.videoHeight - sh) / 2;
+          }
+          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        }
+        rafRef.current = requestAnimationFrame(draw);
+      };
+      rafRef.current = requestAnimationFrame(draw);
+
+      const canvasStream = canvas.captureStream(30);
+      const pipVideo = document.createElement('video');
+      pipVideo.muted = true;
+      pipVideo.playsInline = true;
+      pipVideo.srcObject = canvasStream;
+      await pipVideo.play();
+      pipVideoRef.current = pipVideo;
+
+      pipVideo.addEventListener('leavepictureinpicture', () => stop(), { once: true });
+      displayStream.getVideoTracks()[0]?.addEventListener('ended', () => stop());
+
+      await pipVideo.requestPictureInPicture();
+      setActive(true);
+    } catch {
+      stop();
+    }
+  }, [supported, active, stop]);
+
+  const toggle = useCallback(() => {
+    if (active) stop(); else start();
+  }, [active, start, stop]);
+
+  useEffect(() => () => stop(), [stop]);
+
+  return { active, supported, toggle };
 }
 
 // ─── Fullscreen prompt ────────────────────────────────────────────────────────
@@ -556,6 +675,7 @@ export default function DisplayPage() {
   const dim = useAutoDim();
   const clockConfig = useClockOverlayConfig();
   const { cinema, toast, toggle: toggleCinema, enter: enterCinema, supported: fullscreenSupported } = useCinemaMode();
+  const pip = usePictureInPictureCapture();
   const fullscreenPrompt = useFullscreenPrompt(authChecked && !locked);
   const { deviceId, isReady: spotifyReady, isConnecting: spotifyConnecting, isPremiumRequired, error: spotifyError, playUri, activate: activateSpotify } = useSpotifyPlayer();
 
@@ -833,6 +953,24 @@ export default function DisplayPage() {
             {cinema ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             {cinema ? 'Exit full' : 'Fullscreen'}
           </button>
+
+          {/* Picture-in-Picture — floats a live 16:9 mirror of this display */}
+          {pip.supported && (
+            <button
+              onClick={(e) => { e.stopPropagation(); pip.toggle(); }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              title={pip.active ? 'Exit Picture-in-Picture' : 'Float in Picture-in-Picture (16:9)'}
+              style={{ ...BTN, color: pip.active ? '#fff' : 'rgba(255,255,255,0.7)' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(236,72,153,0.2)';
+                e.currentTarget.style.borderColor = 'rgba(236,72,153,0.5)';
+              }}
+              onMouseLeave={resetBtn}
+            >
+              <PictureInPicture2 size={14} />
+              {pip.active ? 'PiP on' : 'PiP'}
+            </button>
+          )}
 
           {/* Clock */}
           <button
