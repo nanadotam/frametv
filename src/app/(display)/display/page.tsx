@@ -9,10 +9,13 @@ import { useAutoTheme } from '@/hooks/useAutoTheme';
 import { useAutoDim } from '@/hooks/useAutoDim';
 import { useClockOverlayConfig } from '@/hooks/useClockOverlayConfig';
 import { useSpotifyNowPlaying } from '@/hooks/useSpotifyNowPlaying';
+import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { MODES } from '@/modes/index';
 import type { ModeId } from '@/modes/types';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
-import ClockOverlay from '@/components/display/ClockOverlay';
+import type { Photo } from '@/types/db';
+import { photoFullUrl } from '@/lib/image-urls';
+import ClockOverlay, { type ClockPosition } from '@/components/display/ClockOverlay';
 import SpotifyOverlay from '@/components/display/SpotifyOverlay';
 import PairingGate from '@/components/display/PairingGate';
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
@@ -247,115 +250,211 @@ function useCinemaMode() {
   return { cinema, toast, toggle, enter, supported };
 }
 
-// ─── Picture-in-Picture (live tab capture, forced to 16:9) ───────────────────
+// ─── Picture-in-Picture (synthesized preview — no screen/tab capture) ────────
+//
+// requestPictureInPicture() only accepts a real <video> element, so we can't
+// just float the live DOM. Instead of recording the screen (getDisplayMedia),
+// we draw the same photo rotation + clock this display already shows onto an
+// offscreen canvas ourselves, turn that canvas into a genuine MediaStream via
+// captureStream(), and hand that to a <video> for PiP. No capture prompt, no
+// recording indicator — just a real video track sourced from our own pixels.
 
-type DisplayMediaOptions = MediaStreamConstraints & { preferCurrentTab?: boolean };
+const PIP_WIDTH = 1280;
+const PIP_HEIGHT = 720; // locked 16:9
+const PIP_PHOTO_INTERVAL_MS = 8000;
+const PIP_CROSSFADE_MS = 700;
 
-function usePictureInPictureCapture() {
+function usePictureInPicturePreview({
+  albumIds,
+  clockEnabled,
+  clockPosition,
+}: {
+  albumIds?: string[];
+  clockEnabled: boolean;
+  clockPosition: ClockPosition;
+}) {
   const [active, setActive] = useState(false);
   const [supported, setSupported] = useState(false);
+  const { photos, currentIndex, advance } = usePhotoRotation({ albumIds, shuffle: true });
 
-  const captureStreamRef = useRef<MediaStream | null>(null);
-  const sourceVideoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const imgCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const shownPhotoRef = useRef<Photo | null>(null);
+  const fadeRafRef = useRef<number | null>(null);
+  const advanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const clockTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setSupported(
       typeof document !== 'undefined' &&
       'pictureInPictureEnabled' in document &&
-      document.pictureInPictureEnabled &&
-      typeof navigator !== 'undefined' &&
-      Boolean(navigator.mediaDevices?.getDisplayMedia)
+      document.pictureInPictureEnabled
     );
   }, []);
 
-  const stop = useCallback(() => {
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
-
-    captureStreamRef.current?.getTracks().forEach((t) => t.stop());
-    captureStreamRef.current = null;
-
-    if (sourceVideoRef.current) {
-      sourceVideoRef.current.srcObject = null;
-      sourceVideoRef.current = null;
+  const getImage = useCallback((photo: Photo) => {
+    const url = photoFullUrl(photo);
+    const cache = imgCacheRef.current;
+    let img = cache.get(url);
+    if (!img) {
+      img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = url;
+      cache.set(url, img);
     }
+    return img;
+  }, []);
 
-    const pipVideo = pipVideoRef.current;
-    if (pipVideo) {
-      const stream = pipVideo.srcObject as MediaStream | null;
-      stream?.getTracks().forEach((t) => t.stop());
-      pipVideo.srcObject = null;
+  const drawClock = useCallback((ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
+    if (!clockEnabled) return;
+    const now = new Date();
+    const h = now.getHours() % 12 || 12;
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const ampm = now.getHours() < 12 ? 'AM' : 'PM';
+    const text = `${h}:${m} ${ampm}`;
+    ctx.font = '600 42px system-ui, sans-serif';
+    const metrics = ctx.measureText(text);
+    const pad = 28;
+    const boxW = metrics.width + 32;
+    const boxH = 64;
+    const alignRight = clockPosition.includes('right');
+    const alignTop = clockPosition.includes('top');
+    const x = alignRight ? canvas.width - pad - boxW : pad;
+    const y = alignTop ? pad : canvas.height - pad - boxH;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(x, y, boxW, boxH);
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + 16, y + boxH / 2);
+  }, [clockEnabled, clockPosition]);
+
+  const drawCover = useCallback((ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, photo: Photo | null, alpha: number) => {
+    if (!photo || alpha <= 0) return;
+    const img = getImage(photo);
+    if (!img.complete || !img.naturalWidth) return;
+    const cw = canvas.width, ch = canvas.height;
+    const ir = img.naturalWidth / img.naturalHeight;
+    const cr = cw / ch;
+    let sw = img.naturalWidth, sh = img.naturalHeight, sx = 0, sy = 0;
+    if (ir > cr) { sw = img.naturalHeight * cr; sx = (img.naturalWidth - sw) / 2; }
+    else { sh = img.naturalWidth / cr; sy = (img.naturalHeight - sh) / 2; }
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cw, ch);
+    ctx.globalAlpha = 1;
+  }, [getImage]);
+
+  const renderStatic = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawCover(ctx, canvas, shownPhotoRef.current, 1);
+    drawClock(ctx, canvas);
+  }, [drawCover, drawClock]);
+
+  const runTransition = useCallback((from: Photo | null, to: Photo) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) { shownPhotoRef.current = to; return; }
+    if (fadeRafRef.current !== null) cancelAnimationFrame(fadeRafRef.current);
+    const start = performance.now();
+    const step = (t: number) => {
+      const p = Math.min(1, (t - start) / PIP_CROSSFADE_MS);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      drawCover(ctx, canvas, from, 1 - p);
+      drawCover(ctx, canvas, to, p);
+      drawClock(ctx, canvas);
+      if (p < 1) {
+        fadeRafRef.current = requestAnimationFrame(step);
+      } else {
+        fadeRafRef.current = null;
+        shownPhotoRef.current = to;
+      }
+    };
+    fadeRafRef.current = requestAnimationFrame(step);
+  }, [drawCover, drawClock]);
+
+  // Kick off a crossfade whenever the rotation index moves while PiP is open,
+  // and pre-warm the next photo so the transition doesn't pop in blank.
+  useEffect(() => {
+    if (!active) return;
+    const next = photos[currentIndex] ?? null;
+    if (!next) return;
+    const upcoming = photos[(currentIndex + 1) % photos.length];
+    if (upcoming) getImage(upcoming);
+
+    if (!shownPhotoRef.current) {
+      shownPhotoRef.current = next;
+      renderStatic();
+      return;
+    }
+    if (shownPhotoRef.current.id !== next.id) {
+      runTransition(shownPhotoRef.current, next);
+    }
+  }, [active, photos, currentIndex, renderStatic, runTransition, getImage]);
+
+  const stop = useCallback(() => {
+    if (fadeRafRef.current !== null) cancelAnimationFrame(fadeRafRef.current);
+    fadeRafRef.current = null;
+    if (advanceTimerRef.current) clearInterval(advanceTimerRef.current);
+    advanceTimerRef.current = null;
+    if (clockTimerRef.current) clearInterval(clockTimerRef.current);
+    clockTimerRef.current = null;
+
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+
+    if (pipVideoRef.current) {
+      pipVideoRef.current.srcObject = null;
       pipVideoRef.current = null;
     }
-
     if (document.pictureInPictureElement) {
       document.exitPictureInPicture().catch(() => {});
     }
-
+    shownPhotoRef.current = null;
     setActive(false);
   }, []);
 
   const start = useCallback(async () => {
-    if (!supported || active) return;
+    if (!supported || active || photos.length === 0) return;
     try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: 'browser', frameRate: 30 },
-        audio: false,
-        preferCurrentTab: true,
-      } as DisplayMediaOptions);
-      captureStreamRef.current = displayStream;
-
-      const sourceVideo = document.createElement('video');
-      sourceVideo.muted = true;
-      sourceVideo.playsInline = true;
-      sourceVideo.srcObject = displayStream;
-      await sourceVideo.play();
-      sourceVideoRef.current = sourceVideo;
-
-      // Force a stable 16:9 frame regardless of the captured window's real aspect ratio.
       const canvas = document.createElement('canvas');
-      canvas.width = 1280;
-      canvas.height = 720;
-      const ctx = canvas.getContext('2d');
+      canvas.width = PIP_WIDTH;
+      canvas.height = PIP_HEIGHT;
+      canvasRef.current = canvas;
 
-      const draw = () => {
-        const video = sourceVideoRef.current;
-        if (ctx && video && video.videoWidth && video.videoHeight) {
-          const targetRatio = 16 / 9;
-          const srcRatio = video.videoWidth / video.videoHeight;
-          let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight;
-          if (srcRatio > targetRatio) {
-            sw = video.videoHeight * targetRatio;
-            sx = (video.videoWidth - sw) / 2;
-          } else if (srcRatio < targetRatio) {
-            sh = video.videoWidth / targetRatio;
-            sy = (video.videoHeight - sh) / 2;
-          }
-          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-        }
-        rafRef.current = requestAnimationFrame(draw);
-      };
-      rafRef.current = requestAnimationFrame(draw);
+      shownPhotoRef.current = photos[currentIndex] ?? photos[0] ?? null;
+      renderStatic();
 
-      const canvasStream = canvas.captureStream(30);
-      const pipVideo = document.createElement('video');
-      pipVideo.muted = true;
-      pipVideo.playsInline = true;
-      pipVideo.srcObject = canvasStream;
-      await pipVideo.play();
-      pipVideoRef.current = pipVideo;
+      const stream = canvas.captureStream(30);
+      streamRef.current = stream;
 
-      pipVideo.addEventListener('leavepictureinpicture', () => stop(), { once: true });
-      displayStream.getVideoTracks()[0]?.addEventListener('ended', () => stop());
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = stream;
+      await video.play();
+      pipVideoRef.current = video;
 
-      await pipVideo.requestPictureInPicture();
+      video.addEventListener('leavepictureinpicture', () => stop(), { once: true });
+
+      await video.requestPictureInPicture();
       setActive(true);
+
+      clockTimerRef.current = setInterval(() => {
+        if (fadeRafRef.current === null) renderStatic();
+      }, 1000);
+      advanceTimerRef.current = setInterval(() => {
+        advance();
+      }, PIP_PHOTO_INTERVAL_MS);
     } catch {
       stop();
     }
-  }, [supported, active, stop]);
+  }, [supported, active, photos, currentIndex, renderStatic, advance, stop]);
 
   const toggle = useCallback(() => {
     if (active) stop(); else start();
@@ -363,7 +462,7 @@ function usePictureInPictureCapture() {
 
   useEffect(() => () => stop(), [stop]);
 
-  return { active, supported, toggle };
+  return { active, supported: supported && photos.length > 0, toggle };
 }
 
 // ─── Fullscreen prompt ────────────────────────────────────────────────────────
@@ -675,7 +774,11 @@ export default function DisplayPage() {
   const dim = useAutoDim();
   const clockConfig = useClockOverlayConfig();
   const { cinema, toast, toggle: toggleCinema, enter: enterCinema, supported: fullscreenSupported } = useCinemaMode();
-  const pip = usePictureInPictureCapture();
+  const pip = usePictureInPicturePreview({
+    albumIds: activeMode.albumIds,
+    clockEnabled: clockConfig.enabled && clockOn,
+    clockPosition: clockConfig.position,
+  });
   const fullscreenPrompt = useFullscreenPrompt(authChecked && !locked);
   const { deviceId, isReady: spotifyReady, isConnecting: spotifyConnecting, isPremiumRequired, error: spotifyError, playUri, activate: activateSpotify } = useSpotifyPlayer();
 
