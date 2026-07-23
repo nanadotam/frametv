@@ -221,11 +221,35 @@ export async function getAdminUser(request: NextRequest) {
   return getSessionUserByCookie(request, ADMIN_SESSION_COOKIE, 'admin');
 }
 
+async function getWidgetUser(request: NextRequest) {
+  const header = request.headers.get('authorization');
+  if (!header?.startsWith('Bearer ')) return null;
+  const token = header.slice('Bearer '.length).trim();
+  if (!token) return null;
+
+  const supabase = createServiceClient();
+  const now = new Date().toISOString();
+  const { data } = await supabase
+    .from('app_sessions')
+    .select('id, user_id, app_users(id, email, username, name, created_at)')
+    .eq('session_hash', hashSessionToken(token))
+    .eq('kind', 'widget')
+    .is('revoked_at', null)
+    .gt('expires_at', now)
+    .maybeSingle();
+  if (!data?.app_users) return null;
+
+  await supabase.from('app_sessions').update({ last_seen_at: now }).eq('id', data.id);
+  return data.app_users as unknown as AppUser;
+}
+
 export async function getDisplayUser(request: NextRequest) {
   return (
     await getSessionUserByCookie(request, DISPLAY_SESSION_COOKIE, 'display')
   ) ?? (
     await getSessionUserByCookie(request, ADMIN_SESSION_COOKIE, 'admin')
+  ) ?? (
+    await getWidgetUser(request)
   );
 }
 
