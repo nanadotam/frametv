@@ -17,10 +17,10 @@ async function fetchPhotos(albumIds?: string[]): Promise<Photo[]> {
 }
 
 // Supabase dedupes `channel()` calls by topic name and returns the same
-// channel instance for a repeat topic. Multiple usePhotos consumers can end
-// up sharing an albumKey at once (e.g. the display page + its PiP preview),
-// and calling `.on()` on a channel that's already `.subscribe()`d throws. So
-// subscriptions per topic are reference-counted here and shared instead.
+// channel instance for a repeat topic. If two usePhotos consumers ever share
+// an albumKey at once, calling `.on()` on a channel that's already
+// `.subscribe()`d throws. So subscriptions per topic are reference-counted
+// here and shared instead.
 const channelRegistry = new Map<
   string,
   { channel: RealtimeChannel; refCount: number; listeners: Set<() => void> }
