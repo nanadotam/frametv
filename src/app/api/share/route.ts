@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { requireAdminUser, createSessionToken, hashSessionToken, setSessionCookie, getDeviceInfo } from '@/lib/auth';
+import { requireAdminUser } from '@/lib/auth';
 import { userSettingKey } from '@/lib/userData';
-import { generateShareToken } from '@/lib/shareToken';
+import { generateShareToken, invalidateShareTokenCache } from '@/lib/shareToken';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminUser(request);
@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
     ),
   ]);
 
+  invalidateShareTokenCache();
   return NextResponse.json({ token });
 }
 
@@ -73,6 +74,7 @@ export async function DELETE(request: NextRequest) {
       supabase.from('settings').delete().eq('key', `share:${data.value}`),
       supabase.from('settings').delete().eq('key', userSettingKey(auth.user.id, 'share_token')),
     ]);
+    invalidateShareTokenCache();
   }
 
   return NextResponse.json({ ok: true });

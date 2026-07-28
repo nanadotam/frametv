@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getRealtimeClient } from '@/lib/supabase/realtime';
+import { subscribeModesChanges } from '@/lib/supabase/displayRealtimeChannel';
 import type { Mode } from '@/types/db';
 
 // Module-level state shared across all instances (like a mini-store)
@@ -35,17 +35,8 @@ function subscribeRealtime() {
   if (realtimeSubscribed) return;
   realtimeSubscribed = true;
 
-  const supabase = getRealtimeClient();
-  supabase
-    .channel('modes_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'modes' }, () => {
-      // Any change to any mode row → re-fetch the full list
-      fetchModes();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_modes' }, () => {
-      fetchModes();
-    })
-    .subscribe();
+  // Any change to modes/user_modes → re-fetch the full list.
+  subscribeModesChanges(() => fetchModes());
 }
 
 function subscribeBrowserSync() {
@@ -69,6 +60,17 @@ function subscribeBrowserSync() {
     const channel = new BroadcastChannel('frametv:modes');
     channel.addEventListener('message', refetch);
   }
+}
+
+/**
+ * Primes the module-level cache with server-fetched modes so the first
+ * render already has data and `useModes()` skips its initial client fetch.
+ * Call from the component body (not an effect) so it runs before the
+ * `useState(cache ?? [])` below. No-ops if the cache is already populated.
+ */
+export function primeModesCache(modes: Mode[]) {
+  if (cache) return;
+  cache = modes;
 }
 
 export function useModes(): Mode[] {

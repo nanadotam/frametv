@@ -196,8 +196,7 @@ export function clearSessionCookies(response: NextResponse) {
   }
 }
 
-async function getSessionUserByCookie(request: NextRequest, cookieName: string, kind?: 'admin' | 'display') {
-  const token = request.cookies.get(cookieName)?.value;
+async function getSessionUserByToken(token: string | undefined, kind?: 'admin' | 'display') {
   if (!token) return null;
 
   const supabase = createServiceClient();
@@ -218,7 +217,7 @@ async function getSessionUserByCookie(request: NextRequest, cookieName: string, 
 }
 
 export async function getAdminUser(request: NextRequest) {
-  return getSessionUserByCookie(request, ADMIN_SESSION_COOKIE, 'admin');
+  return getSessionUserByToken(request.cookies.get(ADMIN_SESSION_COOKIE)?.value, 'admin');
 }
 
 async function getWidgetUser(request: NextRequest) {
@@ -245,11 +244,26 @@ async function getWidgetUser(request: NextRequest) {
 
 export async function getDisplayUser(request: NextRequest) {
   return (
-    await getSessionUserByCookie(request, DISPLAY_SESSION_COOKIE, 'display')
+    await getSessionUserByToken(request.cookies.get(DISPLAY_SESSION_COOKIE)?.value, 'display')
   ) ?? (
-    await getSessionUserByCookie(request, ADMIN_SESSION_COOKIE, 'admin')
+    await getSessionUserByToken(request.cookies.get(ADMIN_SESSION_COOKIE)?.value, 'admin')
   ) ?? (
     await getWidgetUser(request)
+  );
+}
+
+/**
+ * Server Component variant of getDisplayUser — reads from next/headers
+ * cookies() instead of a NextRequest, so /display's server component can
+ * resolve the session without a client round-trip to /api/auth/me.
+ */
+export async function getDisplayUserFromCookieStore(cookieStore: {
+  get(name: string): { value: string } | undefined;
+}) {
+  return (
+    await getSessionUserByToken(cookieStore.get(DISPLAY_SESSION_COOKIE)?.value, 'display')
+  ) ?? (
+    await getSessionUserByToken(cookieStore.get(ADMIN_SESSION_COOKIE)?.value, 'admin')
   );
 }
 

@@ -34,7 +34,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ photos: photos ?? [], total: count ?? 0 });
+    // Resolve direct, cacheable storage URLs for uploaded photos here so the
+    // client never has to round-trip through the authed /thumbnail redirect
+    // per image — getPublicUrl is a pure string builder, no network call.
+    // Drive-sourced photos already carry full URLs in these columns.
+    const withUrls = (photos ?? []).map((photo) => {
+      if (photo.source_type !== 'upload') return photo;
+      const resolved = { ...photo };
+      if (photo.storage_path) {
+        resolved.storage_path = supabase.storage.from('photos').getPublicUrl(photo.storage_path).data.publicUrl;
+      }
+      if (photo.thumbnail_path) {
+        resolved.thumbnail_path = supabase.storage.from('photos').getPublicUrl(photo.thumbnail_path).data.publicUrl;
+      }
+      return resolved;
+    });
+
+    return NextResponse.json({ photos: withUrls, total: count ?? 0 });
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
