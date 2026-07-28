@@ -166,25 +166,51 @@ static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
 #pragma mark - Embedded sign-in WebView
 
 - (void)presentSignIn {
-  NSRect frame = NSMakeRect(0, 0, 480, 680);
+  // Presented as a sheet on self.sheetWindow — sheets don't render their own
+  // titlebar traffic lights (NSWindowStyleMaskClosable is a no-op here), so
+  // without an in-content control there is *no* way to dismiss this if the
+  // web content doesn't reach the connect:// redirect for any reason. Always
+  // give it its own visible Cancel button, independent of web content state.
+  NSRect frame = NSMakeRect(0, 0, 480, 720);
   NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
                                                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                                                     backing:NSBackingStoreBuffered
                                                       defer:NO];
   window.title = @"Sign in to FrameTV";
+  window.delegate = self;
   self.signInWindow = window;
 
+  NSView *content = window.contentView;
+
+  NSButton *cancel = [NSButton buttonWithTitle:@"Cancel" target:self action:@selector(cancelSignInPressed:)];
+  cancel.frame = NSMakeRect(16, 720 - 40, 90, 28);
+  cancel.bezelStyle = NSBezelStyleRounded;
+  cancel.autoresizingMask = NSViewMaxXMargin | NSViewMinYMargin;
+  [content addSubview:cancel];
+
   WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
-  WKWebView *webView = [[WKWebView alloc] initWithFrame:window.contentView.bounds configuration:configuration];
+  BOOL switchingAccount = self.isConnected;
+  if (switchingAccount) {
+    // "Sign In as a Different Account" must actually prompt for different
+    // credentials — a persistent data store here would silently reuse the
+    // FrameTV session cookie from the previous sign-in and skip straight
+    // back to the same account, which is what was happening before.
+    configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+  }
+  WKWebView *webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 480, 720 - 44) configuration:configuration];
   webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   webView.navigationDelegate = self;
   self.signInWebView = webView;
-  [window.contentView addSubview:webView];
+  [content addSubview:webView];
 
   NSURL *authorizeURL = [NSURL URLWithString:[kFrameTVBaseURL stringByAppendingString:kFrameTVAuthorizePath]];
   [webView loadRequest:[NSURLRequest requestWithURL:authorizeURL]];
 
   [self.sheetWindow beginSheet:window completionHandler:nil];
+}
+
+- (void)cancelSignInPressed:(id)sender {
+  [self dismissSignIn];
 }
 
 - (void)dismissSignIn {
