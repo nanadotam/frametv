@@ -23,6 +23,12 @@
 
 - (instancetype)initWithConfig:(WVSSConfig *)config;
 
+// True if `config` has a real FrameTV address configured — as opposed to
+// empty/just the WVSSConfig-provided "about:blank" placeholder. Shared with
+// AppDelegate so it only auto-opens this panel on first run, not every
+// launch once already connected.
++ (BOOL)isConfigConnected:(WVSSConfig *)config;
+
 @end
 
 @protocol FrameTVConfigControllerDelegate <NSObject>

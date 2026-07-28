@@ -41,8 +41,17 @@ static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
 
 #pragma mark - Connection state
 
+// WVSSConfig auto-fills an "about:blank" placeholder address (from
+// WVSSAddress.defaultAddress) whenever the list is empty — addresses.count
+// alone is never 0 after init, so a real connection means "there's an
+// address, and it's an actual http(s) FrameTV link, not the placeholder."
++ (BOOL)isConfigConnected:(WVSSConfig *)config {
+  NSString *url = config.addresses.count > 0 ? [(WVSSAddress *)config.addresses.firstObject url] : nil;
+  return url.length > 0 && [url hasPrefix:@"http"];
+}
+
 - (BOOL)isConnected {
-  return self.config.addresses.count > 0;
+  return [FrameTVConfigController isConfigConnected:self.config];
 }
 
 - (NSString *)connectedURL {

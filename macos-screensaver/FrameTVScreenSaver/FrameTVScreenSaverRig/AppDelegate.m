@@ -50,11 +50,15 @@ static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
   [self reloadWebView];
   [self.window makeKeyWindow];
 
-  // Only pop the config sheet automatically if we weren't launched via a
-  // connect:// deep link (that flow shows its own confirmation instead).
+  // Only pop the config sheet automatically on first run (not yet
+  // connected) or when launched via a connect:// deep link that needs to
+  // show its confirmation. Once already connected, launching the app
+  // should just show the live preview — not re-surface the sheet (and the
+  // account's display URL in it) on every single open.
   NSArray<NSString *> *launchArgs = [[NSProcessInfo processInfo] arguments];
   BOOL launchedViaURL = launchArgs.count > 1 && [launchArgs[1] hasPrefix:@"frametvscreensaver://"];
-  if (!launchedViaURL) {
+  BOOL alreadyConnected = [FrameTVConfigController isConfigConnected:_config];
+  if (launchedViaURL || !alreadyConnected) {
     [self performSelector:@selector(showPreferences:) withObject:nil afterDelay:0];
   }
 }
