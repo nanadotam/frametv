@@ -1,0 +1,86 @@
+name: Screensaver Release
+
+# Builds the FrameTV macOS screensaver (.saver) and its companion
+# "FrameTV Screensaver Settings" app, then attaches a zip of both to a
+# GitHub Release. Triggered by pushing a tag like `screensaver-v1.0.0`.
+#
+# See macos-screensaver/RELEASE_PLAN.md for the full plan this implements
+# (packaging format tradeoffs, signing/notarization, versioning).
+
+on:
+  push:
+    tags:
+      - "screensaver-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: macos-screensaver/FrameTVScreenSaver
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build FrameTVScreenSaver.saver
+        run: |
+          xcodebuild -project FrameTVScreenSaver.xcodeproj \
+            -scheme FrameTVScreenSaver \
+            -configuration Release clean archive \
+            -archivePath build/saver.xcarchive \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES
+
+      - name: Build FrameTV Screensaver Settings.app
+        run: |
+          xcodebuild -project FrameTVScreenSaver.xcodeproj \
+            -scheme FrameTVScreenSaverRig \
+            -configuration Release clean build \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES \
+            CONFIGURATION_BUILD_DIR=build/rig
+
+      - name: Package release zip
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#screensaver-v}"
+          STAGE="build/FrameTV-Screensaver-${VERSION}"
+          mkdir -p "$STAGE"
+
+          SAVER_PATH=$(find build/saver.xcarchive -iname "*.saver")
+          cp -R "$SAVER_PATH" "$STAGE/FrameTVScreenSaver.saver"
+          cp -R "build/rig/FrameTVScreenSaverRig.app" "$STAGE/FrameTV Screensaver Settings.app"
+
+          cat > "$STAGE/INSTALL.txt" <<'EOF'
+          FrameTV Screensaver — Install
+          ==============================
+
+          1. Double-click FrameTVScreenSaver.saver to install it (macOS adds
+             it to System Settings > Screen Saver automatically).
+          2. Drag "FrameTV Screensaver Settings.app" into /Applications and
+             open it once (this registers the frametvscreensaver:// link
+             your account connects through).
+          3. Open System Settings > Screen Saver > FrameTVScreenSaver >
+             Options, and sign in from the panel.
+
+          Gatekeeper note: this build is ad-hoc signed, not notarized, so
+          macOS will warn the first time you open each item. Approve it via
+          System Settings > Privacy & Security > Open Anyway, or run:
+            xattr -d com.apple.quarantine FrameTVScreenSaver.saver
+            xattr -d com.apple.quarantine "FrameTV Screensaver Settings.app"
+
+          Full docs: https://github.com/nanadotam/frametv/tree/main/macos-screensaver
+          EOF
+
+          cd build
+          zip -r -y "FrameTV-Screensaver-${VERSION}.zip" "FrameTV-Screensaver-${VERSION}"
+          echo "ZIP_PATH=macos-screensaver/FrameTVScreenSaver/build/FrameTV-Screensaver-${VERSION}.zip" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            "${{ github.workspace }}/${{ env.ZIP_PATH }}" \
+            --title "Screensaver ${{ github.ref_name }}" \
+            --generate-notes

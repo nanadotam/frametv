@@ -10,8 +10,19 @@ the latest `.dmg`/`.pkg`/`.zip`, opens it, and within a couple of clicks has
 the screensaver installed and pointed at their FrameTV instance — no Xcode,
 no `xcodebuild`, no manually editing `ScreenSaverDefaults`.
 
-This file is the plan for getting there. **Status: not started — planning
-only.** Nothing below has been built yet.
+This file is the plan for getting there.
+
+**Status:** step 1 (CI release pipeline) is built —
+`.github/workflows/screensaver-release.yml` builds both targets and
+publishes a `.zip` to a GitHub Release on push of a `screensaver-v*` tag.
+**Not yet tagged/tested end-to-end** — pushing the first tag is a real,
+visible action (creates a public release), so it hasn't been done
+automatically; do it deliberately when ready:
+```
+git tag screensaver-v0.1.0
+git push origin screensaver-v0.1.0
+```
+Steps 2–5 below are still open.
 
 ---
 
@@ -99,9 +110,9 @@ yourself" section for contributors.
 
 ## Suggested order of work (next session)
 
-1. Write the GitHub Actions workflow (`.github/workflows/screensaver-release.yml`)
-   producing a `.zip` first — simplest possible end-to-end pipeline, proves
-   the release mechanics work.
+1. ~~Write the GitHub Actions workflow~~ — done:
+   `.github/workflows/screensaver-release.yml`, triggered by
+   `screensaver-v*` tags, produces a `.zip`.
 2. Tag a `v0.1.0` test release, download it on a clean-ish account, verify
    the Gatekeeper flow and instructions actually work for a first-time user.
 3. Upgrade packaging to `.dmg` once the basic pipeline is proven.
