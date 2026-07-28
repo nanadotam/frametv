@@ -20,7 +20,7 @@
 //
 
 #import "AppDelegate.h"
-#import "WVSSConfigController.h"
+#import "FrameTVConfigController.h"
 #import "FrameTVScreenSaverView.h"
 #import "WVSSAddress.h"
 #import <ScreenSaver/ScreenSaver.h>
@@ -29,10 +29,10 @@
 // domain — must match kScreenSaverName in FrameTVScreenSaverView.m.
 static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
 
-@interface AppDelegate () <WVSSConfigControllerDelegate>
+@interface AppDelegate () <FrameTVConfigControllerDelegate>
 
 @property(weak) IBOutlet NSWindow *window;
-@property(strong) WVSSConfigController *configController;
+@property(strong) FrameTVConfigController *configController;
 @end
 
 @implementation AppDelegate {
@@ -112,7 +112,7 @@ static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
   // Insert code here to tear down your application
 }
 
-- (void)configController:(WVSSConfigController *)configController
+- (void)configController:(FrameTVConfigController *)configController
       dismissConfigSheet:(NSWindow *)sheet {
   [self reloadWebView];
   [sheet close];
@@ -120,7 +120,7 @@ static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
 }
 
 - (IBAction)showPreferences:(id)sender {
-  self.configController = [[WVSSConfigController alloc] initWithConfig:_config];
+  self.configController = [[FrameTVConfigController alloc] initWithConfig:_config];
   self.configController.delegate = self;
   [self.window beginSheet:self.configController.sheet completionHandler:nil];
 }

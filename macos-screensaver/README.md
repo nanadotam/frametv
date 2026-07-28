@@ -45,40 +45,33 @@ Or approve it via **System Settings → Privacy & Security → Open Anyway**.
 
 ## 3. Configure
 
-### Option A — one-click connect (recommended)
+Open **System Settings → Screen Saver**, select **FrameTVScreenSaver**, and
+click **Options**. Unlike the upstream project this is forked from, that
+panel is not a generic "Fetch URLs Remotely / Addresses table" UI — it's a
+custom, branded FrameTV panel:
 
-The `FrameTVScreenSaverRig` target doubles as a small companion app,
-**FrameTV Screensaver Settings**, that registers the `frametvscreensaver://`
-URL scheme. Build/run it once (Xcode → select the `FrameTVScreenSaverRig`
-scheme → Run, or archive it like the `.saver` and drop it in
-`/Applications`) so macOS knows about the scheme.
+1. **Not connected yet:** you'll see a "Welcome to FrameTV" screen with a
+   **Sign In** button. Click it — a sign-in view opens right there in the
+   panel (an embedded web view pointed at FrameTV's `/screensaver/authorize`
+   page), no separate browser window needed.
+2. Sign in (or create an account). Once you land back on the "Open in
+   FrameTVScreenSaver" step, the panel catches that automatically and
+   configures itself — duration `-1`, no manual URL pasting, no visiting
+   System Settings' finicky address table at all.
+3. **Already connected:** the panel shows your connected display URL, plus
+   **Sign In as a Different Account** and **Disconnect** buttons.
 
-Then in the admin dashboard, next to **Share Live Link**, click **Set up Mac
-Screensaver**. That opens `/screensaver/authorize`, which:
+The same panel is what pops up if you build/run the `FrameTVScreenSaverRig`
+target directly — it's a live preview host for the same
+`FrameTVConfigController`, useful for iterating on the panel itself without
+reinstalling the `.saver` each time.
 
-1. Confirms you're signed in (redirects to login if not).
-2. Mints/reuses your share token.
-3. Shows an **Open in FrameTVScreenSaver** button — clicking it launches the
-   companion app via the deep link, which writes the address directly into
-   the *installed* screensaver's preferences (duration `-1`, no manual
-   pasting into the finicky System Settings config sheet).
-
-The companion app also has a **Preferences** sheet (the same one System
-Settings shows) with a live preview, so you can use it as a nicer settings
-UI even without the browser flow.
-
-### Option B — manual
-
-Open **System Settings → Screen Saver**, select **FrameTVScreenSaver**, click
-**Options**, and add one address:
-
-- **URL**: your `/s/<token>` share link from step 1
-- **Duration**: `-1` (stay on it indefinitely — this is a live single-page
-  display, not a slideshow to cycle away from)
-
-> The **Fetch URLs Remotely** field at the top is for a JSON address list
-> (see upstream's `examples.json`), not your display URL — leave it
-> unchecked and put your link directly in the **Addresses** table below.
+**If you're changing this panel's code:** it reads/writes the *installed*
+screensaver's real `ScreenSaverDefaults` domain, not a private sandbox — so
+testing directly against your own already-configured screensaver will
+overwrite your real settings if you click Disconnect. Back up
+`~/Library/Preferences/ByHost/FrameTVScreenSaver.*.plist` before poking at
+a running instance.
 
 ## Notes
 
