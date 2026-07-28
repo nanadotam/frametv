@@ -12,17 +12,21 @@ no `xcodebuild`, no manually editing `ScreenSaverDefaults`.
 
 This file is the plan for getting there.
 
-**Status:** step 1 (CI release pipeline) is built —
-`.github/workflows/screensaver-release.yml` builds both targets and
-publishes a `.zip` to a GitHub Release on push of a `screensaver-v*` tag.
-**Not yet tagged/tested end-to-end** — pushing the first tag is a real,
-visible action (creates a public release), so it hasn't been done
-automatically; do it deliberately when ready:
+**Status:** steps 1 and 3 are built — `.github/workflows/screensaver-release.yml`
+builds both targets, packages them into a `.dmg` (via `create-dmg`) with the
+`.saver` double-click-installable and the companion app drag-to-Applications
+(same pattern as reference screensavers like Fliqlo — inspected an actual
+Fliqlo release DMG to confirm the convention), and publishes it to a GitHub
+Release on push of a `screensaver-v*` tag. Built and visually verified
+locally (mounted the DMG, confirmed icon layout/volume icon/ReadMe) before
+wiring into CI. **Not yet tagged/tested end-to-end in CI** — pushing the
+first tag is a real, visible action (creates a public release), so it
+hasn't been done automatically; do it deliberately when ready:
 ```
 git tag screensaver-v0.1.0
 git push origin screensaver-v0.1.0
 ```
-Steps 2–5 below are still open.
+Steps 2, 4, 5 below are still open (3 — .dmg packaging — is done, folded in early since it turned out cheap once step 1 existed).
 
 ---
 
@@ -115,7 +119,7 @@ yourself" section for contributors.
    `screensaver-v*` tags, produces a `.zip`.
 2. Tag a `v0.1.0` test release, download it on a clean-ish account, verify
    the Gatekeeper flow and instructions actually work for a first-time user.
-3. Upgrade packaging to `.dmg` once the basic pipeline is proven.
+3. ~~Upgrade packaging to `.dmg`~~ — done, folded into the same workflow.
 4. Rewrite the README's install section to lead with the release download.
 5. Revisit notarization as a later polish pass, once/if it's worth the
    Apple Developer Program cost.
