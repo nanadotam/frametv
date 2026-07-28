@@ -539,6 +539,11 @@ export default function DisplayPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [kiosk, setKiosk] = useState(false);
+
+  useEffect(() => {
+    setKiosk(new URLSearchParams(window.location.search).get('kiosk') === '1');
+  }, []);
 
   const logoutDisplay = useCallback(async () => {
     setLoggingOut(true);
@@ -557,7 +562,7 @@ export default function DisplayPage() {
   const dim = useAutoDim();
   const clockConfig = useClockOverlayConfig();
   const { cinema, toast, toggle: toggleCinema, enter: enterCinema, supported: fullscreenSupported } = useCinemaMode();
-  const fullscreenPrompt = useFullscreenPrompt(authChecked && !locked);
+  const fullscreenPrompt = useFullscreenPrompt(authChecked && !locked && !kiosk);
   const { deviceId, isReady: spotifyReady, isConnecting: spotifyConnecting, isPremiumRequired, error: spotifyError, playUri, activate: activateSpotify } = useSpotifyPlayer();
 
   // Unlock Web Audio on any first tap — required for autoplay policy on TVs/Xbox
@@ -681,7 +686,7 @@ export default function DisplayPage() {
   return (
     <div
       className="w-screen h-screen bg-black overflow-hidden relative"
-      style={{ cursor: cinema ? 'none' : undefined }}
+      style={{ cursor: cinema || kiosk ? 'none' : undefined }}
       onClick={handlePageInteraction}
       onDoubleClick={toggleCinema}
     >
@@ -791,7 +796,7 @@ export default function DisplayPage() {
       )}
 
       {/* Bottom scrim — gradient starts exactly at the screen edge */}
-      {!cinema && (
+      {!cinema && !kiosk && (
         <div
           style={{
             position: 'fixed',
@@ -807,7 +812,7 @@ export default function DisplayPage() {
       )}
 
       {/* Floating controls */}
-      {!cinema && (
+      {!cinema && !kiosk && (
         <div
           style={{
             position: 'fixed',
@@ -978,7 +983,7 @@ export default function DisplayPage() {
       )}
 
       {/* Spotify SDK debug strip — visible on Spotify modes so you can diagnose from the TV */}
-      {!cinema && isSpotifyMode && (
+      {!cinema && !kiosk && isSpotifyMode && (
         <div style={{
           position: 'fixed',
           bottom: 8,
