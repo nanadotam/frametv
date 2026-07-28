@@ -25,4 +25,11 @@
 
 - (IBAction)showPreferences:(id)sender;
 - (IBAction)reloadWebView;
+
+// Handles frametvscreensaver://connect?token=...&origin=... deep links sent
+// from the FrameTV web app's /screensaver/authorize page. Configures the
+// *installed* FrameTVScreenSaver.saver (not just this preview app) with a
+// single address (the /s/<token> share link, duration -1).
+- (void)connectWithToken:(NSString *)token origin:(NSString *)origin;
+
 @end

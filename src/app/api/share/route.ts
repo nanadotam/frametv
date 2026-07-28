@@ -1,14 +1,8 @@
-import { randomBytes } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdminUser, createSessionToken, hashSessionToken, setSessionCookie, getDeviceInfo } from '@/lib/auth';
 import { userSettingKey } from '@/lib/userData';
-
-function generateToken(): string {
-  const CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const bytes = randomBytes(8);
-  return Array.from(bytes, (b) => CHARS[b % CHARS.length]).join('');
-}
+import { generateShareToken } from '@/lib/shareToken';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminUser(request);
@@ -45,7 +39,7 @@ export async function POST(request: NextRequest) {
       .eq('key', `share:${existing.value}`);
   }
 
-  const token = generateToken();
+  const token = generateShareToken();
 
   await Promise.all([
     // User-scoped entry: for admin display
