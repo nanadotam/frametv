@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getRealtimeClient } from '@/lib/supabase/realtime';
+import { useEffect, useRef, useState } from 'react';
+import { subscribeDisplayState } from '@/lib/supabase/displayRealtimeChannel';
 import { useDisplayStore } from '@/store/displayStore';
 import type { DisplayState } from '@/types/db';
 
@@ -13,45 +13,41 @@ async function fetchDisplayState(): Promise<DisplayState | null> {
   return (json.state ?? null) as DisplayState | null;
 }
 
-export function useDisplayStateRealtime(): DisplayState | null {
+/**
+ * @param initialState When provided (e.g. fetched server-side alongside the
+ * page shell), skips the initial client fetch entirely — only the realtime
+ * subscription is set up. Pass `undefined` (the default) to fetch as before.
+ */
+export function useDisplayStateRealtime(initialState?: DisplayState | null): DisplayState | null {
   const { displayState, setDisplayState } = useDisplayStore();
-  const [initialized, setInitialized] = useState(false);
+  const [initialized, setInitialized] = useState(initialState !== undefined);
+  const userIdRef = useRef<string | null>(
+    (initialState as (DisplayState & { user_id?: string }) | null | undefined)?.user_id ?? null
+  );
 
   useEffect(() => {
-    let userId: string | null = null;
-    const supabase = getRealtimeClient();
-
-    fetchDisplayState()
-      .then((data) => {
-        if (data) {
-          userId = (data as DisplayState & { user_id?: string }).user_id ?? null;
-          setDisplayState(data);
-        }
-        setInitialized(true);
-      })
-      .catch(() => setInitialized(true));
-
-    const channel = supabase
-      .channel('display_state_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'display_state',
-        },
-        (payload) => {
-          if (userId && (payload.new as { user_id?: string }).user_id !== userId) return;
-          if (payload.new && Object.keys(payload.new).length > 0) {
-            setDisplayState(payload.new as DisplayState);
+    if (initialState !== undefined) {
+      if (initialState) {
+        userIdRef.current = (initialState as DisplayState & { user_id?: string }).user_id ?? null;
+        setDisplayState(initialState);
+      }
+    } else {
+      fetchDisplayState()
+        .then((data) => {
+          if (data) {
+            userIdRef.current = (data as DisplayState & { user_id?: string }).user_id ?? null;
+            setDisplayState(data);
           }
-        }
-      )
-      .subscribe();
+          setInitialized(true);
+        })
+        .catch(() => setInitialized(true));
+    }
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return subscribeDisplayState((row) => {
+      if (userIdRef.current && row.user_id !== userIdRef.current) return;
+      setDisplayState(row as unknown as DisplayState);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setDisplayState]);
 
   return initialized ? displayState : null;

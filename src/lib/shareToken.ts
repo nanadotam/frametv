@@ -1,6 +1,33 @@
 import { randomBytes } from 'crypto';
+import { unstable_cache, revalidateTag } from 'next/cache';
 import { createServiceClient } from '@/lib/supabase/server';
 import { userSettingKey } from '@/lib/userData';
+
+const SHARE_TOKEN_CACHE_TAG = 'share-token-lookup';
+
+/**
+ * Resolves a /s/<token> share token to its owning userId. Cached for 5
+ * minutes (Vercel Data Cache) since the mapping only changes on
+ * revoke/regenerate, which call invalidateShareTokenCache() below — turns a
+ * DB round-trip into a cache hit on every repeat share-link open.
+ */
+export const getUserIdForShareToken = unstable_cache(
+  async (token: string): Promise<string | null> => {
+    const supabase = createServiceClient();
+    const { data } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', `share:${token}`)
+      .maybeSingle();
+    return (data?.value as string | undefined) ?? null;
+  },
+  ['share-token-lookup'],
+  { revalidate: 300, tags: [SHARE_TOKEN_CACHE_TAG] }
+);
+
+export function invalidateShareTokenCache() {
+  revalidateTag(SHARE_TOKEN_CACHE_TAG, 'max');
+}
 
 export function generateShareToken(): string {
   const CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdminUser } from '@/lib/auth';
 
@@ -27,5 +28,6 @@ export async function PATCH(
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateTag('user-modes', 'max');
   return NextResponse.json({ mode: data });
 }

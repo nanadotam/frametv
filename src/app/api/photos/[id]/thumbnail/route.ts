@@ -28,16 +28,22 @@ export async function GET(
       return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
     }
 
+    // Photo IDs are immutable once created, so the redirect target for a
+    // given id+size never changes — safe to cache long-lived so repeat
+    // views (every reboot, every slideshow loop) skip this DB round-trip
+    // and redirect hop entirely after the first load.
+    const cacheHeaders = { 'Cache-Control': 'public, max-age=31536000, immutable' };
+
     // Drive photos: redirect directly to Google's CDN — no buffer needed
     if (photo.source_type === 'drive' && photo.source_id) {
       const driveUrl = `https://drive.google.com/thumbnail?id=${photo.source_id}&sz=w${size}`;
-      return NextResponse.redirect(driveUrl, { status: 302 });
+      return NextResponse.redirect(driveUrl, { status: 302, headers: cacheHeaders });
     }
 
     // Uploaded photos: redirect to storage URL
     const url = photo.thumbnail_path ?? photo.storage_path;
     if (url) {
-      return NextResponse.redirect(url, { status: 302 });
+      return NextResponse.redirect(url, { status: 302, headers: cacheHeaders });
     }
 
     return NextResponse.json({ error: 'No image available' }, { status: 404 });

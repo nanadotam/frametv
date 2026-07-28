@@ -38,6 +38,17 @@ const clockFontVars = [
   syne.variable,
 ].join(' ');
 
+// DNS/TLS for these hosts is negotiated before the first real request needs
+// it — React 19 hoists <link> tags rendered anywhere in the tree into <head>.
+const PRECONNECT_HOSTS = [
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  'https://drive.google.com',
+  'https://lh3.googleusercontent.com',
+  'https://images.unsplash.com',
+  'https://i.scdn.co',
+  'https://sdk.scdn.co',
+].filter((url): url is string => Boolean(url));
+
 export default function DisplayLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Register service worker
@@ -73,6 +84,9 @@ export default function DisplayLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className={`bg-black overflow-hidden w-screen h-screen ${clockFontVars}`}>
+      {PRECONNECT_HOSTS.map((href) => (
+        <link key={href} rel="preconnect" href={href} />
+      ))}
       {children}
     </div>
   );

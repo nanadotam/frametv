@@ -30,6 +30,25 @@ export function userSettingKey(userId: string, key: string) {
 export async function ensureUserDefaults(userId: string) {
   const supabase = createServiceClient();
 
+  // Fast path: display_state is the last thing this function creates, so its
+  // presence means this user has already been fully initialized — skip the
+  // other 3 existence checks entirely. This function runs on every
+  // share-link/pairing open, so for returning users (the common case) this
+  // turns 4 sequential round-trips into 1.
+  //
+  // Trade-off: newly added DEFAULT_MODES entries won't retroactively
+  // backfill for already-initialized users via this path anymore (see the
+  // "Existing user" branch below, which is now unreachable once
+  // display_state exists). Ship mode-catalog additions via a migration/
+  // backfill script instead of relying on this function.
+  const { data: existingDisplayState } = await supabase
+    .from('display_state')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existingDisplayState) return;
+
   const { count } = await supabase
     .from('app_users')
     .select('id', { count: 'exact', head: true });
@@ -74,28 +93,21 @@ export async function ensureUserDefaults(userId: string) {
     }
   }
 
-  const { data: displayState } = await supabase
-    .from('display_state')
-    .select('id')
-    .eq('user_id', userId)
-    .maybeSingle();
+  // We already know display_state doesn't exist for this user (checked above).
+  const legacyDisplayState = isFirstUser
+    ? (await supabase.from('display_state').select('*').is('user_id', null).maybeSingle()).data
+    : null;
 
-  if (!displayState) {
-    const legacyDisplayState = isFirstUser
-      ? (await supabase.from('display_state').select('*').is('user_id', null).maybeSingle()).data
-      : null;
-
-    if (legacyDisplayState) {
-      await supabase.from('display_state').update({ user_id: userId }).eq('id', legacyDisplayState.id);
-    } else {
-      await supabase.from('display_state').insert({
-        user_id: userId,
-        active_mode_id: 'pinterest',
-        active_album_ids: [],
-        is_paused: false,
-        brightness: 100,
-      });
-    }
+  if (legacyDisplayState) {
+    await supabase.from('display_state').update({ user_id: userId }).eq('id', legacyDisplayState.id);
+  } else {
+    await supabase.from('display_state').insert({
+      user_id: userId,
+      active_mode_id: 'pinterest',
+      active_album_ids: [],
+      is_paused: false,
+      brightness: 100,
+    });
   }
 
   const { data: settings } = await supabase

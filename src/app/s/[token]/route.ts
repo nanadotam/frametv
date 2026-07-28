@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { createSessionToken, hashSessionToken, setSessionCookie, getDeviceInfo } from '@/lib/auth';
 import { ensureUserDefaults } from '@/lib/userData';
+import { getUserIdForShareToken } from '@/lib/shareToken';
 
 export async function GET(
   request: NextRequest,
@@ -13,18 +14,12 @@ export async function GET(
     return NextResponse.redirect(new URL('/display', request.url));
   }
 
-  const supabase = createServiceClient();
-
-  const { data } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', `share:${token}`)
-    .maybeSingle();
-
-  const userId = data?.value as string | undefined;
+  const userId = await getUserIdForShareToken(token);
   if (!userId) {
     return NextResponse.redirect(new URL('/display', request.url));
   }
+
+  const supabase = createServiceClient();
 
   const { data: user } = await supabase
     .from('app_users')
