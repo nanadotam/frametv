@@ -48,7 +48,7 @@ export async function GET(
     ...getDeviceInfo(request),
   });
 
-  const response = NextResponse.redirect(new URL('/display', request.url));
+  const response = NextResponse.redirect(new URL('/display?kiosk=1', request.url));
   setSessionCookie(response, 'display', sessionToken, expires);
   return response;
 }

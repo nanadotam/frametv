@@ -664,7 +664,18 @@ function ShareLinkCard() {
               <Trash2 size={13} />
             </Button>
           </div>
-        ) : (
+        ) : null}
+
+        {token && (
+          <a href="/screensaver/authorize" target="_blank" rel="noopener noreferrer" className="block">
+            <Button size="sm" variant="ghost" className="w-full gap-1.5 text-muted-foreground">
+              <Monitor size={13} />
+              Set up Mac Screensaver
+            </Button>
+          </a>
+        )}
+
+        {token === null && (
           <Button size="sm" onClick={generate} disabled={loading} className="gap-2">
             {loading ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />}
             Generate live link
