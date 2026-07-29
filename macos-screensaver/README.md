@@ -73,6 +73,22 @@ overwrite your real settings if you click Disconnect. Back up
 `~/Library/Preferences/ByHost/FrameTVScreenSaver.*.plist` before poking at
 a running instance.
 
+## 4. Uninstall
+
+Open **FrameTV Screensaver Settings** from Applications and click
+**Uninstall Everything…** in the panel. It removes the installed `.saver`
+bundle, clears the `ScreenSaverDefaults` preference domain (address/duration),
+and clears the companion app's caches, cookies, and WebKit storage — a real
+uninstall, not just deleting the app icon. (Note: **re-dragging the `.saver`
+into Screen Savers is not the same as uninstalling it** — macOS replaces the
+bundle files but never touches saved preferences, so an old connected link
+will keep showing up after a "fresh" reinstall until you actually uninstall
+first.)
+
+This button is only shown when running as the standalone companion app —
+never inside the `.saver`'s own Options panel, since that would mean the
+running bundle deleting itself out from under its own host process.
+
 ## Notes
 
 - The share token is a live session credential. Treat the `.saver` bundle's

@@ -6,10 +6,13 @@
 #import "FrameTVConfigController.h"
 #import "WVSSAddress.h"
 #import <WebKit/WebKit.h>
+#import <ScreenSaver/ScreenSaver.h>
 
 static NSString *const kFrameTVBaseURL = @"https://frametv.vercel.app";
 static NSString *const kFrameTVAuthorizePath = @"/screensaver/authorize";
 static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
+static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
+static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRig";
 
 @interface FrameTVConfigController () <WKNavigationDelegate>
 
@@ -54,6 +57,14 @@ static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
   return [FrameTVConfigController isConfigConnected:self.config];
 }
 
+// The "Uninstall Everything" action deletes the installed .saver bundle —
+// only safe to offer when we're *not* that bundle's own hosted process
+// (System Settings' Options sheet runs inside the .saver itself). Only the
+// standalone companion app can safely delete it.
+- (BOOL)isRunningAsStandaloneApp {
+  return [[[NSBundle mainBundle] bundleIdentifier] isEqualToString:kRigBundleIdentifier];
+}
+
 - (NSString *)connectedURL {
   if (!self.isConnected) return nil;
   return [(WVSSAddress *)self.config.addresses.firstObject url];
@@ -76,7 +87,7 @@ static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
 #pragma mark - Main sheet UI
 
 - (void)buildSheetWindow {
-  NSRect frame = NSMakeRect(0, 0, 440, 380);
+  NSRect frame = NSMakeRect(0, 0, 440, 420);
   NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
                                                   styleMask:NSWindowStyleMaskTitled
                                                     backing:NSBackingStoreBuffered
@@ -87,19 +98,19 @@ static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
 
   NSView *content = window.contentView;
 
-  NSTextField *icon = [self labelWithFrame:NSMakeRect(188, 296, 64, 64)];
+  NSTextField *icon = [self labelWithFrame:NSMakeRect(188, 336, 64, 64)];
   icon.font = [NSFont systemFontOfSize:44];
   icon.alignment = NSTextAlignmentCenter;
   icon.stringValue = @"📺";
   [content addSubview:icon];
 
-  NSTextField *title = [self labelWithFrame:NSMakeRect(20, 258, 400, 28)];
+  NSTextField *title = [self labelWithFrame:NSMakeRect(20, 298, 400, 28)];
   title.font = [NSFont boldSystemFontOfSize:18];
   title.alignment = NSTextAlignmentCenter;
   title.stringValue = @"Welcome to FrameTV";
   [content addSubview:title];
 
-  NSTextField *status = [self labelWithFrame:NSMakeRect(30, 130, 380, 120)];
+  NSTextField *status = [self labelWithFrame:NSMakeRect(30, 170, 380, 120)];
   status.font = [NSFont systemFontOfSize:12.5];
   status.textColor = [NSColor secondaryLabelColor];
   status.alignment = NSTextAlignmentCenter;
@@ -112,11 +123,21 @@ static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
   NSButton *primary = [NSButton buttonWithTitle:self.isConnected ? @"Sign In as a Different Account" : @"Sign In"
                                           target:self
                                           action:@selector(primaryButtonPressed:)];
-  primary.frame = NSMakeRect(120, 78, 200, 32);
+  primary.frame = NSMakeRect(120, 118, 200, 32);
   primary.bezelStyle = NSBezelStyleRounded;
   primary.keyEquivalent = @"\r";
   self.primaryButton = primary;
   [content addSubview:primary];
+
+  if (self.isRunningAsStandaloneApp) {
+    NSButton *uninstall = [NSButton buttonWithTitle:@"Uninstall Everything…"
+                                              target:self
+                                              action:@selector(uninstallPressed:)];
+    uninstall.frame = NSMakeRect(120, 72, 200, 24);
+    uninstall.bezelStyle = NSBezelStyleInline;
+    uninstall.contentTintColor = [NSColor systemRedColor];
+    [content addSubview:uninstall];
+  }
 
   if (self.isConnected) {
     NSButton *disconnect = [NSButton buttonWithTitle:@"Disconnect"
@@ -157,6 +178,79 @@ static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
   [self.config.addresses removeAllObjects];
   [self.config synchronize];
   [self refreshStatus];
+}
+
+- (void)uninstallPressed:(id)sender {
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.alertStyle = NSAlertStyleWarning;
+  alert.messageText = @"Uninstall FrameTV Screensaver?";
+  alert.informativeText =
+      @"This removes the installed screensaver from Screen Savers and "
+       "clears all its saved settings, caches, and cookies on this Mac. "
+       "This can't be undone — you'll need to sign in again to reconnect.";
+  [alert addButtonWithTitle:@"Uninstall"];
+  [alert addButtonWithTitle:@"Cancel"];
+  [[[alert buttons] objectAtIndex:0] setHasDestructiveAction:YES];
+
+  if ([alert runModal] != NSAlertFirstButtonReturn) return;
+
+  [self performUninstall];
+}
+
+- (void)performUninstall {
+  NSFileManager *fm = NSFileManager.defaultManager;
+
+  // Best-effort: release the currently-loaded .saver from memory before
+  // deleting its files out from under it.
+  NSTask *killTask = [[NSTask alloc] init];
+  killTask.launchPath = @"/usr/bin/killall";
+  killTask.arguments = @[ @"legacyScreenSaver" ];
+  @try { [killTask launch]; [killTask waitUntilExit]; } @catch (NSException *e) { /* not running */ }
+
+  // Installed bundle.
+  NSArray<NSURL *> *libraryDirs = [fm URLsForDirectory:NSLibraryDirectory inDomains:NSUserDomainMask];
+  for (NSURL *libraryURL in libraryDirs) {
+    NSURL *saverURL = [[libraryURL URLByAppendingPathComponent:@"Screen Savers"]
+        URLByAppendingPathComponent:@"FrameTVScreenSaver.saver"];
+    [fm removeItemAtURL:saverURL error:nil];
+  }
+
+  // Saved preferences (address/duration, both possible on-disk locations).
+  [self clearAllScreenSaverDefaults];
+
+  // Caches, cookies, WebKit storage, logs tied to this app's bundle id.
+  NSArray<NSString *> *cacheRelativePaths = @[
+    @"Library/Caches/com.frametv.FrameTVScreenSaverRig",
+    @"Library/WebKit/com.frametv.FrameTVScreenSaverRig",
+    @"Library/HTTPStorages/com.frametv.FrameTVScreenSaverRig.binarycookies",
+    @"Library/Logs/com.frametv.FrameTVScreenSaverRig",
+  ];
+  NSString *home = NSHomeDirectory();
+  for (NSString *relativePath in cacheRelativePaths) {
+    NSString *fullPath = [home stringByAppendingPathComponent:relativePath];
+    [fm removeItemAtPath:fullPath error:nil];
+  }
+
+  [self.config.addresses removeAllObjects];
+  [self refreshStatus];
+
+  NSAlert *done = [[NSAlert alloc] init];
+  done.messageText = @"Uninstalled";
+  done.informativeText = @"FrameTVScreenSaver has been removed and all its saved data cleared from this Mac.";
+  [done addButtonWithTitle:@"OK"];
+  [done runModal];
+}
+
+// Clears every key in the ScreenSaverDefaults domain (rather than relying on
+// filesystem access to the ByHost plist directly, which is fragile w.r.t.
+// cfprefsd's in-memory cache — going through the proper API keeps it in sync).
+- (void)clearAllScreenSaverDefaults {
+  NSUserDefaults *defaults = [ScreenSaverDefaults defaultsForModuleWithName:kScreenSaverModuleName];
+  NSDictionary *all = [defaults dictionaryRepresentation];
+  for (NSString *key in all) {
+    [defaults removeObjectForKey:key];
+  }
+  [defaults synchronize];
 }
 
 - (void)donePressed:(id)sender {
