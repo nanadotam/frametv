@@ -3,14 +3,10 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getRealtimeClient } from '@/lib/supabase/realtime';
-import { fetchLocalPhotos, LOCAL_ALBUM_ID } from '@/lib/localPhotos';
 import type { Photo } from '@/types/db';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 async function fetchPhotos(albumIds?: string[]): Promise<Photo[]> {
-  if (albumIds?.length === 1 && albumIds[0] === LOCAL_ALBUM_ID) {
-    return fetchLocalPhotos();
-  }
   const params = new URLSearchParams();
   params.set('limit', '1000');
   if (albumIds?.length) params.set('albumIds', albumIds.join(','));
@@ -71,9 +67,6 @@ export function usePhotos(albumIds?: string[]): Photo[] {
   });
 
   useEffect(() => {
-    // Local photos never change via Supabase Realtime — there's no `photos`
-    // row for this sentinel album id to watch.
-    if (albumKey === LOCAL_ALBUM_ID) return;
     return subscribeToPhotoChanges(albumKey, () => {
       queryClient.invalidateQueries({ queryKey: ['photos', albumKey] });
     });

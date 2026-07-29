@@ -291,9 +291,7 @@ static NSString *const kTableColumnPreview = @"preview";
                                     backing:NSBackingStoreBuffered
                                       defer:YES];
 
-  // Legacy address-table preview window — not the main display webview, so
-  // it has no need for the frametv-local:// scheme handler.
-  WKWebView *webView = [FrameTVScreenSaverView makeWebView:bounds localPhotoHandler:nil];
+  WKWebView *webView = [FrameTVScreenSaverView makeWebView:bounds];
   [window.contentView addSubview:webView];
 
   [[[NSWindowController alloc] initWithWindow:window] showWindow:window];

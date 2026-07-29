@@ -23,8 +23,6 @@
 #import "WKWebViewPrivate.h"
 #import "WVSSAddress.h"
 #import "WVSSLog.h"
-#import "FrameTVLocalPhotoConfig.h"
-#import "FrameTVLocalFolderPhotoSource.h"
 
 // ScreenSaverDefaults module name.
 static NSString *const kScreenSaverName = @"FrameTVScreenSaver";
@@ -190,16 +188,11 @@ NSNotificationName const WVSSPreviewStopped = @"webviewscreensaver.preview.stopp
 
 #pragma mark ScreenSaverView
 
-+ (WKWebView *)makeWebView:(NSRect)frame localPhotoHandler:(FrameTVLocalPhotoSchemeHandler *)handler {
++ (WKWebView *)makeWebView:(NSRect)frame {
   WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
   WKPreferences *preferences = [[WKPreferences alloc] init];
   preferences.javaScriptCanOpenWindowsAutomatically = NO;
   configuration.preferences = preferences;
-
-  // Must be registered before the WKWebView is instantiated below.
-  if (handler) {
-    [configuration setURLSchemeHandler:handler forURLScheme:FrameTVLocalPhotoScheme];
-  }
 
   WKWebView *webView = [[WKWebView alloc] initWithFrame:frame configuration:configuration];
   webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -218,22 +211,8 @@ NSNotificationName const WVSSPreviewStopped = @"webviewscreensaver.preview.stopp
 
   if (self.isPreview || _webView) return;
 
-  // Create the local-photo source per the configured kind. Only Folder
-  // exists today; PhotoKit (v2) will add another case here behind the same
-  // FrameTVLocalPhotoSource protocol.
-  id<FrameTVLocalPhotoSource> localPhotoSource;
-  switch (FrameTVLocalPhotoConfig.sourceKind) {
-    case FrameTVLocalPhotoSourceKindFolder:
-    case FrameTVLocalPhotoSourceKindPhotoKit:  // falls back to folder until v2 lands
-    default:
-      localPhotoSource =
-          [[FrameTVLocalFolderPhotoSource alloc] initWithFolderPath:FrameTVLocalPhotoConfig.folderPath];
-      break;
-  }
-  self.localPhotoHandler = [[FrameTVLocalPhotoSchemeHandler alloc] initWithSource:localPhotoSource];
-
   // Create the webview for the screensaver.
-  _webView = [self.class makeWebView:self.bounds localPhotoHandler:self.localPhotoHandler];
+  _webView = [self.class makeWebView:self.bounds];
   _webView.UIDelegate = self;
   _webView.navigationDelegate = self;
   // Sonoma ScreenSaverEngine view hierarchy occludes webview pausing animations and JS.
