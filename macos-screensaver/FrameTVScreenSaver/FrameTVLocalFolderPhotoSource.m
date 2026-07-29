@@ -57,10 +57,13 @@ static NSUInteger const kIdLength = 16;
   NSFileManager *fm = NSFileManager.defaultManager;
   NSURL *folderURL = [NSURL fileURLWithPath:self.folderPath isDirectory:YES];
 
+  NSError *scanError = nil;
   NSArray<NSURL *> *contents = [fm contentsOfDirectoryAtURL:folderURL
                                   includingPropertiesForKeys:@[ NSURLIsRegularFileKey ]
                                                      options:NSDirectoryEnumerationSkipsHiddenFiles
-                                                       error:nil];
+                                                       error:&scanError];
+  NSLog(@"[FrameTVLocal] scanning %@ -> %lu entries (error=%@)",
+        self.folderPath, (unsigned long)contents.count, scanError);
   if (!contents) return @{};
 
   NSMutableDictionary<NSString *, NSString *> *map = [NSMutableDictionary dictionary];
@@ -70,6 +73,7 @@ static NSUInteger const kIdLength = 16;
     NSString *absolutePath = fileURL.path;
     map[[self idForPath:absolutePath]] = absolutePath;
   }
+  NSLog(@"[FrameTVLocal] %lu of those are images", (unsigned long)map.count);
   return map;
 }
 

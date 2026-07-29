@@ -26,6 +26,7 @@ static NSString *const kErrorDomain = @"FrameTVLocalPhotoSchemeHandler";
 - (void)webView:(WKWebView *)webView startURLSchemeTask:(id<WKURLSchemeTask>)task {
   NSURL *url = task.request.URL;
   NSString *host = url.host;
+  NSLog(@"[FrameTVLocal] startURLSchemeTask: %@ (host=%@ path=%@)", url.absoluteString, host, url.path);
 
   if ([host isEqualToString:@"index"]) {
     [self respondWithManifest:task];
@@ -56,6 +57,8 @@ static NSString *const kErrorDomain = @"FrameTVLocalPhotoSchemeHandler";
 
 - (void)respondWithManifest:(id<WKURLSchemeTask>)task {
   NSArray<NSDictionary<NSString *, id> *> *manifest = [self.source indexManifest];
+  NSLog(@"[FrameTVLocal] indexManifest returned %lu photo(s) from source %@",
+        (unsigned long)manifest.count, self.source);
   NSDictionary *body = @{@"photos" : manifest ?: @[]};
 
   NSError *error = nil;
