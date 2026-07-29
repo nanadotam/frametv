@@ -4,14 +4,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   SkipForward, SkipBack, Pause, Play, Tv, Sun, Radio, Clock,
-  CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Send, Zap,
+  CheckCircle2, AlertCircle, Send, Zap,
   CalendarDays, Star, Shuffle, MonitorSmartphone, Loader2, Info,
   Link2, Copy, RefreshCw, Trash2, Wifi, MapPin, Monitor, QrCode,
+  Minus, Plus, Settings, SlidersHorizontal,
 } from 'lucide-react';
+import ModePickerSheet from '@/components/admin/ModePickerSheet';
+import AccordionSection from '@/components/admin/AccordionSection';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -22,7 +24,7 @@ import PageGuide from '@/components/admin/PageGuide';
 import PairTvForm from '@/components/admin/PairTvForm';
 import { SCRAPBOOK_BACKGROUNDS } from '@/modes/scrapbook/ScrapbookMode';
 import { Modal } from '@/components/admin/Modal';
-import { MODE_CATEGORIES, MODE_CATEGORY_BY_ID, MODE_METADATA, MODE_ORDER } from '@/lib/modeMetadata';
+import { MODE_CATEGORY_BY_ID, MODE_METADATA, MODE_ORDER } from '@/lib/modeMetadata';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -570,7 +572,7 @@ function QuickSettingsContent({
 
 // ─── Share Live Link ──────────────────────────────────────────────────────────
 
-function ShareLinkCard() {
+function ShareLinkCard({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [token, setToken]         = useState<string | null | undefined>(undefined);
   const [loading, setLoading]     = useState(false);
   const [copied, setCopied]       = useState(false);
@@ -613,14 +615,13 @@ function ShareLinkCard() {
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Link2 size={15} className="text-primary" />
-          Share Live Link
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <AccordionSection
+      icon={<Link2 size={14} className="text-primary shrink-0" />}
+      label="Share Live Link"
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+      <div className="space-y-3">
         <p className="text-xs text-muted-foreground leading-relaxed">
           Anyone with this link can view your display live — no sign-in needed.
         </p>
@@ -681,8 +682,8 @@ function ShareLinkCard() {
             Generate live link
           </Button>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </AccordionSection>
   );
 }
 
@@ -722,6 +723,9 @@ export default function NowPlayingPage() {
   const [devicesOpen, setDevicesOpen]       = useState(false);
   const [statusOpen, setStatusOpen]         = useState(false);
   const [pairOpen, setPairOpen]             = useState(false);
+  const [shareOpen, setShareOpen]           = useState(false);
+  const [modePickerOpen, setModePickerOpen] = useState(false);
+  const [brightnessFineOpen, setBrightnessFineOpen] = useState(false);
 
   const modeConfigTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const brightnessTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -830,13 +834,15 @@ export default function NowPlayingPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Sync modeConfig when active mode or modes list changes
+  // Sync modeConfig when active mode or modes list changes. Quick Settings
+  // stays collapsed by default (it's Setup, not a Transport control) — it
+  // no longer force-opens on every mode change, only explicitly right
+  // after the user picks a new mode from the picker (see setMode below).
   useEffect(() => {
     const activeModeId = displayState?.active_mode_id;
     if (!activeModeId) return;
     const found = modes.find((m) => m.id === activeModeId);
     if (found) setModeConfig((found.config as Cfg) ?? {});
-    setQuickOpen(MODES_WITH_SETTINGS.has(activeModeId));
   }, [displayState?.active_mode_id, modes]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -858,6 +864,11 @@ export default function NowPlayingPage() {
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error ?? 'Could not switch mode.');
       if (json?.state) setDisplayState(json.state);
+      // Picking a mode from the picker is the one moment it's worth
+      // surfacing its settings — everywhere else Quick Settings stays
+      // collapsed (it's Setup, not a control you touch every visit).
+      setModePickerOpen(false);
+      setQuickOpen(MODES_WITH_SETTINGS.has(modeId));
     } catch (err) {
       setDisplayState(previous);
       failAction(err instanceof Error ? err.message : 'Could not switch mode.');
@@ -1044,25 +1055,54 @@ export default function NowPlayingPage() {
         pageKey="remote"
         icon={<Tv size={18} className="text-primary" />}
         title="Remote"
-        about="This is your TV remote. Switch between display modes, toggle albums active, adjust brightness, and control playback — all from any device on your network."
+        about="This is your TV remote, laid out like one: Play/Pause and skip first, brightness next, then what's on screen — all reachable without scrolling. Setup (quick settings, devices, share link) lives collapsed below."
         steps={[
-          'Select a Mode to change what your TV shows (slideshow, grid, clock, etc.).',
-          'Toggle Albums to choose which photo collections appear.',
-          'Use Playback to pause, skip, or resume.',
-          'Adjust Brightness to dim the display at night.',
-          'Click "Quick Settings" to fine-tune the active mode.',
+          'Play/Pause, Prev/Next, and Shuffle are always right at the top.',
+          'Use the brightness rocker to dim the display at night.',
+          'Tap the mode card\'s "Change" to open the full mode picker.',
+          'Tap an album pill to toggle it active without leaving this page.',
+          'Quick Settings, Devices, and Share Link are one tap away, collapsed by default.',
         ]}
       />
 
+      {/* ── Sticky status strip ── */}
+      <div className="sticky top-0 z-20 -mx-4 md:-mx-8 px-4 md:px-8 py-2.5 bg-background/95 backdrop-blur border-b border-border flex items-center gap-3">
+        {activeMode ? (
+          <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-lg border', modeTone(activeMode.id).iconBg, modeTone(activeMode.id).iconBorder, modeTone(activeMode.id).text)}>
+            <ModeIcon mode={activeMode} size={14} />
+          </span>
+        ) : (
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted">
+            <Tv size={13} className="text-muted-foreground" />
+          </span>
+        )}
+        <p className="flex-1 min-w-0 text-sm font-semibold truncate">
+          {activeMode?.label ?? 'No mode'}
+          {pendingModeId && <Loader2 size={11} className="inline ml-1.5 animate-spin text-primary" />}
+        </p>
+        <Badge
+          variant="outline"
+          className={cn(
+            'shrink-0 text-xs gap-1',
+            isPaused
+              ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+              : 'bg-green-500/20 text-green-300 border-green-500/30'
+          )}
+        >
+          <Radio size={9} className={isPaused ? '' : 'animate-pulse'} />
+          {isPaused ? 'Paused' : 'Playing'}
+        </Badge>
+        {!isConnected && (
+          <span className="shrink-0 flex items-center gap-1 text-xs text-yellow-400">
+            <AlertCircle size={12} /> No DB
+          </span>
+        )}
+      </div>
+
       {/* ── Header ── */}
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex items-center justify-between pt-1">
         <h1 className="text-xl font-bold tracking-tight">Remote</h1>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-card border border-border rounded-full px-3 py-1.5">
-            {isConnected
-              ? <><CheckCircle2 size={12} className="text-green-500" /> Live</>
-              : <><AlertCircle size={12} className="text-yellow-500" /> No DB</>}
-          </div>
           <button
             type="button"
             onClick={() => setPairOpen(true)}
@@ -1101,235 +1141,22 @@ export default function NowPlayingPage() {
         </div>
       )}
 
-      {/* ── Compact Status Bar ── */}
-      <Card className="border-primary/20 overflow-hidden">
-        {/* Always-visible row */}
-        <button
-          type="button"
-          onClick={() => setStatusOpen((o) => !o)}
-          className="w-full px-4 py-3 text-left"
-        >
-          <div className="flex items-center gap-3">
-            {/* Mode */}
-            {activeMode ? (
-              <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg border', modeTone(activeMode.id).iconBg, modeTone(activeMode.id).iconBorder, modeTone(activeMode.id).text)}>
-                <ModeIcon mode={activeMode} size={16} />
-              </span>
-            ) : (
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted">
-                <Tv size={15} className="text-muted-foreground" />
-              </span>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate leading-tight">
-                {activeMode?.label ?? 'No mode'}
-                {pendingModeId && <Loader2 size={11} className="inline ml-1.5 animate-spin text-primary" />}
-              </p>
-              <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
-                {activeAlbums.length > 0
-                  ? activeAlbums.map((a) => a.name).join(', ')
-                  : 'No albums active'}
-              </p>
-            </div>
-            {/* Play/pause badge */}
-            <Badge
-              variant="outline"
-              className={cn(
-                'shrink-0 text-xs gap-1',
-                isPaused
-                  ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-                  : 'bg-green-500/20 text-green-300 border-green-500/30'
-              )}
-            >
-              <Radio size={9} className={isPaused ? '' : 'animate-pulse'} />
-              {isPaused ? 'Paused' : 'Playing'}
-            </Badge>
-            {statusOpen
-              ? <ChevronUp size={15} className="text-muted-foreground shrink-0" />
-              : <ChevronDown size={15} className="text-muted-foreground shrink-0" />}
-          </div>
-        </button>
-
-        {/* Expanded detail */}
-        {statusOpen && (
-          <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
-            {htmlTvUnsupportedMode && (
-              <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-200">
-                <Info size={14} className="mt-0.5 shrink-0 text-yellow-300" />
-                <p className="text-xs leading-relaxed">
-                  TV-safe renderer active. {activeMode?.label} is not supported — the TV will show a compatibility notice.
-                </p>
-              </div>
-            )}
-
-            {/* Albums list */}
-            {activeAlbums.length > 0 && (
-              <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-1.5">Active albums</p>
-                <div className="flex flex-wrap gap-1">
-                  {activeAlbums.map((a) => (
-                    <Badge key={a.id} variant="secondary" className="text-xs">{a.name}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Toggles row */}
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Clock size={13} className="text-muted-foreground" />
-                <span className="text-sm">Clock</span>
-                <Switch checked={clockConfig.enabled} onCheckedChange={toggleClock} disabled={!isConnected} />
-              </div>
-              {nextSchedule && (
-                <div className="flex items-center gap-2">
-                  <CalendarDays size={13} className="text-muted-foreground" />
-                  <span className="text-sm truncate max-w-[120px]">{nextSchedule.name}</span>
-                  <Switch checked={nextSchedule.is_enabled} onCheckedChange={() => toggleSchedule(nextSchedule)} />
-                </div>
-              )}
-            </div>
-
-            {lastUpdated && (
-              <p className="text-[11px] text-muted-foreground/50 text-right">
-                Updated {lastUpdated.toLocaleTimeString()}
-              </p>
-            )}
-          </div>
-        )}
-      </Card>
-
-      {/* ── Source Albums ── */}
-      {visibleAlbums.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium px-1">
-            Source Albums
-          </p>
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap">
-            {visibleAlbums.map((album) => {
-              const isActive = displayState?.active_album_ids?.includes(album.id) ?? false;
-              const pending = pendingAlbumIds.has(album.id);
-              return (
-                <button
-                  key={album.id}
-                  type="button"
-                  onClick={() => toggleAlbum(album.id)}
-                  disabled={!displayState}
-                  className={cn(
-                    'flex items-center gap-1.5 shrink-0 px-4 py-2.5 rounded-full text-sm font-medium transition-all border',
-                    isActive
-                      ? 'bg-emerald-500/18 text-emerald-100 border-emerald-400/55 shadow-sm shadow-emerald-500/10'
-                      : 'bg-card border-border text-muted-foreground hover:border-emerald-400/40 hover:bg-emerald-500/10 hover:text-emerald-100'
-                  )}
-                >
-                  {pending
-                    ? <Loader2 size={11} className="animate-spin" />
-                    : isActive && <Star size={11} fill="currentColor" />}
-                  {album.name}
-                </button>
-              );
-            })}
-          </div>
-          {pendingAlbumIds.size > 0 && (
-            <p className="text-xs text-primary px-1">Syncing album selection to TV…</p>
-          )}
-        </div>
-      )}
-
-      {/* ── Mode Switcher ── */}
+      {/* ── 1. Transport ── */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Switch Mode</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {MODE_CATEGORIES.map((category) => {
-            const CategoryIcon = category.icon;
-            const categoryModes = MODES.filter((mode) => mode.category === category.id);
-            if (categoryModes.length === 0) return null;
-            return (
-              <div key={category.id} className="space-y-2.5">
-                <div className="flex items-center gap-2 px-1">
-                  <span className={cn('flex size-7 items-center justify-center rounded-lg border', category.tone.iconBg, category.tone.iconBorder)}>
-                    <CategoryIcon size={14} className={category.tone.text} />
-                  </span>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{category.label}</p>
-                    <p className="text-[11px] text-muted-foreground">{category.description}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
-                  {categoryModes.map((m) => {
-                    const active = displayState?.active_mode_id === m.id;
-                    const pending = pendingModeId === m.id;
-                    const Icon = m.icon;
-                    return (
-                      <button
-                        key={m.id}
-                        onClick={() => setMode(m.id)}
-                        disabled={loading && !pending}
-                        className={cn(
-                          'flex min-h-24 flex-col items-center justify-center gap-2 rounded-xl border p-3 text-xs font-medium transition-all cursor-pointer',
-                          'hover:scale-[1.03] active:scale-[0.97]',
-                          active
-                            ? cn(category.tone.active, 'shadow-md ring-2')
-                            : cn('bg-card border-border text-muted-foreground hover:text-foreground', category.tone.hover)
-                        )}
-                      >
-                        <span className={cn('flex size-10 items-center justify-center rounded-xl border', active ? 'border-current/25 bg-white/10' : cn(category.tone.iconBg, category.tone.iconBorder, category.tone.text))}>
-                          <Icon size={22} strokeWidth={active ? 2.6 : 2} />
-                        </span>
-                        <span className="leading-tight text-center">{m.label}</span>
-                        {pending
-                          ? <Loader2 size={12} className="animate-spin" />
-                          : active && <span className="w-1.5 h-1.5 rounded-full bg-current/80" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      {/* ── Quick Settings Drawer ── */}
-      {activeMode && (
-        <Card>
-          <button
-            type="button"
-            onClick={() => setQuickOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-5 py-4 text-left"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <Zap size={15} className="text-primary shrink-0" />
-              <span className="text-sm font-semibold truncate">Settings · {activeMode.label}</span>
-              {quickSaveStatus === 'saving' && <Loader2 size={11} className="animate-spin text-primary shrink-0" />}
-              {quickSaveStatus === 'saved' && <span className="text-xs text-green-500 shrink-0">Saved</span>}
-              {quickSaveStatus === 'error' && <span className="text-xs text-destructive shrink-0">Error</span>}
-            </div>
-            {quickOpen
-              ? <ChevronUp size={16} className="text-muted-foreground shrink-0" />
-              : <ChevronDown size={16} className="text-muted-foreground shrink-0" />}
-          </button>
-          {quickOpen && (
-            <CardContent className="pt-0 pb-5 px-5">
-              <Separator className="mb-4" />
-              <QuickSettingsContent
-                modeId={activeMode.id}
-                cfg={modeConfig}
-                onChange={handleModeConfigChange}
-              />
-            </CardContent>
-          )}
-        </Card>
-      )}
-
-      {/* ── Playback ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Playback</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="pt-5 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Transport</p>
+            {activeMode && MODES_WITH_SETTINGS.has(activeMode.id) && (
+              <button
+                type="button"
+                onClick={() => setQuickOpen((o) => !o)}
+                title={`Settings · ${activeMode.label}`}
+                className="flex items-center justify-center size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <Settings size={15} />
+              </button>
+            )}
+          </div>
           <Button
             size="lg"
             className={cn(
@@ -1367,206 +1194,319 @@ export default function NowPlayingPage() {
         </CardContent>
       </Card>
 
-      {/* ── Brightness ── */}
+      {/* ── 2. Level (brightness rocker) ── */}
       <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Sun size={14} className="text-primary" />
-              Brightness
-            </CardTitle>
-            <div className="flex items-center gap-1.5 bg-primary/15 rounded-full px-3 py-1">
-              {brightnessSync === 'saving'
-                ? <Loader2 size={12} className="text-primary animate-spin" />
-                : <Sun size={12} className="text-primary" />}
-              <span className="text-sm font-bold text-primary tabular-nums">{brightness}%</span>
+        <CardContent className="py-3">
+          <div className="flex items-center gap-2">
+            <Sun size={16} className="text-primary shrink-0" />
+            <Button
+              variant="outline" size="icon" className="size-9 shrink-0 rounded-full"
+              onClick={() => scheduleBrightness(Math.max(5, brightness - 5))}
+              disabled={!displayState || brightness <= 5}
+            >
+              <Minus size={15} />
+            </Button>
+            <div className="flex-1 text-center">
+              <span className="text-base font-bold text-primary tabular-nums">{brightness}%</span>
             </div>
+            <Button
+              variant="outline" size="icon" className="size-9 shrink-0 rounded-full"
+              onClick={() => scheduleBrightness(Math.min(100, brightness + 5))}
+              disabled={!displayState || brightness >= 100}
+            >
+              <Plus size={15} />
+            </Button>
+            <button
+              type="button"
+              onClick={() => setBrightnessFineOpen((o) => !o)}
+              title="Fine-tune"
+              className={cn(
+                'flex items-center justify-center size-9 shrink-0 rounded-full border transition-colors',
+                brightnessFineOpen ? 'border-primary/50 text-primary bg-primary/10' : 'border-border text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <SlidersHorizontal size={14} />
+            </button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Gradient bar — touchable visual */}
-          <div className="relative h-10 rounded-xl overflow-hidden bg-gradient-to-r from-zinc-900 via-zinc-600 to-yellow-200">
-            <div
-              className="absolute inset-0 bg-black transition-none"
-              style={{ opacity: (100 - brightness) / 100 * 0.85 }}
-            />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xs font-bold text-white/80 drop-shadow tabular-nums">{brightness}%</span>
+
+          {brightnessFineOpen && (
+            <div className="space-y-2 mt-3 pt-3 border-t border-border">
+              <div className="relative h-8 rounded-xl overflow-hidden bg-gradient-to-r from-zinc-900 via-zinc-600 to-yellow-200">
+                <div className="absolute inset-0 bg-black transition-none" style={{ opacity: (100 - brightness) / 100 * 0.85 }} />
+              </div>
+              <Slider
+                min={5} max={100} step={1}
+                value={[brightness]}
+                onValueChange={(vals) => scheduleBrightness(Number(Array.isArray(vals) ? vals[0] : vals))}
+                onValueCommitted={(vals) => commitBrightness(Number(Array.isArray(vals) ? vals[0] : vals))}
+                className="w-full [&_[role=slider]]:h-6 [&_[role=slider]]:w-6 [&_[data-orientation=horizontal]]:h-3"
+                disabled={!displayState}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Dim</span>
+                <p className={cn('text-xs', brightnessSync === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
+                  {brightnessSync === 'saving' ? 'Syncing…' : brightnessSync === 'saved' ? 'Saved ✓' : brightnessSync === 'error' ? 'Could not sync' : ''}
+                </p>
+                <span>Full</span>
+              </div>
             </div>
-          </div>
-          <Slider
-            min={5} max={100} step={1}
-            value={[brightness]}
-            onValueChange={(vals) => scheduleBrightness(Number(Array.isArray(vals) ? vals[0] : vals))}
-            onValueCommitted={(vals) => commitBrightness(Number(Array.isArray(vals) ? vals[0] : vals))}
-            className="w-full [&_[role=slider]]:h-6 [&_[role=slider]]:w-6 [&_[data-orientation=horizontal]]:h-3"
-            disabled={!displayState}
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Dim</span>
-            <p className={cn('text-xs', brightnessSync === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
-              {brightnessSync === 'saving' ? 'Syncing…' : brightnessSync === 'saved' ? 'Saved ✓' : brightnessSync === 'error' ? 'Could not sync' : ''}
-            </p>
-            <span>Full</span>
-          </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* ── Share Live Link ── */}
-      <ShareLinkCard />
+      {/* ── 3. Source (mode chip + album pills) ── */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            {activeMode ? (
+              <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg border', modeTone(activeMode.id).iconBg, modeTone(activeMode.id).iconBorder, modeTone(activeMode.id).text)}>
+                <ModeIcon mode={activeMode} size={17} />
+              </span>
+            ) : (
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted">
+                <Tv size={16} className="text-muted-foreground" />
+              </span>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate leading-tight">{activeMode?.label ?? 'No mode'}</p>
+              <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
+                {activeAlbums.length > 0 ? activeAlbums.map((a) => a.name).join(', ') : 'No albums active'}
+              </p>
+            </div>
+            <Button size="sm" variant="outline" className="shrink-0" onClick={() => setModePickerOpen(true)}>
+              Change
+            </Button>
+          </div>
 
-      {/* ── Active Devices (bottom) ── */}
+          {htmlTvUnsupportedMode && (
+            <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-2.5 text-yellow-200">
+              <Info size={13} className="mt-0.5 shrink-0 text-yellow-300" />
+              <p className="text-xs leading-relaxed">
+                TV-safe renderer active. {activeMode?.label} is not supported — the TV will show a compatibility notice.
+              </p>
+            </div>
+          )}
+
+          {visibleAlbums.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap">
+              {visibleAlbums.map((album) => {
+                const isActive = displayState?.active_album_ids?.includes(album.id) ?? false;
+                const pending = pendingAlbumIds.has(album.id);
+                return (
+                  <button
+                    key={album.id}
+                    type="button"
+                    onClick={() => toggleAlbum(album.id)}
+                    disabled={!displayState}
+                    className={cn(
+                      'flex items-center gap-1.5 shrink-0 px-3.5 py-2 rounded-full text-xs font-medium transition-all border',
+                      isActive
+                        ? 'bg-emerald-500/18 text-emerald-100 border-emerald-400/55 shadow-sm shadow-emerald-500/10'
+                        : 'bg-card border-border text-muted-foreground hover:border-emerald-400/40 hover:bg-emerald-500/10 hover:text-emerald-100'
+                    )}
+                  >
+                    {pending
+                      ? <Loader2 size={11} className="animate-spin" />
+                      : isActive && <Star size={11} fill="currentColor" />}
+                    {album.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {pendingAlbumIds.size > 0 && (
+            <p className="text-xs text-primary">Syncing album selection to TV…</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <ModePickerSheet
+        open={modePickerOpen}
+        onOpenChange={setModePickerOpen}
+        modes={MODES}
+        activeModeId={displayState?.active_mode_id}
+        pendingModeId={pendingModeId}
+        loading={loading}
+        onSelectMode={setMode}
+      />
+
+      {/* ── 4. Setup (collapsed by default) ── */}
       <div className="space-y-2 pb-6">
-        <button
-          type="button"
-          onClick={() => setDevicesOpen((o) => !o)}
-          className="w-full flex items-center justify-between px-1"
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium px-1">Setup</p>
+
+        <AccordionSection
+          icon={<Info size={14} className="text-primary shrink-0" />}
+          label="Status"
+          open={statusOpen}
+          onOpenChange={setStatusOpen}
+          meta={
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              {isConnected
+                ? <><CheckCircle2 size={12} className="text-green-500" /> Live</>
+                : <><AlertCircle size={12} className="text-yellow-500" /> No DB</>}
+            </span>
+          }
         >
-          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
-            Viewing devices
-          </p>
-          <div className="flex items-center gap-2">
-            {activeDevices.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Clock size={13} className="text-muted-foreground" />
+                <span className="text-sm">Clock</span>
+                <Switch checked={clockConfig.enabled} onCheckedChange={toggleClock} disabled={!isConnected} />
+              </div>
+              {nextSchedule && (
+                <div className="flex items-center gap-2">
+                  <CalendarDays size={13} className="text-muted-foreground" />
+                  <span className="text-sm truncate max-w-[120px]">{nextSchedule.name}</span>
+                  <Switch checked={nextSchedule.is_enabled} onCheckedChange={() => toggleSchedule(nextSchedule)} />
+                </div>
+              )}
+            </div>
+            {lastUpdated && (
+              <p className="text-[11px] text-muted-foreground/50 text-right">
+                Updated {lastUpdated.toLocaleTimeString()}
+              </p>
+            )}
+          </div>
+        </AccordionSection>
+
+        {activeMode && (
+          <AccordionSection
+            icon={<Zap size={14} className="text-primary shrink-0" />}
+            label={`Settings · ${activeMode.label}`}
+            open={quickOpen}
+            onOpenChange={setQuickOpen}
+            meta={
+              <>
+                {quickSaveStatus === 'saving' && <Loader2 size={11} className="animate-spin text-primary" />}
+                {quickSaveStatus === 'saved' && <span className="text-xs text-green-500">Saved</span>}
+                {quickSaveStatus === 'error' && <span className="text-xs text-destructive">Error</span>}
+              </>
+            }
+          >
+            <QuickSettingsContent
+              modeId={activeMode.id}
+              cfg={modeConfig}
+              onChange={handleModeConfigChange}
+            />
+          </AccordionSection>
+        )}
+
+        <AccordionSection
+          icon={<MonitorSmartphone size={14} className="text-primary shrink-0" />}
+          label="Viewing devices"
+          open={devicesOpen}
+          onOpenChange={setDevicesOpen}
+          meta={
+            activeDevices.length > 0 && (
               <span className={cn('text-xs font-medium', activeViewers.length > 0 ? 'text-green-400' : 'text-muted-foreground')}>
                 {activeViewers.length} live
               </span>
-            )}
-            {devicesOpen
-              ? <ChevronUp size={14} className="text-muted-foreground" />
-              : <ChevronDown size={14} className="text-muted-foreground" />}
-          </div>
-        </button>
-
-        {/* Horizontal chip summary (always visible) */}
-        {displayDevices.length > 0 ? (
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0">
-            {displayDevices.slice(0, 8).map((device) => {
-              const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
-              const isMe = device.client_id === myClientId;
-              const isAdmin = device.route === 'admin';
-              const duration = active && !isAdmin ? watchDuration(device.first_seen_at, deviceNow) : null;
-              return (
-                <div
-                  key={device.id}
-                  className={cn(
-                    'flex items-center gap-2 shrink-0 rounded-full border px-3 py-2 text-xs',
-                    active
-                      ? isAdmin
-                        ? 'bg-primary/10 border-primary/30 text-foreground'
-                        : 'bg-green-500/10 border-green-500/30 text-foreground'
-                      : 'bg-card border-border text-muted-foreground'
-                  )}
-                >
-                  <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', active ? (isAdmin ? 'bg-primary' : 'bg-green-500') : 'bg-muted-foreground/40')} />
-                  <span className="font-medium truncate max-w-[120px]">{smartDeviceLabel(device)}</span>
-                  {isMe && <span className="text-[10px] bg-primary/20 text-primary rounded-full px-1.5 py-0.5 shrink-0">You</span>}
-                  {duration && <span className="text-[10px] text-green-400 shrink-0">{duration}</span>}
+            )
+          }
+        >
+          {displayDevices.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Open the display on a TV or browser to see devices here.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {/* Display viewers */}
+              {viewerDevices.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium px-1">Display viewers</p>
+                  {viewerDevices.slice(0, 10).map((device) => {
+                    const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
+                    const duration = active ? watchDuration(device.first_seen_at, deviceNow) : null;
+                    const unsupported = device.renderer === 'html-tv' && Boolean(device.active_mode_id) && !TV_SAFE_MODES.has(device.active_mode_id ?? '');
+                    const location = [device.city, device.country].filter(Boolean).join(', ');
+                    return (
+                      <div
+                        key={device.id}
+                        className={cn(
+                          'bg-card rounded-xl border p-3 space-y-1.5',
+                          unsupported ? 'border-yellow-500/30' : active ? 'border-green-500/20' : 'border-border'
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={cn('w-2 h-2 rounded-full shrink-0', active ? 'bg-green-500 animate-pulse' : 'bg-muted-foreground/40')} />
+                            <span className="text-muted-foreground shrink-0">{deviceTypeIcon(device)}</span>
+                            <p className="text-sm font-semibold truncate">{smartDeviceLabel(device)}</p>
+                          </div>
+                          {active
+                            ? <span className="text-[10px] bg-green-500/15 text-green-400 border border-green-500/30 rounded-full px-2 py-0.5 shrink-0">{duration ?? 'Live'}</span>
+                            : <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(device.last_seen_at, deviceNow)}</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[device.browser, device.os, rendererLabel(device.renderer), device.active_mode_id].filter(Boolean).join(' · ')}
+                        </p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                          {device.ip && (
+                            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70 font-mono">
+                              <Wifi size={9} />{device.ip}
+                            </span>
+                          )}
+                          {location && (
+                            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                              <MapPin size={9} />{location}
+                            </span>
+                          )}
+                          {device.viewport_width && (
+                            <span className="text-[11px] text-muted-foreground/70">
+                              {device.viewport_width}×{device.viewport_height}{device.fullscreen_active ? ' · fs' : ''}
+                            </span>
+                          )}
+                        </div>
+                        {unsupported && <p className="text-xs text-yellow-300">Needs full renderer for this mode.</p>}
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground px-1">
-            Open the display on a TV or browser to see devices here.
-          </p>
-        )}
+              )}
 
-        {/* Expanded full detail */}
-        {devicesOpen && displayDevices.length > 0 && (
-          <div className="space-y-4 mt-2">
-            {/* Display viewers */}
-            {viewerDevices.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium px-1">Display viewers</p>
-                {viewerDevices.slice(0, 10).map((device) => {
-                  const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
-                  const duration = active ? watchDuration(device.first_seen_at, deviceNow) : null;
-                  const unsupported = device.renderer === 'html-tv' && Boolean(device.active_mode_id) && !TV_SAFE_MODES.has(device.active_mode_id ?? '');
-                  const location = [device.city, device.country].filter(Boolean).join(', ');
-                  return (
-                    <div
-                      key={device.id}
-                      className={cn(
-                        'bg-card rounded-xl border p-3 space-y-1.5',
-                        unsupported ? 'border-yellow-500/30' : active ? 'border-green-500/20' : 'border-border'
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={cn('w-2 h-2 rounded-full shrink-0', active ? 'bg-green-500 animate-pulse' : 'bg-muted-foreground/40')} />
-                          <span className="text-muted-foreground shrink-0">{deviceTypeIcon(device)}</span>
-                          <p className="text-sm font-semibold truncate">{smartDeviceLabel(device)}</p>
+              {/* Admin browsers */}
+              {displayDevices.filter((d) => d.route === 'admin').length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium px-1">Admin browsers</p>
+                  {displayDevices.filter((d) => d.route === 'admin').map((device) => {
+                    const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
+                    const isMe = device.client_id === myClientId;
+                    const location = [device.city, device.country].filter(Boolean).join(', ');
+                    return (
+                      <div key={device.id} className={cn('bg-card rounded-xl border p-3 space-y-1.5', isMe ? 'border-primary/30' : 'border-border')}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={cn('w-2 h-2 rounded-full shrink-0', active ? 'bg-primary' : 'bg-muted-foreground/40')} />
+                            <span className="text-muted-foreground shrink-0">{deviceTypeIcon(device)}</span>
+                            <p className="text-sm font-semibold truncate">{smartDeviceLabel(device)}</p>
+                            {isMe && <span className="text-[10px] bg-primary/20 text-primary border border-primary/30 rounded-full px-2 py-0.5 shrink-0">You</span>}
+                          </div>
+                          <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(device.last_seen_at, deviceNow)}</span>
                         </div>
-                        {active
-                          ? <span className="text-[10px] bg-green-500/15 text-green-400 border border-green-500/30 rounded-full px-2 py-0.5 shrink-0">{duration ?? 'Live'}</span>
-                          : <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(device.last_seen_at, deviceNow)}</span>}
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                          <p className="text-xs text-muted-foreground">{[device.browser, device.os].filter(Boolean).join(' · ')}</p>
+                          {device.ip && (
+                            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70 font-mono">
+                              <Wifi size={9} />{device.ip}
+                            </span>
+                          )}
+                          {location && (
+                            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                              <MapPin size={9} />{location}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {[device.browser, device.os, rendererLabel(device.renderer), device.active_mode_id].filter(Boolean).join(' · ')}
-                      </p>
-                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                        {device.ip && (
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70 font-mono">
-                            <Wifi size={9} />{device.ip}
-                          </span>
-                        )}
-                        {location && (
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
-                            <MapPin size={9} />{location}
-                          </span>
-                        )}
-                        {device.viewport_width && (
-                          <span className="text-[11px] text-muted-foreground/70">
-                            {device.viewport_width}×{device.viewport_height}{device.fullscreen_active ? ' · fs' : ''}
-                          </span>
-                        )}
-                      </div>
-                      {unsupported && <p className="text-xs text-yellow-300">Needs full renderer for this mode.</p>}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </AccordionSection>
 
-            {/* Admin browsers */}
-            {displayDevices.filter((d) => d.route === 'admin').length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium px-1">Admin browsers</p>
-                {displayDevices.filter((d) => d.route === 'admin').map((device) => {
-                  const active = deviceNow - new Date(device.last_seen_at).getTime() < 90_000;
-                  const isMe = device.client_id === myClientId;
-                  const location = [device.city, device.country].filter(Boolean).join(', ');
-                  return (
-                    <div key={device.id} className={cn('bg-card rounded-xl border p-3 space-y-1.5', isMe ? 'border-primary/30' : 'border-border')}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={cn('w-2 h-2 rounded-full shrink-0', active ? 'bg-primary' : 'bg-muted-foreground/40')} />
-                          <span className="text-muted-foreground shrink-0">{deviceTypeIcon(device)}</span>
-                          <p className="text-sm font-semibold truncate">{smartDeviceLabel(device)}</p>
-                          {isMe && <span className="text-[10px] bg-primary/20 text-primary border border-primary/30 rounded-full px-2 py-0.5 shrink-0">You</span>}
-                        </div>
-                        <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(device.last_seen_at, deviceNow)}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                        <p className="text-xs text-muted-foreground">{[device.browser, device.os].filter(Boolean).join(' · ')}</p>
-                        {device.ip && (
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70 font-mono">
-                            <Wifi size={9} />{device.ip}
-                          </span>
-                        )}
-                        {location && (
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
-                            <MapPin size={9} />{location}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        <ShareLinkCard open={shareOpen} onOpenChange={setShareOpen} />
       </div>
     </div>
   );
