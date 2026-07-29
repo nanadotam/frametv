@@ -5,6 +5,7 @@
 
 #import "FrameTVConfigController.h"
 #import "WVSSAddress.h"
+#import "FrameTVLocalPhotoConfig.h"
 #import <WebKit/WebKit.h>
 #import <ScreenSaver/ScreenSaver.h>
 
@@ -16,6 +17,16 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
 static NSString *const kDeviceTokenDefaultsKey = @"FrameTVDeviceToken";
 static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 
+// Mirrors the category grouping/order/labels in src/lib/modeMetadata.ts
+// (MODE_CATEGORIES) and the id->category mapping in MODE_METADATA there —
+// there's no native access to that TS module, so this is a hand-kept copy
+// used purely to group the mode grid below into the same sections the web
+// admin's ModePickerSheet shows. Keep the two in sync when modes are added.
+static NSArray<NSString *> *kModeCategoryOrder;
+static NSDictionary<NSString *, NSString *> *kModeCategoryLabels;
+static NSDictionary<NSString *, NSString *> *kModeCategoryIcons;
+static NSDictionary<NSString *, NSString *> *kModeIdToCategory;
+
 @interface FrameTVConfigController () <WKNavigationDelegate>
 
 @property(nonatomic, strong) WVSSConfig *config;
@@ -23,9 +34,16 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 @property(nonatomic, strong) NSWindow *sheetWindow;
 @property(nonatomic, strong) NSTextField *statusLabel;
 @property(nonatomic, strong) NSButton *primaryButton;
-@property(nonatomic, strong) NSPopUpButton *modePopup;
-@property(nonatomic, strong) NSTextField *modeLabel;
+@property(nonatomic, strong) NSScrollView *modeScrollView;
+@property(nonatomic, strong) NSTextField *modeSectionLabel;
 @property(nonatomic, strong) NSArray<NSDictionary *> *modes;
+@property(nonatomic, copy) NSString *activeModeId;
+@property(nonatomic, copy) NSArray<NSString *> *activeAlbumIds;
+
+@property(nonatomic, strong) NSTextField *localSectionLabel;
+@property(nonatomic, strong) NSButton *localPhotosToggle;
+@property(nonatomic, strong) NSButton *chooseFolderButton;
+@property(nonatomic, strong) NSTextField *folderPathLabel;
 
 @property(nonatomic, strong) NSWindow *signInWindow;
 @property(nonatomic, strong) WKWebView *signInWebView;
@@ -33,6 +51,38 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 @end
 
 @implementation FrameTVConfigController
+
++ (void)initialize {
+  if (self != [FrameTVConfigController class]) return;
+
+  kModeCategoryOrder = @[ @"photos", @"music", @"ambient", @"productivity" ];
+  kModeCategoryLabels = @{
+    @"photos" : @"Photos",
+    @"music" : @"Music",
+    @"ambient" : @"Ambient",
+    @"productivity" : @"Boards",
+  };
+  kModeCategoryIcons = @{
+    @"photos" : @"🖼️",
+    @"music" : @"🎵",
+    @"ambient" : @"🌙",
+    @"productivity" : @"🗂️",
+  };
+  kModeIdToCategory = @{
+    @"slideshow-single" : @"photos",
+    @"slideshow-grid" : @"photos",
+    @"pinterest" : @"photos",
+    @"scrapbook" : @"photos",
+    @"coverflow" : @"music",
+    @"vinyl" : @"music",
+    @"clock-text" : @"ambient",
+    @"unsplash-mood" : @"ambient",
+    @"scripture" : @"ambient",
+    @"flipboard" : @"productivity",
+    @"easel" : @"productivity",
+    @"eisenhower" : @"productivity",
+  };
+}
 
 - (instancetype)initWithConfig:(WVSSConfig *)config {
   self = [super init];
@@ -113,7 +163,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 #pragma mark - Main sheet UI
 
 - (void)buildSheetWindow {
-  NSRect frame = NSMakeRect(0, 0, 440, 480);
+  NSRect frame = NSMakeRect(0, 0, 440, 710);
   NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
                                                   styleMask:NSWindowStyleMaskTitled
                                                     backing:NSBackingStoreBuffered
@@ -124,19 +174,19 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 
   NSView *content = window.contentView;
 
-  NSTextField *icon = [self labelWithFrame:NSMakeRect(188, 396, 64, 64)];
+  NSTextField *icon = [self labelWithFrame:NSMakeRect(188, 626, 64, 64)];
   icon.font = [NSFont systemFontOfSize:44];
   icon.alignment = NSTextAlignmentCenter;
   icon.stringValue = @"📺";
   [content addSubview:icon];
 
-  NSTextField *title = [self labelWithFrame:NSMakeRect(20, 358, 400, 28)];
+  NSTextField *title = [self labelWithFrame:NSMakeRect(20, 588, 400, 28)];
   title.font = [NSFont boldSystemFontOfSize:18];
   title.alignment = NSTextAlignmentCenter;
   title.stringValue = @"Welcome to FrameTV";
   [content addSubview:title];
 
-  NSTextField *status = [self labelWithFrame:NSMakeRect(30, 240, 380, 110)];
+  NSTextField *status = [self labelWithFrame:NSMakeRect(30, 482, 380, 96)];
   status.font = [NSFont systemFontOfSize:12.5];
   status.textColor = [NSColor secondaryLabelColor];
   status.alignment = NSTextAlignmentCenter;
@@ -146,26 +196,85 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
   self.statusLabel = status;
   [content addSubview:status];
 
-  // Mode picker row — populated/shown only once connected with a device
-  // token (see rebuildModeSection). Built here (hidden) so later state
-  // changes just toggle visibility instead of inserting/removing views.
-  NSTextField *modeLabel = [self labelWithFrame:NSMakeRect(30, 202, 110, 20)];
-  modeLabel.font = [NSFont systemFontOfSize:12];
-  modeLabel.alignment = NSTextAlignmentRight;
-  modeLabel.stringValue = @"Screensaver mode:";
-  self.modeLabel = modeLabel;
-  [content addSubview:modeLabel];
+  // "Manage further" row — always visible, connected or not, since signing
+  // in only wires up the display link; albums/other data management lives
+  // on the web app.
+  NSTextField *manageDesc = [self labelWithFrame:NSMakeRect(30, 458, 380, 16)];
+  manageDesc.font = [NSFont systemFontOfSize:11];
+  manageDesc.textColor = [NSColor tertiaryLabelColor];
+  manageDesc.alignment = NSTextAlignmentCenter;
+  manageDesc.stringValue = @"Manage albums, links & data on the web:";
+  [content addSubview:manageDesc];
 
-  NSPopUpButton *modePopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(150, 198, 260, 26) pullsDown:NO];
-  modePopup.target = self;
-  modePopup.action = @selector(modeSelected:);
-  self.modePopup = modePopup;
-  [content addSubview:modePopup];
+  NSButton *manageLink = [NSButton buttonWithTitle:@"frametv.vercel.app ↗"
+                                             target:self
+                                             action:@selector(openManageLinkPressed:)];
+  manageLink.frame = NSMakeRect(90, 434, 180, 22);
+  manageLink.bezelStyle = NSBezelStyleInline;
+  [content addSubview:manageLink];
+
+  NSButton *manageCopy = [NSButton buttonWithTitle:@"Copy Link"
+                                             target:self
+                                             action:@selector(copyManageLinkPressed:)];
+  manageCopy.frame = NSMakeRect(278, 434, 90, 22);
+  manageCopy.bezelStyle = NSBezelStyleInline;
+  [content addSubview:manageCopy];
+
+  // Mode grid — populated/shown only once connected with a device token
+  // (see rebuildModeGrid). Sectioned the same way the web admin's mode
+  // picker is (Photos/Music/Ambient/Boards).
+  NSTextField *modeSectionLabel = [self labelWithFrame:NSMakeRect(30, 404, 380, 18)];
+  modeSectionLabel.font = [NSFont boldSystemFontOfSize:12];
+  modeSectionLabel.alignment = NSTextAlignmentLeft;
+  modeSectionLabel.stringValue = @"Screensaver mode";
+  self.modeSectionLabel = modeSectionLabel;
+  [content addSubview:modeSectionLabel];
+
+  NSScrollView *modeScrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(20, 230, 400, 168)];
+  modeScrollView.hasVerticalScroller = YES;
+  modeScrollView.drawsBackground = NO;
+  modeScrollView.borderType = NSBezelBorder;
+  modeScrollView.documentView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 380, 168)];
+  self.modeScrollView = modeScrollView;
+  [content addSubview:modeScrollView];
+
+  // "This Mac" section — lets the screensaver pull photos straight from a
+  // local folder via the frametv-local:// scheme handler, no upload. Sits
+  // in the gap between the mode grid and the Sign In button.
+  NSTextField *localSectionLabel = [self labelWithFrame:NSMakeRect(30, 204, 380, 18)];
+  localSectionLabel.font = [NSFont boldSystemFontOfSize:12];
+  localSectionLabel.alignment = NSTextAlignmentLeft;
+  localSectionLabel.stringValue = @"🖥  This Mac";
+  self.localSectionLabel = localSectionLabel;
+  [content addSubview:localSectionLabel];
+
+  NSButton *localPhotosToggle = [NSButton buttonWithTitle:@"Use My Mac's Photos"
+                                                     target:self
+                                                     action:@selector(localPhotosTogglePressed:)];
+  localPhotosToggle.frame = NSMakeRect(30, 176, 200, 22);
+  localPhotosToggle.bezelStyle = NSBezelStyleRounded;
+  self.localPhotosToggle = localPhotosToggle;
+  [content addSubview:localPhotosToggle];
+
+  NSButton *chooseFolderButton = [NSButton buttonWithTitle:@"Choose Folder…"
+                                                      target:self
+                                                      action:@selector(chooseFolderPressed:)];
+  chooseFolderButton.frame = NSMakeRect(298, 150, 112, 22);
+  chooseFolderButton.bezelStyle = NSBezelStyleInline;
+  self.chooseFolderButton = chooseFolderButton;
+  [content addSubview:chooseFolderButton];
+
+  NSTextField *folderPathLabel = [self labelWithFrame:NSMakeRect(30, 152, 260, 16)];
+  folderPathLabel.font = [NSFont systemFontOfSize:11];
+  folderPathLabel.textColor = [NSColor tertiaryLabelColor];
+  folderPathLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+  self.folderPathLabel = folderPathLabel;
+  [content addSubview:folderPathLabel];
 
   NSButton *primary = [NSButton buttonWithTitle:self.isConnected ? @"Sign In as a Different Account" : @"Sign In"
                                           target:self
                                           action:@selector(primaryButtonPressed:)];
-  primary.frame = NSMakeRect(120, 148, 200, 32);
+  primary.frame = NSMakeRect(120, 96, 200, 32);
   primary.bezelStyle = NSBezelStyleRounded;
   primary.keyEquivalent = @"\r";
   self.primaryButton = primary;
@@ -175,7 +284,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
     NSButton *uninstall = [NSButton buttonWithTitle:@"Uninstall Everything…"
                                               target:self
                                               action:@selector(uninstallPressed:)];
-    uninstall.frame = NSMakeRect(120, 102, 200, 24);
+    uninstall.frame = NSMakeRect(120, 60, 200, 22);
     uninstall.bezelStyle = NSBezelStyleInline;
     uninstall.contentTintColor = [NSColor systemRedColor];
     [content addSubview:uninstall];
@@ -185,13 +294,13 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
     NSButton *disconnect = [NSButton buttonWithTitle:@"Disconnect"
                                                target:self
                                                action:@selector(disconnectPressed:)];
-    disconnect.frame = NSMakeRect(20, 20, 90, 28);
+    disconnect.frame = NSMakeRect(20, 16, 90, 28);
     disconnect.bezelStyle = NSBezelStyleRounded;
     [content addSubview:disconnect];
   }
 
   NSButton *done = [NSButton buttonWithTitle:@"Done" target:self action:@selector(donePressed:)];
-  done.frame = NSMakeRect(340, 20, 80, 28);
+  done.frame = NSMakeRect(330, 16, 90, 28);
   done.bezelStyle = NSBezelStyleRounded;
   [content addSubview:done];
 
@@ -215,11 +324,98 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 
 - (void)rebuildModeSection {
   BOOL show = self.hasModeAccess;
-  self.modeLabel.hidden = !show;
-  self.modePopup.hidden = !show;
+  self.modeSectionLabel.hidden = !show;
+  self.modeScrollView.hidden = !show;
   if (!show) {
-    [self.modePopup removeAllItems];
+    self.modes = nil;
+    [self rebuildModeGrid];
   }
+}
+
+#pragma mark - This Mac (local photos)
+
+- (void)rebuildLocalPhotosSection {
+  BOOL show = self.hasModeAccess;
+  self.localSectionLabel.hidden = !show;
+  self.localPhotosToggle.hidden = !show;
+  self.chooseFolderButton.hidden = !show;
+  self.folderPathLabel.hidden = !show;
+  if (!show) return;
+
+  BOOL isOn = [self.activeAlbumIds isEqualToArray:@[ @"local" ]];
+  [self.localPhotosToggle setTitle:isOn ? @"✓ Using My Mac's Photos" : @"Use My Mac's Photos"];
+  [self styleModeButton:self.localPhotosToggle selected:isOn];
+  [self updateFolderPathLabel];
+}
+
+- (void)updateFolderPathLabel {
+  NSString *path = FrameTVLocalPhotoConfig.folderPath;
+  NSString *home = NSHomeDirectory();
+  if ([path hasPrefix:home]) {
+    path = [@"~" stringByAppendingString:[path substringFromIndex:home.length]];
+  }
+  self.folderPathLabel.stringValue = [NSString stringWithFormat:@"Folder: %@", path];
+}
+
+- (void)chooseFolderPressed:(id)sender {
+  NSOpenPanel *panel = [NSOpenPanel openPanel];
+  panel.canChooseDirectories = YES;
+  panel.canChooseFiles = NO;
+  panel.allowsMultipleSelection = NO;
+  panel.prompt = @"Choose";
+  panel.message = @"Pick a folder of photos for this screensaver to show — nothing in it is ever uploaded.";
+
+  NSString *current = FrameTVLocalPhotoConfig.folderPath;
+  if (current.length) panel.directoryURL = [NSURL fileURLWithPath:current isDirectory:YES];
+
+  [panel beginSheetModalForWindow:self.sheetWindow completionHandler:^(NSModalResponse result) {
+    if (result != NSModalResponseOK || panel.URL == nil) return;
+    [FrameTVLocalPhotoConfig setFolderPath:panel.URL.path];
+    [self updateFolderPathLabel];
+  }];
+}
+
+- (void)localPhotosTogglePressed:(id)sender {
+  if (!self.hasModeAccess) return;
+
+  BOOL turningOn = ![self.activeAlbumIds isEqualToArray:@[ @"local" ]];
+  self.activeAlbumIds = turningOn ? @[ @"local" ] : @[];
+  [self.localPhotosToggle setTitle:turningOn ? @"✓ Using My Mac's Photos" : @"Use My Mac's Photos"];
+  [self styleModeButton:self.localPhotosToggle selected:turningOn];
+
+  // Keep whatever photo mode is already active (defaulting to the Pinterest
+  // grid if nothing's selected yet) — the toggle only changes where that
+  // mode's photos come from, not which mode is showing.
+  NSString *modeId = self.activeModeId.length ? self.activeModeId : @"pinterest";
+  self.activeModeId = modeId;
+  [self rebuildModeGrid];
+
+  NSMutableURLRequest *request = [self authedRequestForPath:@"/api/screensaver/mode"];
+  request.HTTPMethod = @"PATCH";
+  [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+  request.HTTPBody = [NSJSONSerialization dataWithJSONObject:@{
+    @"mode_id" : modeId,
+    @"active_album_ids" : self.activeAlbumIds,
+  } options:0 error:nil];
+
+  NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request];
+  [task resume];
+}
+
+#pragma mark - Manage-further link
+
+- (NSURL *)manageURL {
+  return [NSURL URLWithString:kFrameTVBaseURL];
+}
+
+- (void)openManageLinkPressed:(id)sender {
+  [[NSWorkspace sharedWorkspace] openURL:self.manageURL];
+}
+
+- (void)copyManageLinkPressed:(id)sender {
+  NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
+  [pasteboard clearContents];
+  [pasteboard setString:kFrameTVBaseURL forType:NSPasteboardTypeString];
 }
 
 #pragma mark - Mode picker (screensaver-scoped bearer token)
@@ -258,13 +454,88 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 
 - (void)populateModePopupWithModes:(NSArray<NSDictionary *> *)modes {
   self.modes = modes;
-  [self.modePopup removeAllItems];
-  for (NSDictionary *mode in modes) {
-    NSString *name = mode[@"name"] ?: mode[@"id"];
-    [self.modePopup addItemWithTitle:name];
-    self.modePopup.lastItem.representedObject = mode[@"id"];
-  }
+  [self rebuildModeGrid];
   [self fetchActiveMode];
+}
+
+// Builds a scrolling grid of mode buttons grouped into the same
+// Photos/Music/Ambient/Boards sections the web admin's ModePickerSheet
+// uses (see kModeCategoryOrder/kModeIdToCategory above), replacing what
+// used to be a flat NSPopUpButton dropdown.
+- (void)rebuildModeGrid {
+  NSView *container = self.modeScrollView.documentView;
+  [container.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+
+  CGFloat containerWidth = self.modeScrollView.contentSize.width;
+  const CGFloat kPadding = 8;
+  const CGFloat kHeaderHeight = 18;
+  const CGFloat kButtonHeight = 34;
+  const CGFloat kButtonSpacing = 6;
+  const CGFloat kSectionGap = 12;
+  const NSInteger kColumns = 3;
+  CGFloat columnWidth = (containerWidth - kPadding * 2 - kButtonSpacing * (kColumns - 1)) / kColumns;
+
+  // Two passes: first compute each visible section's height so the total
+  // container height (and thus scroll range) is known up front, then place
+  // views top-down using a descending cursor — much simpler than trying to
+  // convert a top-down layout into NSView's bottom-up frame coordinates
+  // on the fly.
+  NSArray<NSString *> *visibleCategories = [kModeCategoryOrder filteredArrayUsingPredicate:
+      [NSPredicate predicateWithBlock:^BOOL(NSString *categoryId, NSDictionary *bindings) {
+        return [self modesInCategory:categoryId].count > 0;
+      }]];
+
+  CGFloat totalHeight = kPadding;
+  for (NSString *categoryId in visibleCategories) {
+    NSInteger modeCount = [self modesInCategory:categoryId].count;
+    NSInteger rowCount = (modeCount + kColumns - 1) / kColumns;
+    totalHeight += kHeaderHeight + rowCount * kButtonHeight + (rowCount - 1) * kButtonSpacing + kSectionGap;
+  }
+  totalHeight = MAX(totalHeight, self.modeScrollView.contentSize.height);
+  container.frame = NSMakeRect(0, 0, containerWidth, totalHeight);
+
+  CGFloat topCursor = totalHeight - kPadding; // distance from the container's top edge
+  for (NSString *categoryId in visibleCategories) {
+    NSArray<NSDictionary *> *categoryModes = [self modesInCategory:categoryId];
+    NSInteger rowCount = (categoryModes.count + kColumns - 1) / kColumns;
+
+    NSTextField *header = [self labelWithFrame:NSMakeRect(kPadding, topCursor - kHeaderHeight, containerWidth - kPadding * 2, kHeaderHeight)];
+    header.font = [NSFont boldSystemFontOfSize:10.5];
+    header.textColor = [NSColor secondaryLabelColor];
+    header.stringValue = [NSString stringWithFormat:@"%@  %@", kModeCategoryIcons[categoryId], kModeCategoryLabels[categoryId]];
+    [container addSubview:header];
+    topCursor -= kHeaderHeight + kButtonSpacing;
+
+    for (NSInteger i = 0; i < categoryModes.count; i++) {
+      NSDictionary *mode = categoryModes[i];
+      NSInteger row = i / kColumns;
+      NSInteger col = i % kColumns;
+      CGFloat x = kPadding + col * (columnWidth + kButtonSpacing);
+      CGFloat rowTop = topCursor - row * (kButtonHeight + kButtonSpacing);
+      CGFloat frameY = rowTop - kButtonHeight;
+
+      NSButton *button = [NSButton buttonWithTitle:(mode[@"name"] ?: mode[@"id"]) target:self action:@selector(modeButtonPressed:)];
+      button.tag = [self.modes indexOfObject:mode];
+      button.bezelStyle = NSBezelStyleRounded;
+      button.lineBreakMode = NSLineBreakByTruncatingTail;
+      [self styleModeButton:button selected:[mode[@"id"] isEqual:self.activeModeId]];
+      button.frame = NSMakeRect(x, frameY, columnWidth, kButtonHeight);
+      [container addSubview:button];
+    }
+
+    topCursor -= rowCount * kButtonHeight + (rowCount - 1) * kButtonSpacing + kSectionGap;
+  }
+}
+
+- (NSArray<NSDictionary *> *)modesInCategory:(NSString *)categoryId {
+  return [self.modes filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *mode, NSDictionary *bindings) {
+    return [kModeIdToCategory[mode[@"id"]] isEqualToString:categoryId];
+  }]];
+}
+
+- (void)styleModeButton:(NSButton *)button selected:(BOOL)selected {
+  button.contentTintColor = selected ? [NSColor controlAccentColor] : nil;
+  button.font = selected ? [NSFont boldSystemFontOfSize:11] : [NSFont systemFontOfSize:11];
 }
 
 - (void)fetchActiveMode {
@@ -277,24 +548,26 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
     if (error || !data) return;
     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
     NSString *activeModeId = json[@"state"][@"active_mode_id"];
+    NSArray *activeAlbumIds = json[@"state"][@"active_album_ids"];
     if (!activeModeId) return;
 
     dispatch_async(dispatch_get_main_queue(), ^{
-      for (NSInteger i = 0; i < self.modePopup.itemArray.count; i++) {
-        NSMenuItem *item = self.modePopup.itemArray[i];
-        if ([item.representedObject isEqual:activeModeId]) {
-          [self.modePopup selectItemAtIndex:i];
-          break;
-        }
-      }
+      self.activeModeId = activeModeId;
+      self.activeAlbumIds = [activeAlbumIds isKindOfClass:[NSArray class]] ? activeAlbumIds : @[];
+      [self rebuildModeGrid];
+      [self rebuildLocalPhotosSection];
     });
   }];
   [task resume];
 }
 
-- (void)modeSelected:(id)sender {
-  NSString *modeId = self.modePopup.selectedItem.representedObject;
+- (void)modeButtonPressed:(NSButton *)sender {
+  if (sender.tag < 0 || sender.tag >= (NSInteger)self.modes.count) return;
+  NSString *modeId = self.modes[sender.tag][@"id"];
   if (!modeId.length || !self.hasModeAccess) return;
+
+  self.activeModeId = modeId;
+  [self rebuildModeGrid];
 
   NSMutableURLRequest *request = [self authedRequestForPath:@"/api/screensaver/mode"];
   request.HTTPMethod = @"PATCH";
@@ -323,6 +596,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
   self.modes = nil;
   [self refreshStatus];
   [self rebuildModeSection];
+  [self rebuildLocalPhotosSection];
 }
 
 - (void)uninstallPressed:(id)sender {
@@ -513,6 +787,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
   [self dismissSignIn];
   [self refreshStatus];
   [self rebuildModeSection];
+  [self rebuildLocalPhotosSection];
   if (self.hasModeAccess) [self fetchModes];
 }
 

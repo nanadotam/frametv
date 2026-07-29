@@ -5,7 +5,12 @@ import { requireScreensaverUser } from '@/lib/auth';
 // Deliberately narrow: the screensaver's device token can only read modes
 // (via /api/modes, already bearer-auth-capable) and flip which one is
 // active — nothing else display_state's admin PATCH allows (brightness,
-// pause, album selection). Keeps a leaked device token low-blast-radius.
+// pause, arbitrary album selection). `active_album_ids` is accepted here
+// too, but only ever `[]` or `["local"]` — the sentinel the screensaver's
+// own frametv-local:// scheme handler resolves against this device's local
+// photo folder. That keeps a leaked device token low-blast-radius: it can
+// point the display at this Mac's own local photos, never at an arbitrary
+// real album.
 export async function PATCH(request: NextRequest) {
   const auth = await requireScreensaverUser(request);
   if (auth.response) return auth.response;
@@ -14,6 +19,20 @@ export async function PATCH(request: NextRequest) {
   const modeId = String(body.mode_id ?? '').trim();
   if (!modeId) {
     return NextResponse.json({ error: 'mode_id is required' }, { status: 400 });
+  }
+
+  let albumIds: string[] | undefined;
+  if ('active_album_ids' in body) {
+    const raw = body.active_album_ids;
+    const isValid =
+      Array.isArray(raw) && (raw.length === 0 || (raw.length === 1 && raw[0] === 'local'));
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'active_album_ids must be [] or ["local"]' },
+        { status: 400 }
+      );
+    }
+    albumIds = raw;
   }
 
   const supabase = createServiceClient();
@@ -30,7 +49,11 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error } = await supabase
     .from('display_state')
-    .update({ active_mode_id: modeId, updated_at: new Date().toISOString() })
+    .update({
+      active_mode_id: modeId,
+      updated_at: new Date().toISOString(),
+      ...(albumIds !== undefined ? { active_album_ids: albumIds } : {}),
+    })
     .eq('user_id', auth.user.id)
     .select()
     .single();

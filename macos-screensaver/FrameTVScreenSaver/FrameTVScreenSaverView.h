@@ -27,6 +27,7 @@
 #import <WebKit/WebKit.h>
 #import "WVSSAddress.h"
 #import "FrameTVConfigController.h"
+#import "FrameTVLocalPhotoSchemeHandler.h"
 
 // A simple screen saver that is a configurable webview driven from a list
 // of URLs.
@@ -34,7 +35,12 @@
 
 @property(nonatomic, strong) FrameTVConfigController *configController;
 
-+ (WKWebView *)makeWebView:(NSRect)frame;
+// Keeps the frametv-local:// scheme handler alive for the webview's
+// lifetime — WKWebViewConfiguration only holds a weak-ish reference via the
+// scheme registration, so this is the strong owner.
+@property(nonatomic, strong) FrameTVLocalPhotoSchemeHandler *localPhotoHandler;
+
++ (WKWebView *)makeWebView:(NSRect)frame localPhotoHandler:(FrameTVLocalPhotoSchemeHandler *)handler;
 + (void)loadAddress:(WVSSAddress *)address target:(WKWebView *)webView;
 
 - (id)initWithFrame:(NSRect)frame isPreview:(BOOL)isPreview prefsStore:(NSUserDefaults *)prefs;

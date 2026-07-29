@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		140C127E13A9C95C0BA29B66 /* FrameTVLocalFolderPhotoSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 7F55FA5990405E125DAF460C /* FrameTVLocalFolderPhotoSource.h */; };
+		152D148A66B0C5C9CD7CBB6A /* FrameTVLocalPhotoSchemeHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = 3B9F56552906369D7EE0B239 /* FrameTVLocalPhotoSchemeHandler.m */; };
+		1789138FBFB0CEB4F6F6E910 /* FrameTVLocalPhotoSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 9303E320AC50FD2A833DC661 /* FrameTVLocalPhotoSource.h */; };
+		1852B40F2650FD88E6818267 /* FrameTVLocalPhotoSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 9303E320AC50FD2A833DC661 /* FrameTVLocalPhotoSource.h */; };
+		21959543BBFDB9ED3B40414E /* FrameTVLocalPhotoSchemeHandler.h in Headers */ = {isa = PBXBuildFile; fileRef = 993C377B0747515039CBFF6C /* FrameTVLocalPhotoSchemeHandler.h */; };
+		28CAA2CF0A83416CA89A0F94 /* FrameTVConfigController.h in Headers */ = {isa = PBXBuildFile; fileRef = 7E43965AB75C4ED5939AD70D /* FrameTVConfigController.h */; };
 		6414570D1AEDC92100FB6CDF /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 6414570C1AEDC92100FB6CDF /* AppDelegate.m */; };
 		6414570F1AEDC92200FB6CDF /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 6414570E1AEDC92200FB6CDF /* main.m */; };
 		641457111AEDC92200FB6CDF /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 641457101AEDC92200FB6CDF /* Images.xcassets */; };
@@ -17,9 +23,6 @@
 		6414572E1AEDCBD900FB6CDF /* WVSSConfig.h in Headers */ = {isa = PBXBuildFile; fileRef = 6414572C1AEDCBD900FB6CDF /* WVSSConfig.h */; };
 		6414572F1AEDCBD900FB6CDF /* WVSSConfig.m in Sources */ = {isa = PBXBuildFile; fileRef = 6414572D1AEDCBD900FB6CDF /* WVSSConfig.m */; };
 		641457301AEDCBD900FB6CDF /* WVSSConfig.m in Sources */ = {isa = PBXBuildFile; fileRef = 6414572D1AEDCBD900FB6CDF /* WVSSConfig.m */; };
-		28CAA2CF0A83416CA89A0F94 /* FrameTVConfigController.h in Headers */ = {isa = PBXBuildFile; fileRef = 7E43965AB75C4ED5939AD70D /* FrameTVConfigController.h */; };
-		9D9668E80F13456ABAC3784E /* FrameTVConfigController.m in Sources */ = {isa = PBXBuildFile; fileRef = EEA423D965DD405DB0DC6321 /* FrameTVConfigController.m */; };
-		C4E1D2D1091C4AD69813E93F /* FrameTVConfigController.m in Sources */ = {isa = PBXBuildFile; fileRef = EEA423D965DD405DB0DC6321 /* FrameTVConfigController.m */; };
 		641457331AEDCCAB00FB6CDF /* WVSSAddress.h in Headers */ = {isa = PBXBuildFile; fileRef = 641457311AEDCCAB00FB6CDF /* WVSSAddress.h */; };
 		641457341AEDCCAB00FB6CDF /* WVSSAddress.m in Sources */ = {isa = PBXBuildFile; fileRef = 641457321AEDCCAB00FB6CDF /* WVSSAddress.m */; };
 		641457351AEDCCAB00FB6CDF /* WVSSAddress.m in Sources */ = {isa = PBXBuildFile; fileRef = 641457321AEDCCAB00FB6CDF /* WVSSAddress.m */; };
@@ -32,12 +35,23 @@
 		64628F311B281BB300B7B73D /* thumbnail@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 64628F2F1B281BB300B7B73D /* thumbnail@2x.png */; };
 		64EED329120EC1B40048A830 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 64EED328120EC1B40048A830 /* WebKit.framework */; };
 		64EED3E9120EC6380048A830 /* ConfigureSheet.xib in Resources */ = {isa = PBXBuildFile; fileRef = 64EED3E8120EC6380048A830 /* ConfigureSheet.xib */; };
+		718C9608F57971D61925EEDD /* FrameTVLocalPhotoSchemeHandler.h in Headers */ = {isa = PBXBuildFile; fileRef = 993C377B0747515039CBFF6C /* FrameTVLocalPhotoSchemeHandler.h */; };
+		74877AC57139F6C76FAA1763 /* FrameTVLocalPhotoConfig.m in Sources */ = {isa = PBXBuildFile; fileRef = B577E84E28E28FCFA9A4A39C /* FrameTVLocalPhotoConfig.m */; };
+		77A33B57773E2F8452829B38 /* FrameTVLocalPhotoConfig.h in Headers */ = {isa = PBXBuildFile; fileRef = 883993CCA26E02B5F9340877 /* FrameTVLocalPhotoConfig.h */; };
 		8D255AC70486D3F9007BF209 /* FrameTVScreenSaver_Prefix.pch in Headers */ = {isa = PBXBuildFile; fileRef = 32DBCFA80370C50100C91783 /* FrameTVScreenSaver_Prefix.pch */; };
 		8D255AC80486D3F9007BF209 /* FrameTVScreenSaverView.h in Headers */ = {isa = PBXBuildFile; fileRef = F50079790118B23001CA0E54 /* FrameTVScreenSaverView.h */; };
 		8D255ACA0486D3F9007BF209 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C167DFE841241C02AAC07 /* InfoPlist.strings */; };
 		8D255ACC0486D3F9007BF209 /* FrameTVScreenSaverView.m in Sources */ = {isa = PBXBuildFile; fileRef = F500797A0118B23001CA0E54 /* FrameTVScreenSaverView.m */; };
 		8D255ACE0486D3F9007BF209 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7ADFEA557BF11CA2CBB /* Cocoa.framework */; };
 		8D255ACF0486D3F9007BF209 /* ScreenSaver.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 06F27B2DFFEEEFEF11CA0E56 /* ScreenSaver.framework */; };
+		8F866CBB74D7126E6A675980 /* FrameTVLocalPhotoConfig.m in Sources */ = {isa = PBXBuildFile; fileRef = B577E84E28E28FCFA9A4A39C /* FrameTVLocalPhotoConfig.m */; };
+		91721A1E3BD4CE7AB55038E0 /* FrameTVLocalFolderPhotoSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 7F55FA5990405E125DAF460C /* FrameTVLocalFolderPhotoSource.h */; };
+		91B9C6C8F970B21F43F47747 /* FrameTVLocalPhotoConfig.h in Headers */ = {isa = PBXBuildFile; fileRef = 883993CCA26E02B5F9340877 /* FrameTVLocalPhotoConfig.h */; };
+		9D9668E80F13456ABAC3784E /* FrameTVConfigController.m in Sources */ = {isa = PBXBuildFile; fileRef = EEA423D965DD405DB0DC6321 /* FrameTVConfigController.m */; };
+		C4E1D2D1091C4AD69813E93F /* FrameTVConfigController.m in Sources */ = {isa = PBXBuildFile; fileRef = EEA423D965DD405DB0DC6321 /* FrameTVConfigController.m */; };
+		D70FA72E7FFC4E85B99D26F0 /* FrameTVLocalPhotoSchemeHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = 3B9F56552906369D7EE0B239 /* FrameTVLocalPhotoSchemeHandler.m */; };
+		E39501CDB74948CBAACEE012 /* FrameTVLocalFolderPhotoSource.m in Sources */ = {isa = PBXBuildFile; fileRef = D60EE3F365DEAC959F0EB8FE /* FrameTVLocalFolderPhotoSource.m */; };
+		F2ADE7A2806906D5CB0955F4 /* FrameTVLocalFolderPhotoSource.m in Sources */ = {isa = PBXBuildFile; fileRef = D60EE3F365DEAC959F0EB8FE /* FrameTVLocalFolderPhotoSource.m */; };
 		F931A6832B8A8F6D00418701 /* WKWebViewPrivate.h in Headers */ = {isa = PBXBuildFile; fileRef = F931A6812B8A8F6D00418701 /* WKWebViewPrivate.h */; };
 		F931A6842B8A8F6D00418701 /* WKWebViewPrivate.m in Sources */ = {isa = PBXBuildFile; fileRef = F931A6822B8A8F6D00418701 /* WKWebViewPrivate.m */; };
 		F931A6852B8A925C00418701 /* WKWebViewPrivate.m in Sources */ = {isa = PBXBuildFile; fileRef = F931A6822B8A8F6D00418701 /* WKWebViewPrivate.m */; };
@@ -55,6 +69,7 @@
 		089C167FFE841241C02AAC07 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = /System/Library/Frameworks/AppKit.framework; sourceTree = "<absolute>"; };
 		1058C7ADFEA557BF11CA2CBB /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = /System/Library/Frameworks/Cocoa.framework; sourceTree = "<absolute>"; };
 		32DBCFA80370C50100C91783 /* FrameTVScreenSaver_Prefix.pch */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameTVScreenSaver_Prefix.pch; sourceTree = "<group>"; };
+		3B9F56552906369D7EE0B239 /* FrameTVLocalPhotoSchemeHandler.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = FrameTVLocalPhotoSchemeHandler.m; sourceTree = "<group>"; };
 		56F520D9224B119A00221B8E /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		641457071AEDC92100FB6CDF /* FrameTVScreenSaverRig.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FrameTVScreenSaverRig.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6414570A1AEDC92100FB6CDF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -67,8 +82,6 @@
 		641457281AEDCAD000FB6CDF /* WVSSConfigController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = WVSSConfigController.m; sourceTree = "<group>"; };
 		6414572C1AEDCBD900FB6CDF /* WVSSConfig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WVSSConfig.h; sourceTree = "<group>"; };
 		6414572D1AEDCBD900FB6CDF /* WVSSConfig.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = WVSSConfig.m; sourceTree = "<group>"; };
-		7E43965AB75C4ED5939AD70D /* FrameTVConfigController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameTVConfigController.h; sourceTree = "<group>"; };
-		EEA423D965DD405DB0DC6321 /* FrameTVConfigController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FrameTVConfigController.m; sourceTree = "<group>"; };
 		641457311AEDCCAB00FB6CDF /* WVSSAddress.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WVSSAddress.h; sourceTree = "<group>"; };
 		641457321AEDCCAB00FB6CDF /* WVSSAddress.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = WVSSAddress.m; sourceTree = "<group>"; };
 		641457361AEDD51900FB6CDF /* WVSSAddressListFetcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WVSSAddressListFetcher.h; sourceTree = "<group>"; };
@@ -77,8 +90,16 @@
 		64628F2F1B281BB300B7B73D /* thumbnail@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "thumbnail@2x.png"; sourceTree = "<group>"; };
 		64EED328120EC1B40048A830 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		64EED3E8120EC6380048A830 /* ConfigureSheet.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = ConfigureSheet.xib; sourceTree = "<group>"; };
+		7E43965AB75C4ED5939AD70D /* FrameTVConfigController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameTVConfigController.h; sourceTree = "<group>"; };
+		7F55FA5990405E125DAF460C /* FrameTVLocalFolderPhotoSource.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = FrameTVLocalFolderPhotoSource.h; sourceTree = "<group>"; };
+		883993CCA26E02B5F9340877 /* FrameTVLocalPhotoConfig.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = FrameTVLocalPhotoConfig.h; sourceTree = "<group>"; };
 		8D255AD20486D3F9007BF209 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8D255AD30486D3F9007BF209 /* FrameTVScreenSaver.saver */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FrameTVScreenSaver.saver; sourceTree = BUILT_PRODUCTS_DIR; };
+		9303E320AC50FD2A833DC661 /* FrameTVLocalPhotoSource.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = FrameTVLocalPhotoSource.h; sourceTree = "<group>"; };
+		993C377B0747515039CBFF6C /* FrameTVLocalPhotoSchemeHandler.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = FrameTVLocalPhotoSchemeHandler.h; sourceTree = "<group>"; };
+		B577E84E28E28FCFA9A4A39C /* FrameTVLocalPhotoConfig.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = FrameTVLocalPhotoConfig.m; sourceTree = "<group>"; };
+		D60EE3F365DEAC959F0EB8FE /* FrameTVLocalFolderPhotoSource.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = FrameTVLocalFolderPhotoSource.m; sourceTree = "<group>"; };
+		EEA423D965DD405DB0DC6321 /* FrameTVConfigController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FrameTVConfigController.m; sourceTree = "<group>"; };
 		F50079790118B23001CA0E54 /* FrameTVScreenSaverView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameTVScreenSaverView.h; sourceTree = "<group>"; };
 		F500797A0118B23001CA0E54 /* FrameTVScreenSaverView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = FrameTVScreenSaverView.m; sourceTree = "<group>"; };
 		F931A6812B8A8F6D00418701 /* WKWebViewPrivate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WKWebViewPrivate.h; sourceTree = "<group>"; };
@@ -109,7 +130,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		089C166AFE841209C02AAC07 /* FrameTVScreenSaver */ = {
+		089C166AFE841209C02AAC07 = {
 			isa = PBXGroup;
 			children = (
 				08FB77AFFE84173DC02AAC07 /* Classes */,
@@ -166,6 +187,13 @@
 				F95905A92EC8D419002430A3 /* WVSSFileLogger.m */,
 				F931A6812B8A8F6D00418701 /* WKWebViewPrivate.h */,
 				F931A6822B8A8F6D00418701 /* WKWebViewPrivate.m */,
+				9303E320AC50FD2A833DC661 /* FrameTVLocalPhotoSource.h */,
+				7F55FA5990405E125DAF460C /* FrameTVLocalFolderPhotoSource.h */,
+				D60EE3F365DEAC959F0EB8FE /* FrameTVLocalFolderPhotoSource.m */,
+				993C377B0747515039CBFF6C /* FrameTVLocalPhotoSchemeHandler.h */,
+				3B9F56552906369D7EE0B239 /* FrameTVLocalPhotoSchemeHandler.m */,
+				883993CCA26E02B5F9340877 /* FrameTVLocalPhotoConfig.h */,
+				B577E84E28E28FCFA9A4A39C /* FrameTVLocalPhotoConfig.m */,
 			);
 			name = Classes;
 			sourceTree = "<group>";
@@ -211,6 +239,17 @@
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
+		371F83134BB730591404FBAC /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1852B40F2650FD88E6818267 /* FrameTVLocalPhotoSource.h in Headers */,
+				140C127E13A9C95C0BA29B66 /* FrameTVLocalFolderPhotoSource.h in Headers */,
+				718C9608F57971D61925EEDD /* FrameTVLocalPhotoSchemeHandler.h in Headers */,
+				91B9C6C8F970B21F43F47747 /* FrameTVLocalPhotoConfig.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8D255AC60486D3F9007BF209 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
@@ -225,6 +264,10 @@
 				F931A6832B8A8F6D00418701 /* WKWebViewPrivate.h in Headers */,
 				6414572E1AEDCBD900FB6CDF /* WVSSConfig.h in Headers */,
 				28CAA2CF0A83416CA89A0F94 /* FrameTVConfigController.h in Headers */,
+				1789138FBFB0CEB4F6F6E910 /* FrameTVLocalPhotoSource.h in Headers */,
+				91721A1E3BD4CE7AB55038E0 /* FrameTVLocalFolderPhotoSource.h in Headers */,
+				21959543BBFDB9ED3B40414E /* FrameTVLocalPhotoSchemeHandler.h in Headers */,
+				77A33B57773E2F8452829B38 /* FrameTVLocalPhotoConfig.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -238,6 +281,7 @@
 				641457031AEDC92100FB6CDF /* Sources */,
 				641457041AEDC92100FB6CDF /* Frameworks */,
 				641457051AEDC92100FB6CDF /* Resources */,
+				371F83134BB730591404FBAC /* Headers */,
 			);
 			buildRules = (
 			);
@@ -292,7 +336,8 @@
 				de,
 				fr,
 			);
-			mainGroup = 089C166AFE841209C02AAC07 /* FrameTVScreenSaver */;
+			mainGroup = 089C166AFE841209C02AAC07;
+			productRefGroup = 19C28FB8FE9D52D311CA2CBB /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -343,6 +388,9 @@
 				641457351AEDCCAB00FB6CDF /* WVSSAddress.m in Sources */,
 				6414570D1AEDC92100FB6CDF /* AppDelegate.m in Sources */,
 				6414573A1AEDD51900FB6CDF /* WVSSAddressListFetcher.m in Sources */,
+				E39501CDB74948CBAACEE012 /* FrameTVLocalFolderPhotoSource.m in Sources */,
+				152D148A66B0C5C9CD7CBB6A /* FrameTVLocalPhotoSchemeHandler.m in Sources */,
+				8F866CBB74D7126E6A675980 /* FrameTVLocalPhotoConfig.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -358,6 +406,9 @@
 				8D255ACC0486D3F9007BF209 /* FrameTVScreenSaverView.m in Sources */,
 				6414572F1AEDCBD900FB6CDF /* WVSSConfig.m in Sources */,
 				9D9668E80F13456ABAC3784E /* FrameTVConfigController.m in Sources */,
+				F2ADE7A2806906D5CB0955F4 /* FrameTVLocalFolderPhotoSource.m in Sources */,
+				D70FA72E7FFC4E85B99D26F0 /* FrameTVLocalPhotoSchemeHandler.m in Sources */,
+				74877AC57139F6C76FAA1763 /* FrameTVLocalPhotoConfig.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
