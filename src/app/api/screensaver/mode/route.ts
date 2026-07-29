@@ -52,6 +52,12 @@ export async function PATCH(request: NextRequest) {
     .update({
       active_mode_id: modeId,
       updated_at: new Date().toISOString(),
+      // Without this, an active schedule's own album_ids wins over what we
+      // just set here (see useActiveMode's override_until check) — a
+      // schedule-less setup would look fine and this would silently no-op
+      // whenever a schedule is running. Matches setMode()'s 30-minute
+      // manual-override convention.
+      override_until: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       ...(albumIds !== undefined ? { active_album_ids: albumIds } : {}),
     })
     .eq('user_id', auth.user.id)
