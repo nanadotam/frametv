@@ -20,7 +20,11 @@ export async function POST(request: NextRequest) {
     const username = normalizeUsername(String(body.username ?? ''));
     const name = String(body.name ?? '').trim();
     const password = String(body.password ?? '');
-    const pin = String(body.pin ?? '');
+    // PIN is optional — the pairing-code flow (/pair/[code]) unlocks a
+    // display without one. Only validate it if the caller actually sent one
+    // (the main /signup form still collects it; /screensaver/signup doesn't).
+    const pinProvided = body.pin !== undefined && body.pin !== null && String(body.pin).length > 0;
+    const pin = pinProvided ? String(body.pin) : null;
     const deviceName = String(body.device_name ?? '').trim() || null;
 
     if (!email || !email.includes('@')) {
@@ -35,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (password.length < 4) {
       return NextResponse.json({ error: 'Password must be at least 4 characters.' }, { status: 400 });
     }
-    if (!/^\d{6}$/.test(pin)) {
+    if (pin && !/^\d{6}$/.test(pin)) {
       return NextResponse.json({ error: 'PIN must be exactly 6 digits.' }, { status: 400 });
     }
 
@@ -47,7 +51,7 @@ export async function POST(request: NextRequest) {
         username,
         name,
         password_hash: hashPassword(password),
-        pin_hash: hashPin(pin),
+        pin_hash: pin ? hashPin(pin) : null,
       })
       .select('id, email, username, name, created_at')
       .single();
@@ -62,13 +66,15 @@ export async function POST(request: NextRequest) {
 
     await ensureUserDefaults(user.id);
 
-    // Store plaintext PIN so admin can see it on the settings page
-    await supabase.from('settings').upsert({
-      key: userSettingKey(user.id, 'display_pin_plain'),
-      user_id: user.id,
-      value: pin,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'key' });
+    // Store plaintext PIN so admin can see it on the settings page (only if one was set)
+    if (pin) {
+      await supabase.from('settings').upsert({
+        key: userSettingKey(user.id, 'display_pin_plain'),
+        user_id: user.id,
+        value: pin,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'key' });
+    }
 
     const token = createSessionToken();
     const expires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);

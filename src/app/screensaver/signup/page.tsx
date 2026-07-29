@@ -1,24 +1,34 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import AuthShell from '@/components/auth/AuthShell';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { guessDeviceName } from '@/lib/deviceName';
 
-export default function SignupPage() {
-  const [form, setForm] = useState({
-    name: '',
-    username: '',
-    email: '',
-    password: '',
-    pin: '',
-    device_name: '',
-  });
+// Signup specifically for the macOS screensaver connect flow — no display
+// PIN (the screensaver never uses it; it authenticates via the /s/<token>
+// share link instead) and no manual device-name entry (auto-derived from
+// the browser, since this page is only ever opened from inside the
+// screensaver's embedded sign-in view or its browser-based fallback).
+function ScreensaverSignupForm() {
+  const searchParams = useSearchParams();
+  const next = searchParams.get('next') || '/screensaver/authorize';
+
+  const [form, setForm] = useState({ name: '', username: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [deviceName, setDeviceName] = useState('');
+
+  useEffect(() => {
+    setDeviceName(guessDeviceName());
+  }, []);
+
+  const update = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -28,11 +38,11 @@ export default function SignupPage() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, device_name: deviceName }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Unable to create account.');
-      window.location.href = '/onboarding';
+      window.location.href = `/screensaver/setup?next=${encodeURIComponent(next)}`;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create account.');
     } finally {
@@ -40,13 +50,18 @@ export default function SignupPage() {
     }
   };
 
-  const update = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
-
   return (
     <AuthShell
-      title="Create your account"
-      description="Create one FrameTV account, then use your six-digit PIN to unlock the display on TV devices."
-      footer={<>Already have an account? <Link className="text-primary font-medium" href="/login">Sign in</Link></>}
+      title="Create your FrameTV account"
+      description="Just enough to get your screensaver connected — no PIN, no setup wizard."
+      footer={
+        <>
+          Already have an account?{' '}
+          <Link className="text-primary font-medium" href={`/login?next=${encodeURIComponent(next)}`}>
+            Sign in
+          </Link>
+        </>
+      }
     >
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
@@ -67,26 +82,19 @@ export default function SignupPage() {
           <Label>Password</Label>
           <PasswordInput value={form.password} onChange={(e) => update('password', e.target.value)} required />
         </div>
-        <div className="space-y-1.5">
-          <Label>Six-digit display PIN</Label>
-          <Input
-            inputMode="numeric"
-            pattern="[0-9]{6}"
-            maxLength={6}
-            value={form.pin}
-            onChange={(e) => update('pin', e.target.value.replace(/\D/g, '').slice(0, 6))}
-            required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Device name</Label>
-          <Input value={form.device_name} onChange={(e) => update('device_name', e.target.value)} placeholder="MacBook, iPhone…" />
-        </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button className="w-full" type="submit" disabled={loading}>
           {loading ? 'Creating account…' : 'Create account'}
         </Button>
       </form>
     </AuthShell>
+  );
+}
+
+export default function ScreensaverSignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <ScreensaverSignupForm />
+    </Suspense>
   );
 }

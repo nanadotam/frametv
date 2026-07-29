@@ -15,7 +15,7 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (localStorage.getItem('frametv:onboarded')) {
-      router.replace('/');
+      router.replace('/admin');
       return;
     }
     setReady(true);
@@ -28,7 +28,7 @@ export default function OnboardingPage() {
 
   const finish = () => {
     localStorage.setItem('frametv:onboarded', '1');
-    router.replace('/');
+    router.replace('/admin');
   };
 
   if (!ready) return null;
@@ -264,7 +264,7 @@ function StepTips() {
 
       <div className="space-y-2.5">
         {[
-          { icon: Hash, text: 'Your display PIN unlocks the TV screen — use it when prompted on the display.' },
+          { icon: Hash, text: 'Pair your TV by scanning the QR code it shows, or opening the pairing link from your phone — no PIN needed.' },
           { icon: Music2, text: 'Connect Spotify in Settings to show album art and control music from your phone.' },
           { icon: Clock3, text: 'Enable the clock overlay to show the time and date over your photos.' },
           { icon: Smartphone, text: 'The Remote tab works from any device — bookmark /admin on your phone.' },

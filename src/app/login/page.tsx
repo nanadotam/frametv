@@ -1,20 +1,27 @@
 'use client';
 
-import { FormEvent, Suspense, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuthShell from '@/components/auth/AuthShell';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { guessDeviceName } from '@/lib/deviceName';
 
 function LoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get('next') || '/';
+  const isScreensaverFlow = next.startsWith('/screensaver');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [deviceName, setDeviceName] = useState('');
+
+  useEffect(() => {
+    setDeviceName(guessDeviceName());
+  }, []);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -49,7 +56,7 @@ function LoginForm() {
       footer={
         <>
           New here?{' '}
-          <Link className="text-primary font-medium" href="/signup">
+          <Link className="text-primary font-medium" href={isScreensaverFlow ? `/screensaver/signup?next=${encodeURIComponent(next)}` : '/signup'}>
             Create an account
           </Link>
         </>
@@ -63,11 +70,11 @@ function LoginForm() {
 
         <div className="space-y-1.5">
           <Label>Password</Label>
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required />
         </div>
 
         <div className="space-y-1.5">
-          <Label>Device name</Label>
+          <Label>Device name <span className="text-muted-foreground font-normal">(optional)</span></Label>
           <Input
             value={deviceName}
             onChange={(e) => setDeviceName(e.target.value)}

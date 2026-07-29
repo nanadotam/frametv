@@ -56,7 +56,8 @@ export function hashPin(pin: string) {
   return hashSecret(pin, PIN_ITERATIONS);
 }
 
-export function verifyPin(pin: string, hash: string) {
+export function verifyPin(pin: string, hash: string | null) {
+  if (!hash) return false; // account has no PIN set (optional since the pairing-code flow doesn't need one)
   return verifySecret(pin, hash);
 }
 

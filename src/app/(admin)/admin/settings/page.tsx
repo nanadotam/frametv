@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -124,6 +125,21 @@ export default function SettingsPage() {
   const [pinConfirm, setPinConfirm]         = useState('');
   const [pinSaving, setPinSaving]           = useState(false);
   const [pinResult, setPinResult]           = useState<{ ok: boolean; msg: string } | null>(null);
+  const [hasPin, setHasPin]                 = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/pin-manage')
+      .then((r) => r.json())
+      .then((json) => {
+        const exists = Boolean(json.pin);
+        setHasPin(exists);
+        // Accounts with no PIN yet (e.g. created via /screensaver/signup)
+        // can't authenticate the "current PIN" field — default to setting
+        // one via password instead.
+        if (!exists) setPinMode('password');
+      })
+      .catch(() => setHasPin(null));
+  }, []);
 
   // Account state
   const [account, setAccount]               = useState<AccountUser | null>(null);
@@ -398,8 +414,7 @@ export default function SettingsPage() {
 
               <div className="space-y-1.5">
                 <Label>Confirm your password</Label>
-                <Input
-                  type="password"
+                <PasswordInput
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
                   placeholder="Your account password"
@@ -696,8 +711,7 @@ export default function SettingsPage() {
                 </a>
               </Label>
               <div className="flex gap-2">
-                <Input
-                  type="password"
+                <PasswordInput
                   placeholder="AIza…"
                   value={googleApiKey}
                   onChange={(e) => setGoogleApiKey(e.target.value)}
@@ -747,17 +761,24 @@ export default function SettingsPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <LockKeyhole size={15} className="text-primary" /> Update Display PIN
+            <LockKeyhole size={15} className="text-primary" /> {hasPin === false ? 'Set Display PIN' : 'Update Display PIN'}
           </CardTitle>
-          <CardDescription>Change the 6-digit PIN used to unlock your display</CardDescription>
+          <CardDescription>
+            {hasPin === false
+              ? "You don't have a display PIN yet — pairing your TV via QR code doesn't need one, but you can set one here if you'd rather unlock it that way."
+              : 'Change the 6-digit PIN used to unlock your display'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Mode toggle */}
           <div className="flex gap-2">
             <button
               onClick={() => { setPinMode('pin'); setPinOldValue(''); setPinResult(null); }}
+              disabled={hasPin === false}
+              title={hasPin === false ? "You don't have a PIN set yet" : undefined}
               className={cn(
                 'flex-1 py-2 px-3 rounded-lg border text-sm transition-all',
+                hasPin === false && 'opacity-40 cursor-not-allowed',
                 pinMode === 'pin'
                   ? 'border-primary bg-primary/10 text-primary font-medium'
                   : 'border-border text-muted-foreground hover:border-primary/50'
@@ -780,8 +801,7 @@ export default function SettingsPage() {
 
           <div className="space-y-1.5">
             <Label>{pinMode === 'pin' ? 'Current PIN' : 'Account password'}</Label>
-            <Input
-              type="password"
+            <PasswordInput
               inputMode={pinMode === 'pin' ? 'numeric' : undefined}
               maxLength={pinMode === 'pin' ? 6 : undefined}
               placeholder={pinMode === 'pin' ? '••••••' : 'Your account password'}
@@ -793,8 +813,7 @@ export default function SettingsPage() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>New PIN</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 inputMode="numeric"
                 maxLength={6}
                 placeholder="••••••"
@@ -804,8 +823,7 @@ export default function SettingsPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Confirm PIN</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 inputMode="numeric"
                 maxLength={6}
                 placeholder="••••••"
