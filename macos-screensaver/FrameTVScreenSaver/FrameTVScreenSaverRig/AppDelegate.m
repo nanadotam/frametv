@@ -20,7 +20,7 @@
 //
 
 #import "AppDelegate.h"
-#import "WVSSConfigController.h"
+#import "FrameTVConfigController.h"
 #import "FrameTVScreenSaverView.h"
 #import "WVSSAddress.h"
 #import <ScreenSaver/ScreenSaver.h>
@@ -29,10 +29,10 @@
 // domain — must match kScreenSaverName in FrameTVScreenSaverView.m.
 static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
 
-@interface AppDelegate () <WVSSConfigControllerDelegate>
+@interface AppDelegate () <FrameTVConfigControllerDelegate>
 
 @property(weak) IBOutlet NSWindow *window;
-@property(strong) WVSSConfigController *configController;
+@property(strong) FrameTVConfigController *configController;
 @end
 
 @implementation AppDelegate {
@@ -50,11 +50,15 @@ static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
   [self reloadWebView];
   [self.window makeKeyWindow];
 
-  // Only pop the config sheet automatically if we weren't launched via a
-  // connect:// deep link (that flow shows its own confirmation instead).
+  // Only pop the config sheet automatically on first run (not yet
+  // connected) or when launched via a connect:// deep link that needs to
+  // show its confirmation. Once already connected, launching the app
+  // should just show the live preview — not re-surface the sheet (and the
+  // account's display URL in it) on every single open.
   NSArray<NSString *> *launchArgs = [[NSProcessInfo processInfo] arguments];
   BOOL launchedViaURL = launchArgs.count > 1 && [launchArgs[1] hasPrefix:@"frametvscreensaver://"];
-  if (!launchedViaURL) {
+  BOOL alreadyConnected = [FrameTVConfigController isConfigConnected:_config];
+  if (launchedViaURL || !alreadyConnected) {
     [self performSelector:@selector(showPreferences:) withObject:nil afterDelay:0];
   }
 }
@@ -112,7 +116,7 @@ static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
   // Insert code here to tear down your application
 }
 
-- (void)configController:(WVSSConfigController *)configController
+- (void)configController:(FrameTVConfigController *)configController
       dismissConfigSheet:(NSWindow *)sheet {
   [self reloadWebView];
   [sheet close];
@@ -120,7 +124,7 @@ static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
 }
 
 - (IBAction)showPreferences:(id)sender {
-  self.configController = [[WVSSConfigController alloc] initWithConfig:_config];
+  self.configController = [[FrameTVConfigController alloc] initWithConfig:_config];
   self.configController.delegate = self;
   [self.window beginSheet:self.configController.sheet completionHandler:nil];
 }

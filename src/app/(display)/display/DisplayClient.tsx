@@ -547,9 +547,17 @@ export default function DisplayClient({
   const [transferring, setTransferring] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [kiosk, setKiosk] = useState(false);
+  // kiosk starts false and flips true (if applicable) after the mount
+  // effect below runs. Anything gating on "!kiosk" — like the fullscreen
+  // nag — must also wait for kioskChecked, otherwise it briefly sees
+  // enabled=true on the very first render (before we know the real kiosk
+  // value), fires immediately, and has no way to un-fire itself once kiosk
+  // flips true a moment later.
+  const [kioskChecked, setKioskChecked] = useState(false);
 
   useEffect(() => {
     setKiosk(new URLSearchParams(window.location.search).get('kiosk') === '1');
+    setKioskChecked(true);
   }, []);
 
   const logoutDisplay = useCallback(async () => {
@@ -585,7 +593,7 @@ export default function DisplayClient({
     const timer = setTimeout(() => setRenderedToast(null), 300);
     return () => clearTimeout(timer);
   }, [toast]);
-  const fullscreenPrompt = useFullscreenPrompt(!locked && !kiosk);
+  const fullscreenPrompt = useFullscreenPrompt(!locked && !kiosk && kioskChecked);
   const { deviceId, isReady: spotifyReady, isConnecting: spotifyConnecting, isPremiumRequired, error: spotifyError, playUri, activate: activateSpotify } = useSpotifyPlayer();
 
   // Unlock Web Audio on any first tap — required for autoplay policy on TVs/Xbox

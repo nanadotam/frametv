@@ -30,7 +30,7 @@ static NSString *const kScreenSaverName = @"FrameTVScreenSaver";
 NSNotificationName const WVSSConfigDismissed = @"webviewscreensaver.config.dismissed";
 NSNotificationName const WVSSPreviewStopped = @"webviewscreensaver.preview.stopped";
 
-@interface FrameTVScreenSaverView () <WVSSConfigControllerDelegate,
+@interface FrameTVScreenSaverView () <FrameTVConfigControllerDelegate,
                                       WKUIDelegate,
                                       WKNavigationDelegate>
 
@@ -117,12 +117,12 @@ NSNotificationName const WVSSPreviewStopped = @"webviewscreensaver.preview.stopp
 
 - (NSWindow *)configureSheet {
   WVSSLog(@"%@", self);
-  self.configController = [[WVSSConfigController alloc] initWithConfig:_config];
+  self.configController = [[FrameTVConfigController alloc] initWithConfig:_config];
   self.configController.delegate = self;
   return self.configController.sheet;
 }
 
-- (void)configController:(WVSSConfigController *)configController
+- (void)configController:(FrameTVConfigController *)configController
       dismissConfigSheet:(NSWindow *)sheet {
   if (self.isPreview) {
     [self loadFromStart];

@@ -26,13 +26,13 @@
 #import <ScreenSaver/ScreenSaver.h>
 #import <WebKit/WebKit.h>
 #import "WVSSAddress.h"
-#import "WVSSConfigController.h"
+#import "FrameTVConfigController.h"
 
 // A simple screen saver that is a configurable webview driven from a list
 // of URLs.
 @interface FrameTVScreenSaverView : ScreenSaverView
 
-@property(nonatomic, strong) WVSSConfigController *configController;
+@property(nonatomic, strong) FrameTVConfigController *configController;
 
 + (WKWebView *)makeWebView:(NSRect)frame;
 + (void)loadAddress:(WVSSAddress *)address target:(WKWebView *)webView;

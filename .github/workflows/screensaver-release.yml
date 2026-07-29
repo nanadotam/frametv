@@ -1,0 +1,134 @@
+name: Screensaver Release
+
+# Builds the FrameTV macOS screensaver (.saver) and its companion
+# "FrameTV Screensaver Settings" app, packages both into a .dmg (saver
+# double-click-installs, app drags to /Applications — same pattern as
+# reference screensavers like Fliqlo), and attaches it to a GitHub
+# Release. Triggered by pushing a tag like `screensaver-v1.0.0`.
+#
+# See macos-screensaver/RELEASE_PLAN.md for the full plan this implements
+# (packaging format tradeoffs, signing/notarization, versioning).
+
+on:
+  push:
+    tags:
+      - "screensaver-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: macos-screensaver/FrameTVScreenSaver
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Build FrameTVScreenSaver.saver
+        run: |
+          xcodebuild -project FrameTVScreenSaver.xcodeproj \
+            -scheme FrameTVScreenSaver \
+            -configuration Release clean archive \
+            -archivePath build/saver.xcarchive \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES
+
+      - name: Build FrameTV Screensaver Settings.app
+        run: |
+          xcodebuild -project FrameTVScreenSaver.xcodeproj \
+            -scheme FrameTVScreenSaverRig \
+            -configuration Release clean build \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES \
+            CONFIGURATION_BUILD_DIR=build/rig
+
+      - name: Build volume icon (.icns from the app's own icon set)
+        run: |
+          ICONSET=build/AppIcon.iconset
+          SRC=FrameTVScreenSaverRig/Images.xcassets/AppIcon.appiconset
+          mkdir -p "$ICONSET"
+          for f in icon_16x16.png icon_16x16@2x.png icon_32x32.png icon_32x32@2x.png \
+                   icon_128x128.png icon_128x128@2x.png icon_256x256.png icon_256x256@2x.png \
+                   icon_512x512.png icon_512x512@2x.png; do
+            cp "$SRC/$f" "$ICONSET/$f"
+          done
+          iconutil -c icns "$ICONSET" -o build/AppIcon.icns
+
+      - name: Stage DMG contents
+        run: |
+          set -euo pipefail
+          STAGE="build/dmg-stage"
+          mkdir -p "$STAGE"
+
+          SAVER_PATH=$(find build/saver.xcarchive -iname "*.saver")
+          cp -R "$SAVER_PATH" "$STAGE/FrameTVScreenSaver.saver"
+          cp -R "build/rig/FrameTVScreenSaverRig.app" "$STAGE/FrameTV Screensaver Settings.app"
+
+          cat > "$STAGE/ReadMe.txt" <<'EOF'
+          FrameTV Screensaver for macOS — ReadMe
+          ========================================
+
+          Installation
+          ------------
+          1. Double-click FrameTVScreenSaver.saver to install it (macOS adds it to
+             System Settings > Screen Saver automatically).
+          2. Drag "FrameTV Screensaver Settings.app" into the Applications folder,
+             then open it once — this registers the frametvscreensaver:// link your
+             FrameTV account connects through.
+          3. Open System Settings > Screen Saver > FrameTVScreenSaver > Options,
+             and sign in from the panel that appears.
+
+          Uninstallation
+          --------------
+          Open the Screen Saver pane in System Settings, Control-click the
+          thumbnail for FrameTVScreenSaver, then choose "Delete 'FrameTVScreenSaver'"
+          from the context menu. Drag "FrameTV Screensaver Settings" out of
+          Applications to remove the companion app.
+
+          Gatekeeper note
+          ----------------
+          This build is ad-hoc signed, not notarized, so macOS will warn the first
+          time you open each item ("Apple could not verify..."). Approve it via
+          System Settings > Privacy & Security > Open Anyway, or run:
+            xattr -d com.apple.quarantine FrameTVScreenSaver.saver
+            xattr -d com.apple.quarantine "FrameTV Screensaver Settings.app"
+
+          More info
+          ---------
+          https://github.com/nanadotam/frametv/tree/main/macos-screensaver
+          EOF
+
+      - name: Build .dmg
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#screensaver-v}"
+          DMG_PATH="build/FrameTV-Screensaver-${VERSION}.dmg"
+
+          create-dmg \
+            --volname "FrameTV Screensaver" \
+            --volicon "build/AppIcon.icns" \
+            --window-pos 200 120 \
+            --window-size 680 420 \
+            --icon-size 96 \
+            --icon "FrameTVScreenSaver.saver" 100 200 \
+            --icon "FrameTV Screensaver Settings.app" 290 200 \
+            --icon "ReadMe.txt" 480 200 \
+            --hide-extension "FrameTVScreenSaver.saver" \
+            --app-drop-link 580 200 \
+            --no-internet-enable \
+            "$DMG_PATH" \
+            "build/dmg-stage/"
+
+          echo "DMG_PATH=macos-screensaver/FrameTVScreenSaver/${DMG_PATH}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            "${{ github.workspace }}/${{ env.DMG_PATH }}" \
+            --title "Screensaver ${{ github.ref_name }}" \
+            --generate-notes
