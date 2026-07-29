@@ -28,6 +28,10 @@
 // Module name the installed FrameTVScreenSaver.saver uses for its prefs
 // domain — must match kScreenSaverName in FrameTVScreenSaverView.m.
 static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
+// Must match the same keys in FrameTVConfigController.m — both write into
+// the same ScreenSaverDefaults domain.
+static NSString *const kDeviceTokenDefaultsKey = @"FrameTVDeviceToken";
+static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 
 @interface AppDelegate () <FrameTVConfigControllerDelegate>
 
@@ -74,24 +78,33 @@ static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
     NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
     NSString *token = nil;
     NSString *origin = nil;
+    NSString *deviceToken = nil;
     for (NSURLQueryItem *item in components.queryItems) {
       if ([item.name isEqualToString:@"token"]) token = item.value;
       if ([item.name isEqualToString:@"origin"]) origin = item.value;
+      if ([item.name isEqualToString:@"deviceToken"]) deviceToken = item.value;
     }
 
     if (token.length && origin.length) {
-      [self connectWithToken:token origin:origin];
+      [self connectWithToken:token origin:origin deviceToken:deviceToken];
     }
   }
 }
 
-- (void)connectWithToken:(NSString *)token origin:(NSString *)origin {
+- (void)connectWithToken:(NSString *)token origin:(NSString *)origin deviceToken:(NSString *)deviceToken {
   NSString *shareUrl = [NSString stringWithFormat:@"%@/s/%@", origin, token];
 
   [_config.addresses removeAllObjects];
   [_config.addresses addObject:[WVSSAddress addressWithURL:shareUrl duration:-1]];
   _config.shouldFetchAddressList = NO;
   [_config synchronize];
+
+  NSUserDefaults *screenSaverDefaults = [ScreenSaverDefaults defaultsForModuleWithName:kScreenSaverModuleName];
+  [screenSaverDefaults setObject:origin forKey:kOriginDefaultsKey];
+  if (deviceToken.length) {
+    [screenSaverDefaults setObject:deviceToken forKey:kDeviceTokenDefaultsKey];
+  }
+  [screenSaverDefaults synchronize];
 
   [self reloadWebView];
   [NSApp activateIgnoringOtherApps:YES];

@@ -30,6 +30,6 @@
 // from the FrameTV web app's /screensaver/authorize page. Configures the
 // *installed* FrameTVScreenSaver.saver (not just this preview app) with a
 // single address (the /s/<token> share link, duration -1).
-- (void)connectWithToken:(NSString *)token origin:(NSString *)origin;
+- (void)connectWithToken:(NSString *)token origin:(NSString *)origin deviceToken:(NSString *)deviceToken;
 
 @end

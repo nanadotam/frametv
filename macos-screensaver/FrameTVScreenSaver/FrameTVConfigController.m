@@ -13,6 +13,8 @@ static NSString *const kFrameTVAuthorizePath = @"/screensaver/authorize";
 static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
 static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
 static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRig";
+static NSString *const kDeviceTokenDefaultsKey = @"FrameTVDeviceToken";
+static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 
 @interface FrameTVConfigController () <WKNavigationDelegate>
 
@@ -21,6 +23,9 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
 @property(nonatomic, strong) NSWindow *sheetWindow;
 @property(nonatomic, strong) NSTextField *statusLabel;
 @property(nonatomic, strong) NSButton *primaryButton;
+@property(nonatomic, strong) NSPopUpButton *modePopup;
+@property(nonatomic, strong) NSTextField *modeLabel;
+@property(nonatomic, strong) NSArray<NSDictionary *> *modes;
 
 @property(nonatomic, strong) NSWindow *signInWindow;
 @property(nonatomic, strong) WKWebView *signInWebView;
@@ -70,6 +75,27 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
   return [(WVSSAddress *)self.config.addresses.firstObject url];
 }
 
+// Device token + origin live in the same ScreenSaverDefaults domain as the
+// address WVSSConfig manages, just under their own keys — WVSSConfig's
+// public API only models the address list, so we go straight to a fresh
+// ScreenSaverDefaults instance for the same module (resolves to the same
+// on-disk domain regardless of which instance created it).
+- (NSUserDefaults *)rawDefaults {
+  return [ScreenSaverDefaults defaultsForModuleWithName:kScreenSaverModuleName];
+}
+
+- (NSString *)deviceToken {
+  return [self.rawDefaults stringForKey:kDeviceTokenDefaultsKey];
+}
+
+- (NSString *)connectedOrigin {
+  return [self.rawDefaults stringForKey:kOriginDefaultsKey];
+}
+
+- (BOOL)hasModeAccess {
+  return self.isConnected && self.deviceToken.length > 0 && self.connectedOrigin.length > 0;
+}
+
 - (NSString *)statusText {
   if (self.isConnected) {
     return [NSString stringWithFormat:
@@ -87,7 +113,7 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
 #pragma mark - Main sheet UI
 
 - (void)buildSheetWindow {
-  NSRect frame = NSMakeRect(0, 0, 440, 420);
+  NSRect frame = NSMakeRect(0, 0, 440, 480);
   NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
                                                   styleMask:NSWindowStyleMaskTitled
                                                     backing:NSBackingStoreBuffered
@@ -98,19 +124,19 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
 
   NSView *content = window.contentView;
 
-  NSTextField *icon = [self labelWithFrame:NSMakeRect(188, 336, 64, 64)];
+  NSTextField *icon = [self labelWithFrame:NSMakeRect(188, 396, 64, 64)];
   icon.font = [NSFont systemFontOfSize:44];
   icon.alignment = NSTextAlignmentCenter;
   icon.stringValue = @"📺";
   [content addSubview:icon];
 
-  NSTextField *title = [self labelWithFrame:NSMakeRect(20, 298, 400, 28)];
+  NSTextField *title = [self labelWithFrame:NSMakeRect(20, 358, 400, 28)];
   title.font = [NSFont boldSystemFontOfSize:18];
   title.alignment = NSTextAlignmentCenter;
   title.stringValue = @"Welcome to FrameTV";
   [content addSubview:title];
 
-  NSTextField *status = [self labelWithFrame:NSMakeRect(30, 170, 380, 120)];
+  NSTextField *status = [self labelWithFrame:NSMakeRect(30, 240, 380, 110)];
   status.font = [NSFont systemFontOfSize:12.5];
   status.textColor = [NSColor secondaryLabelColor];
   status.alignment = NSTextAlignmentCenter;
@@ -120,10 +146,26 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
   self.statusLabel = status;
   [content addSubview:status];
 
+  // Mode picker row — populated/shown only once connected with a device
+  // token (see rebuildModeSection). Built here (hidden) so later state
+  // changes just toggle visibility instead of inserting/removing views.
+  NSTextField *modeLabel = [self labelWithFrame:NSMakeRect(30, 202, 110, 20)];
+  modeLabel.font = [NSFont systemFontOfSize:12];
+  modeLabel.alignment = NSTextAlignmentRight;
+  modeLabel.stringValue = @"Screensaver mode:";
+  self.modeLabel = modeLabel;
+  [content addSubview:modeLabel];
+
+  NSPopUpButton *modePopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(150, 198, 260, 26) pullsDown:NO];
+  modePopup.target = self;
+  modePopup.action = @selector(modeSelected:);
+  self.modePopup = modePopup;
+  [content addSubview:modePopup];
+
   NSButton *primary = [NSButton buttonWithTitle:self.isConnected ? @"Sign In as a Different Account" : @"Sign In"
                                           target:self
                                           action:@selector(primaryButtonPressed:)];
-  primary.frame = NSMakeRect(120, 118, 200, 32);
+  primary.frame = NSMakeRect(120, 148, 200, 32);
   primary.bezelStyle = NSBezelStyleRounded;
   primary.keyEquivalent = @"\r";
   self.primaryButton = primary;
@@ -133,7 +175,7 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
     NSButton *uninstall = [NSButton buttonWithTitle:@"Uninstall Everything…"
                                               target:self
                                               action:@selector(uninstallPressed:)];
-    uninstall.frame = NSMakeRect(120, 72, 200, 24);
+    uninstall.frame = NSMakeRect(120, 102, 200, 24);
     uninstall.bezelStyle = NSBezelStyleInline;
     uninstall.contentTintColor = [NSColor systemRedColor];
     [content addSubview:uninstall];
@@ -152,6 +194,9 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
   done.frame = NSMakeRect(340, 20, 80, 28);
   done.bezelStyle = NSBezelStyleRounded;
   [content addSubview:done];
+
+  [self rebuildModeSection];
+  if (self.hasModeAccess) [self fetchModes];
 }
 
 - (NSTextField *)labelWithFrame:(NSRect)frame {
@@ -168,6 +213,98 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
   [self.primaryButton setTitle:self.isConnected ? @"Sign In as a Different Account" : @"Sign In"];
 }
 
+- (void)rebuildModeSection {
+  BOOL show = self.hasModeAccess;
+  self.modeLabel.hidden = !show;
+  self.modePopup.hidden = !show;
+  if (!show) {
+    [self.modePopup removeAllItems];
+  }
+}
+
+#pragma mark - Mode picker (screensaver-scoped bearer token)
+
+- (NSMutableURLRequest *)authedRequestForPath:(NSString *)path {
+  NSString *urlString = [self.connectedOrigin stringByAppendingString:path];
+  NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
+  NSString *bearer = [@"Bearer " stringByAppendingString:self.deviceToken];
+  [request setValue:bearer forHTTPHeaderField:@"Authorization"];
+  return request;
+}
+
+- (void)fetchModes {
+  if (!self.hasModeAccess) return;
+
+  NSMutableURLRequest *request = [self authedRequestForPath:@"/api/modes"];
+  NSURLSessionDataTask *task = [[NSURLSession sharedSession]
+      dataTaskWithRequest:request
+        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    if (error || !data) return;
+
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    NSArray<NSDictionary *> *modes = json[@"modes"];
+    if (![modes isKindOfClass:[NSArray class]]) return;
+
+    // Only modes the user has enabled are worth offering here.
+    NSPredicate *enabledOnly = [NSPredicate predicateWithFormat:@"is_enabled == YES"];
+    NSArray<NSDictionary *> *enabledModes = [modes filteredArrayUsingPredicate:enabledOnly];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self populateModePopupWithModes:enabledModes];
+    });
+  }];
+  [task resume];
+}
+
+- (void)populateModePopupWithModes:(NSArray<NSDictionary *> *)modes {
+  self.modes = modes;
+  [self.modePopup removeAllItems];
+  for (NSDictionary *mode in modes) {
+    NSString *name = mode[@"name"] ?: mode[@"id"];
+    [self.modePopup addItemWithTitle:name];
+    self.modePopup.lastItem.representedObject = mode[@"id"];
+  }
+  [self fetchActiveMode];
+}
+
+- (void)fetchActiveMode {
+  if (!self.hasModeAccess) return;
+
+  NSMutableURLRequest *request = [self authedRequestForPath:@"/api/display-state"];
+  NSURLSessionDataTask *task = [[NSURLSession sharedSession]
+      dataTaskWithRequest:request
+        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    if (error || !data) return;
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    NSString *activeModeId = json[@"state"][@"active_mode_id"];
+    if (!activeModeId) return;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+      for (NSInteger i = 0; i < self.modePopup.itemArray.count; i++) {
+        NSMenuItem *item = self.modePopup.itemArray[i];
+        if ([item.representedObject isEqual:activeModeId]) {
+          [self.modePopup selectItemAtIndex:i];
+          break;
+        }
+      }
+    });
+  }];
+  [task resume];
+}
+
+- (void)modeSelected:(id)sender {
+  NSString *modeId = self.modePopup.selectedItem.representedObject;
+  if (!modeId.length || !self.hasModeAccess) return;
+
+  NSMutableURLRequest *request = [self authedRequestForPath:@"/api/screensaver/mode"];
+  request.HTTPMethod = @"PATCH";
+  [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+  request.HTTPBody = [NSJSONSerialization dataWithJSONObject:@{ @"mode_id": modeId } options:0 error:nil];
+
+  NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request];
+  [task resume];
+}
+
 #pragma mark - Actions
 
 - (void)primaryButtonPressed:(id)sender {
@@ -177,7 +314,15 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
 - (void)disconnectPressed:(id)sender {
   [self.config.addresses removeAllObjects];
   [self.config synchronize];
+
+  NSUserDefaults *defaults = self.rawDefaults;
+  [defaults removeObjectForKey:kDeviceTokenDefaultsKey];
+  [defaults removeObjectForKey:kOriginDefaultsKey];
+  [defaults synchronize];
+
+  self.modes = nil;
   [self refreshStatus];
+  [self rebuildModeSection];
 }
 
 - (void)uninstallPressed:(id)sender {
@@ -344,9 +489,11 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
   NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
   NSString *token = nil;
   NSString *origin = nil;
+  NSString *deviceToken = nil;
   for (NSURLQueryItem *item in components.queryItems) {
     if ([item.name isEqualToString:@"token"]) token = item.value;
     if ([item.name isEqualToString:@"origin"]) origin = item.value;
+    if ([item.name isEqualToString:@"deviceToken"]) deviceToken = item.value;
   }
   if (!token.length || !origin.length) return;
 
@@ -356,8 +503,17 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
   self.config.shouldFetchAddressList = NO;
   [self.config synchronize];
 
+  NSUserDefaults *defaults = self.rawDefaults;
+  [defaults setObject:origin forKey:kOriginDefaultsKey];
+  if (deviceToken.length) {
+    [defaults setObject:deviceToken forKey:kDeviceTokenDefaultsKey];
+  }
+  [defaults synchronize];
+
   [self dismissSignIn];
   [self refreshStatus];
+  [self rebuildModeSection];
+  if (self.hasModeAccess) [self fetchModes];
 }
 
 #pragma mark - NSWindowDelegate

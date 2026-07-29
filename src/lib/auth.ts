@@ -221,7 +221,7 @@ export async function getAdminUser(request: NextRequest) {
   return getSessionUserByToken(request.cookies.get(ADMIN_SESSION_COOKIE)?.value, 'admin');
 }
 
-async function getWidgetUser(request: NextRequest) {
+async function getBearerUser(request: NextRequest, kind: 'widget' | 'screensaver') {
   const header = request.headers.get('authorization');
   if (!header?.startsWith('Bearer ')) return null;
   const token = header.slice('Bearer '.length).trim();
@@ -233,7 +233,7 @@ async function getWidgetUser(request: NextRequest) {
     .from('app_sessions')
     .select('id, user_id, app_users(id, email, username, name, created_at)')
     .eq('session_hash', hashSessionToken(token))
-    .eq('kind', 'widget')
+    .eq('kind', kind)
     .is('revoked_at', null)
     .gt('expires_at', now)
     .maybeSingle();
@@ -243,13 +243,31 @@ async function getWidgetUser(request: NextRequest) {
   return data.app_users as unknown as AppUser;
 }
 
+/**
+ * Bearer-token auth for the macOS screensaver's companion app — scoped
+ * intentionally narrow (mode list + active mode changes only), separate
+ * from the 'admin' kind so a leaked device token can't do full-admin
+ * things like deleting the account or changing settings.
+ */
+export async function getScreensaverUser(request: NextRequest) {
+  return getBearerUser(request, 'screensaver');
+}
+
+export async function requireScreensaverUser(request: NextRequest) {
+  const user = await getScreensaverUser(request);
+  if (!user) return { user: null, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  return { user, response: null };
+}
+
 export async function getDisplayUser(request: NextRequest) {
   return (
     await getSessionUserByToken(request.cookies.get(DISPLAY_SESSION_COOKIE)?.value, 'display')
   ) ?? (
     await getSessionUserByToken(request.cookies.get(ADMIN_SESSION_COOKIE)?.value, 'admin')
   ) ?? (
-    await getWidgetUser(request)
+    await getBearerUser(request, 'widget')
+  ) ?? (
+    await getBearerUser(request, 'screensaver')
   );
 }
 

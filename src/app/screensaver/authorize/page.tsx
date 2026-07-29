@@ -30,12 +30,16 @@ export default function ScreensaverAuthorizePage() {
         if (!cancelled) setStatus('error');
         return;
       }
-      const { token } = await res.json();
+      const { token, deviceToken } = await res.json();
       if (cancelled) return;
 
       const origin = window.location.origin;
       setShareUrl(`${origin}/s/${token}`);
-      setDeepLink(`${APP_SCHEME}://connect?token=${encodeURIComponent(token)}&origin=${encodeURIComponent(origin)}`);
+      setDeepLink(
+        `${APP_SCHEME}://connect?token=${encodeURIComponent(token)}` +
+        `&origin=${encodeURIComponent(origin)}` +
+        `&deviceToken=${encodeURIComponent(deviceToken)}`
+      );
       setStatus('ready');
     })();
 
