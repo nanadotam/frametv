@@ -282,15 +282,19 @@ static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRi
   cancel.autoresizingMask = NSViewMaxXMargin | NSViewMinYMargin;
   [content addSubview:cancel];
 
+  // Always ephemeral — never a persistent data store. This WKWebView is
+  // hosted inside whatever process presents the config sheet (System
+  // Settings/legacyScreenSaver for the installed .saver's own Options
+  // panel, or the standalone app for its own window), and each of those
+  // has its own separate on-disk WebKit storage that our own cache-clearing
+  // code has no reach into. The only state that should ever persist across
+  // sign-ins is the connected address in ScreenSaverDefaults — the sign-in
+  // form itself should always start fresh, whether this is the first
+  // "Sign In" or "Sign In as a Different Account". A persistent store here
+  // previously caused a stale session from a *different* host process to
+  // silently skip the login form on a supposedly fresh install.
   WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
-  BOOL switchingAccount = self.isConnected;
-  if (switchingAccount) {
-    // "Sign In as a Different Account" must actually prompt for different
-    // credentials — a persistent data store here would silently reuse the
-    // FrameTV session cookie from the previous sign-in and skip straight
-    // back to the same account, which is what was happening before.
-    configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
-  }
+  configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
   WKWebView *webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 480, 720 - 44) configuration:configuration];
   webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   webView.navigationDelegate = self;
