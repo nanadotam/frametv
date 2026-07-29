@@ -5,6 +5,7 @@
 
 #import "FrameTVConfigController.h"
 #import "WVSSAddress.h"
+#import "WVSSLog.h"
 #import "FrameTVLocalPhotoConfig.h"
 #import <WebKit/WebKit.h>
 #import <ScreenSaver/ScreenSaver.h>
@@ -378,6 +379,9 @@ static NSDictionary<NSString *, NSString *> *kModeIdToCategory;
 - (void)localPhotosTogglePressed:(id)sender {
   if (!self.hasModeAccess) return;
 
+  NSArray<NSString *> *previousAlbumIds = self.activeAlbumIds;
+  NSString *previousModeId = self.activeModeId;
+
   BOOL turningOn = ![self.activeAlbumIds isEqualToArray:@[ @"local" ]];
   self.activeAlbumIds = turningOn ? @[ @"local" ] : @[];
   [self.localPhotosToggle setTitle:turningOn ? @"✓ Using My Mac's Photos" : @"Use My Mac's Photos"];
@@ -390,16 +394,15 @@ static NSDictionary<NSString *, NSString *> *kModeIdToCategory;
   self.activeModeId = modeId;
   [self rebuildModeGrid];
 
-  NSMutableURLRequest *request = [self authedRequestForPath:@"/api/screensaver/mode"];
-  request.HTTPMethod = @"PATCH";
-  [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-  request.HTTPBody = [NSJSONSerialization dataWithJSONObject:@{
+  [self patchScreensaverMode:@{
     @"mode_id" : modeId,
     @"active_album_ids" : self.activeAlbumIds,
-  } options:0 error:nil];
-
-  NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request];
-  [task resume];
+  } onFailureRevert:^{
+    self.activeAlbumIds = previousAlbumIds;
+    self.activeModeId = previousModeId;
+    [self rebuildModeGrid];
+    [self rebuildLocalPhotosSection];
+  }];
 }
 
 #pragma mark - Manage-further link
@@ -566,15 +569,50 @@ static NSDictionary<NSString *, NSString *> *kModeIdToCategory;
   NSString *modeId = self.modes[sender.tag][@"id"];
   if (!modeId.length || !self.hasModeAccess) return;
 
+  NSString *previousModeId = self.activeModeId;
   self.activeModeId = modeId;
   [self rebuildModeGrid];
 
+  [self patchScreensaverMode:@{ @"mode_id" : modeId } onFailureRevert:^{
+    self.activeModeId = previousModeId;
+    [self rebuildModeGrid];
+  }];
+}
+
+// Every write to display_state via the screensaver's scoped token goes
+// through here — both the mode grid and the local-photos toggle update the
+// UI optimistically, so a failed request needs to revert that state and
+// tell the user, or the panel silently lies about what's actually live.
+- (void)patchScreensaverMode:(NSDictionary *)body onFailureRevert:(void (^)(void))revertBlock {
   NSMutableURLRequest *request = [self authedRequestForPath:@"/api/screensaver/mode"];
   request.HTTPMethod = @"PATCH";
   [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-  request.HTTPBody = [NSJSONSerialization dataWithJSONObject:@{ @"mode_id": modeId } options:0 error:nil];
+  request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
 
-  NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request];
+  NSURLSessionDataTask *task = [[NSURLSession sharedSession]
+      dataTaskWithRequest:request
+        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    NSInteger statusCode = [response isKindOfClass:[NSHTTPURLResponse class]]
+        ? ((NSHTTPURLResponse *)response).statusCode : 0;
+    BOOL ok = !error && statusCode >= 200 && statusCode < 300;
+    if (ok) return;
+
+    NSString *bodyString = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+    WVSSLog(@"PATCH /api/screensaver/mode failed (status %ld): %@ body=%@",
+            (long)statusCode, error, bodyString);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+      revertBlock();
+      NSAlert *alert = [[NSAlert alloc] init];
+      alert.alertStyle = NSAlertStyleWarning;
+      alert.messageText = @"Couldn't update the display";
+      alert.informativeText = error
+          ? [NSString stringWithFormat:@"Network error: %@", error.localizedDescription]
+          : [NSString stringWithFormat:@"Server rejected the request (status %ld). Try signing in again.",
+                                        (long)statusCode];
+      [alert runModal];
+    });
+  }];
   [task resume];
 }
 
