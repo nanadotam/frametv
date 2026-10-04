@@ -10,7 +10,8 @@ export type ModeId =
   | 'easel'
   | 'eisenhower'
   | 'scripture'
-  | 'vinyl';
+  | 'vinyl'
+  | 'video';
 
 export interface ModeProps {
   config: Record<string, unknown>;

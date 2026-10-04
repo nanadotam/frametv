@@ -467,6 +467,72 @@ function VinylConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange
   );
 }
 
+const VIDEO_HOLD_OPTIONS: { label: string; value: number }[] = [
+  { label: 'Play once', value: 0 },
+  { label: '1 minute',     value: 1 },
+  { label: '5 minutes',     value: 5 },
+  { label: '15 minutes',    value: 15 },
+  { label: '30 minutes',    value: 30 },
+  { label: '1 hour',    value: 60 },
+];
+
+function VideoModeConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
+  const playback = (cfg.playback as string) ?? 'playlist';
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1.5">
+        <Label>Playback</Label>
+        <Select value={playback} onValueChange={(v) => onChange({ ...cfg, playback: v })}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="playlist">Play the album, one after another</SelectItem>
+            <SelectItem value="loop">Loop one video</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Videos come from the active albums. Next/previous on the remote switches clips.
+        </p>
+      </div>
+      {playback === 'playlist' && (
+        <div className="space-y-1.5">
+          <Label>Time on each video</Label>
+          <Select
+            value={String((cfg.holdMinutes as number) ?? 0)}
+            onValueChange={(v) => onChange({ ...cfg, holdMinutes: Number(v) })}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {VIDEO_HOLD_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Anything longer than the clip loops it until the time is up.
+          </p>
+        </div>
+      )}
+      <div className="space-y-1.5">
+        <Label>Fit</Label>
+        <Select value={(cfg.fit as string) ?? 'cover'} onValueChange={(v) => onChange({ ...cfg, fit: v })}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="cover">Fill the screen (crop edges)</SelectItem>
+            <SelectItem value="contain">Show the whole video</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between">
+        <Label>Shuffle videos</Label>
+        <Switch
+          checked={(cfg.shuffle as boolean) ?? false}
+          onCheckedChange={(v) => onChange({ ...cfg, shuffle: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ModeConfigForm({ mode, cfg, onChange }: { mode: Mode; cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
   switch (mode.id) {
     case 'slideshow-single':
@@ -493,6 +559,8 @@ function ModeConfigForm({ mode, cfg, onChange }: { mode: Mode; cfg: Record<strin
       return <ScriptureConfig cfg={cfg} onChange={onChange} />;
     case 'vinyl':
       return <VinylConfig cfg={cfg} onChange={onChange} />;
+    case 'video':
+      return <VideoModeConfig cfg={cfg} onChange={onChange} />;
     default:
       return (
         <div className="space-y-1.5">

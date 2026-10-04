@@ -40,9 +40,13 @@ export async function GET(
       return NextResponse.redirect(driveUrl, { status: 302, headers: cacheHeaders });
     }
 
-    // Uploaded photos: redirect to storage URL
-    const url = photo.thumbnail_path ?? photo.storage_path;
-    if (url) {
+    // Uploaded photos (and video posters, stored in thumbnail_path):
+    // redirect to the public storage URL
+    const path = photo.thumbnail_path ?? photo.storage_path;
+    if (path) {
+      const url = /^https?:\/\//.test(path)
+        ? path
+        : supabase.storage.from('photos').getPublicUrl(path).data.publicUrl;
       return NextResponse.redirect(url, { status: 302, headers: cacheHeaders });
     }
 

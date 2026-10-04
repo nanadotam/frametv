@@ -76,10 +76,13 @@ erDiagram
         text source_type "drive | picker | upload"
         text source_id
         text storage_path
-        text thumbnail_path
+        text thumbnail_path "video poster frame for videos"
         int width
         int height
         text aspect_ratio
+        text mime_type
+        text media_type "image | video"
+        int duration_ms "videos only"
         boolean is_favorite
         jsonb metadata "incl. focal_x, focal_y, focal_detected"
         timestamptz taken_at
@@ -205,3 +208,8 @@ erDiagram
 - **No row-level security**: tables are open (RLS disabled or permissive),
   with authorization enforced entirely in the Next.js API layer via session
   cookies (`admin` vs `display` session kinds).
+- **Videos**: stored as `photos` rows with `media_type = 'video'` so albums
+  double as video collections. The MP4 and its poster JPEG live in the
+  public `photos` storage bucket under `videos/<album_id>/`; `storage_path`
+  is the clip and `thumbnail_path` the poster. Photo modes request images
+  only; the `video` mode requests `mediaType=video`.

@@ -21,6 +21,7 @@ const DEFAULT_MODES = [
   { id: 'eisenhower', name: 'Eisenhower Matrix', description: 'Priority tasks in 4 colored quadrants', is_enabled: true, config: {} },
   { id: 'scripture', name: 'Scripture', description: 'Verse of the day with atmospheric backgrounds', is_enabled: true, config: { translation: 'KJV', highlightSacredWords: true, showCross: true, overlayOpacity: 60, moodMappingOverrides: {} } },
   { id: 'vinyl', name: 'Vinyl', description: 'Spinning vinyl record with Spotify album art', is_enabled: true, config: { background: 'gradient' } },
+  { id: 'video', name: 'Video', description: 'Silent looping clips from your albums', is_enabled: true, config: { playback: 'playlist', shuffle: false, holdMinutes: 0, fit: 'cover' } },
 ];
 
 export function userSettingKey(userId: string, key: string) {

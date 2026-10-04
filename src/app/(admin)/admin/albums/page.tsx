@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { HardDrive, ImageIcon, Trash2, Star, RefreshCw, Plus, FolderOpen } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { HardDrive, ImageIcon, Trash2, Star, RefreshCw, Plus, FolderOpen, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,11 @@ export default function AlbumsPage() {
   const [activeAlbumIds, setActiveAlbumIds] = useState<string[]>([]);
   const [syncing, setSyncing]             = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [newModalOpen, setNewModalOpen]   = useState(false);
+  const [newName, setNewName]             = useState('');
+  const [newLoading, setNewLoading]       = useState(false);
+  const [newError, setNewError]           = useState('');
+  const router = useRouter();
 
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -72,6 +78,31 @@ export default function AlbumsPage() {
       setDriveError('Network error');
     } finally {
       setDriveLoading(false);
+    }
+  };
+
+  // Upload albums hold videos (and, later, uploaded photos) rather than
+  // mirroring a Drive folder.
+  const handleCreateAlbum = async () => {
+    if (!newName.trim()) return;
+    setNewLoading(true);
+    setNewError('');
+    try {
+      const res = await fetch('/api/albums', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim(), source_type: 'upload', display_order: albums.length }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setNewError(json.error ?? 'Failed to create album');
+        return;
+      }
+      router.push(`/admin/albums/${json.album.id}`);
+    } catch {
+      setNewError('Network error');
+    } finally {
+      setNewLoading(false);
     }
   };
 
@@ -134,9 +165,14 @@ export default function AlbumsPage() {
             {visible.length} album{visible.length !== 1 ? 's' : ''} · {activeAlbumIds.length} active on TV
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setDriveModalOpen(true)} className="gap-1.5">
-          <HardDrive size={14} /> Add Drive folder
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setNewModalOpen(true)} className="gap-1.5">
+            <Film size={14} /> New video album
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setDriveModalOpen(true)} className="gap-1.5">
+            <HardDrive size={14} /> Add Drive folder
+          </Button>
+        </div>
       </div>
 
       {/* Active albums callout */}
@@ -252,6 +288,39 @@ export default function AlbumsPage() {
           })}
         </div>
       )}
+
+      {/* New upload album modal */}
+      <Dialog open={newModalOpen} onOpenChange={setNewModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New video album</DialogTitle>
+            <DialogDescription>
+              Create an album, then add videos to it. Videos are compressed in your browser before upload.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label htmlFor="album-name">Album name</Label>
+              <Input
+                id="album-name"
+                placeholder="Graduation"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateAlbum(); }}
+                className="mt-1.5"
+              />
+            </div>
+            {newError && <p className="text-sm text-destructive">{newError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateAlbum} disabled={newLoading || !newName.trim()} className="gap-1.5">
+              <Plus size={14} />
+              {newLoading ? 'Creating…' : 'Create album'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add from Drive modal */}
       <Dialog open={driveModalOpen} onOpenChange={setDriveModalOpen}>

@@ -41,6 +41,9 @@ export interface Photo {
   taken_at: string | null;
   mime_type: string | null;
   bytes: number | null;
+  /** Absent on rows read before migration 017 — treat missing as 'image'. */
+  media_type?: 'image' | 'video';
+  duration_ms?: number | null;
   is_favorite: boolean;
   metadata: Record<string, unknown> | null;
   created_at: string;

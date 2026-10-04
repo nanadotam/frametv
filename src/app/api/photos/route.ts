@@ -12,23 +12,37 @@ export async function GET(request: NextRequest) {
     const albumIds = searchParams.get('albumIds')?.split(',').filter(Boolean) ?? [];
     const limit = parseInt(searchParams.get('limit') ?? '50', 10);
     const offset = parseInt(searchParams.get('offset') ?? '0', 10);
+    // Photo modes get images only; the video mode asks for mediaType=video.
+    const mediaType = searchParams.get('mediaType') === 'video' ? 'video' : 'image';
 
     const supabase = createServiceClient();
 
-    let query = supabase
-      .from('photos')
-      .select('*', { count: 'exact' })
-      .eq('user_id', auth.user.id)
-      .order('taken_at', { ascending: false, nullsFirst: false })
-      .range(offset, offset + limit - 1);
+    const buildQuery = (filterMedia: boolean) => {
+      let query = supabase
+        .from('photos')
+        .select('*', { count: 'exact' })
+        .eq('user_id', auth.user.id)
+        .order('taken_at', { ascending: false, nullsFirst: false })
+        .range(offset, offset + limit - 1);
 
-    if (albumId) {
-      query = query.eq('album_id', albumId);
-    } else if (albumIds.length > 0) {
-      query = query.in('album_id', albumIds);
+      if (albumId) {
+        query = query.eq('album_id', albumId);
+      } else if (albumIds.length > 0) {
+        query = query.in('album_id', albumIds);
+      }
+      if (filterMedia) query = query.eq('media_type', mediaType);
+      return query;
+    };
+
+    let { data: photos, count, error } = await buildQuery(true);
+
+    // 42703 = undefined_column: migration 017 hasn't been applied yet, so
+    // every row is an image. Keep photo modes working until it is.
+    if (error?.code === '42703') {
+      ({ data: photos, count, error } = mediaType === 'image'
+        ? await buildQuery(false)
+        : { data: [], count: 0, error: null });
     }
-
-    const { data: photos, count, error } = await query;
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

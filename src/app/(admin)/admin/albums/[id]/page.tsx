@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, RefreshCw, Star, Trash2, RotateCw, Info, X } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Star, Trash2, RotateCw, Info, X, Film, Play } from 'lucide-react';
 import { Button } from '@/components/admin/Button';
 import type { Album, Photo } from '@/types/db';
+import { uploadVideo, type VideoUploadStage } from '@/lib/video/upload';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,18 @@ function formatBytes(bytes: number | null): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDuration(ms: number | null | undefined): string {
+  if (!ms) return '';
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function uploadLabel(s: VideoUploadStage): string {
+  if (s.stage === 'compressing') return `Compressing… ${Math.round(s.progress * 100)}%`;
+  if (s.stage === 'uploading') return 'Uploading…';
+  return 'Saving…';
 }
 
 function formatDate(iso: string | null): string {
@@ -41,6 +54,7 @@ function InfoModal({ photo, onClose }: { photo: Photo; onClose: () => void }) {
     { label: 'File size',     value: formatBytes(photo.bytes) },
     { label: 'MIME type',     value: photo.mime_type ?? '—' },
     { label: 'Source',        value: photo.source_type },
+    ...(photo.media_type === 'video' ? [{ label: 'Duration', value: formatDuration(photo.duration_ms) || '—' }] : []),
     { label: 'Taken',         value: formatDate(photo.taken_at) },
     { label: 'Added',         value: formatDate(photo.created_at) },
     { label: 'Rotation',      value: rotation ? `${rotation}°` : 'None' },
@@ -60,7 +74,7 @@ function InfoModal({ photo, onClose }: { photo: Photo; onClose: () => void }) {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <p className="text-sm font-semibold text-fg">Photo Info</p>
+          <p className="text-sm font-semibold text-fg">{photo.media_type === 'video' ? 'Video Info' : 'Photo Info'}</p>
           <button
             onClick={onClose}
             className="w-7 h-7 rounded-lg flex items-center justify-center text-fg-muted hover:text-fg hover:bg-fg/10 transition-colors"
@@ -105,6 +119,11 @@ export default function AlbumPhotosPage() {
   const [syncing, setSyncing] = useState(false);
   const [infoPhoto, setInfoPhoto] = useState<Photo | null>(null);
   const [rotatingId, setRotatingId] = useState<string | null>(null);
+  const [videoUpload, setVideoUpload] = useState<VideoUploadStage | null>(null);
+  const [uploadError, setUploadError] = useState('');
+  const videoInput = useRef<HTMLInputElement>(null);
+
+  const videoCount = photos.filter((p) => p.media_type === 'video').length;
 
   const fetchData = useCallback(async () => {
     try {
@@ -159,6 +178,23 @@ export default function AlbumPhotosPage() {
     setRotatingId(null);
   };
 
+  const handleVideoFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploadError('');
+    try {
+      // One at a time — each compression already saturates the encoder
+      for (const file of Array.from(files)) {
+        const video = await uploadVideo(file, id, setVideoUpload);
+        setPhotos((prev) => [...prev, video]);
+      }
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Video upload failed');
+    } finally {
+      setVideoUpload(null);
+      if (videoInput.current) videoInput.current.value = '';
+    }
+  };
+
   const syncDrive = async () => {
     setSyncing(true);
     try {
@@ -183,8 +219,26 @@ export default function AlbumPhotosPage() {
           <h1 className="text-xl font-semibold font-display text-fg truncate">
             {loading ? 'Loading…' : (album?.name ?? 'Album')}
           </h1>
-          <p className="text-xs text-fg-muted">{photos.length} photos</p>
+          <p className="text-xs text-fg-muted">
+            {photos.length - videoCount} photos{videoCount > 0 && ` · ${videoCount} video${videoCount !== 1 ? 's' : ''}`}
+          </p>
         </div>
+        <input
+          ref={videoInput}
+          type="file"
+          accept="video/*"
+          multiple
+          className="hidden"
+          onChange={(e) => handleVideoFiles(e.target.files)}
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => videoInput.current?.click()}
+          loading={videoUpload !== null}
+        >
+          <Film size={15} /> {videoUpload ? uploadLabel(videoUpload) : 'Add video'}
+        </Button>
         {album?.source_type === 'drive' && (
           <Button size="sm" variant="secondary" onClick={syncDrive} loading={syncing}>
             <RefreshCw size={15} /> Sync from Drive
@@ -192,15 +246,22 @@ export default function AlbumPhotosPage() {
         )}
       </div>
 
+      {uploadError && (
+        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          {uploadError}
+        </div>
+      )}
+
       {/* Photo grid */}
       {loading ? (
         <div className="text-fg-muted text-sm text-center py-12">Loading photos…</div>
       ) : photos.length === 0 ? (
-        <div className="text-fg-muted text-sm text-center py-12">No photos in this album.</div>
+        <div className="text-fg-muted text-sm text-center py-12">Nothing in this album yet.</div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {photos.map((photo) => {
-            const rotation = getRotation(photo);
+            const isVideo = photo.media_type === 'video';
+            const rotation = isVideo ? 0 : getRotation(photo);
             const isRotating = rotatingId === photo.id;
             return (
               <div key={photo.id} className="relative group rounded-xl overflow-hidden bg-bg-card aspect-square">
@@ -249,7 +310,7 @@ export default function AlbumPhotosPage() {
                     >
                       <Star size={15} fill={photo.is_favorite ? 'currentColor' : 'none'} />
                     </button>
-                    <button
+                    {!isVideo && <button
                       onClick={(e) => rotatePhoto(photo, e)}
                       disabled={isRotating}
                       className="w-9 h-9 rounded-lg flex items-center justify-center bg-black/55 text-white hover:bg-white/20 transition-colors backdrop-blur-sm disabled:opacity-50"
@@ -259,7 +320,7 @@ export default function AlbumPhotosPage() {
                         size={15}
                         className={isRotating ? 'animate-spin' : ''}
                       />
-                    </button>
+                    </button>}
                   </div>
                   {/* Right: delete */}
                   <button
@@ -270,6 +331,13 @@ export default function AlbumPhotosPage() {
                     <Trash2 size={15} />
                   </button>
                 </div>
+
+                {/* Video badge */}
+                {isVideo && (
+                  <div className="absolute bottom-2 right-2 group-hover:opacity-0 transition-opacity flex items-center gap-1 text-[10px] font-semibold text-white bg-black/55 rounded px-1.5 py-0.5 backdrop-blur-sm">
+                    <Play size={10} fill="currentColor" /> {formatDuration(photo.duration_ms)}
+                  </div>
+                )}
 
                 {/* Favorite badge */}
                 {photo.is_favorite && (

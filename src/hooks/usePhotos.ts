@@ -6,10 +6,13 @@ import { getRealtimeClient } from '@/lib/supabase/realtime';
 import type { Photo } from '@/types/db';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-async function fetchPhotos(albumIds?: string[]): Promise<Photo[]> {
+export type MediaType = 'image' | 'video';
+
+async function fetchPhotos(albumIds: string[] | undefined, mediaType: MediaType): Promise<Photo[]> {
   const params = new URLSearchParams();
   params.set('limit', '1000');
   if (albumIds?.length) params.set('albumIds', albumIds.join(','));
+  if (mediaType !== 'image') params.set('mediaType', mediaType);
   const res = await fetch(`/api/photos?${params.toString()}`);
   if (!res.ok) throw new Error('Unable to load photos');
   const json = await res.json();
@@ -55,13 +58,13 @@ function subscribeToPhotoChanges(albumKey: string, onChange: () => void): () => 
   };
 }
 
-export function usePhotos(albumIds?: string[]): Photo[] {
+export function usePhotos(albumIds?: string[], mediaType: MediaType = 'image'): Photo[] {
   const queryClient = useQueryClient();
   const albumKey = albumIds?.join(',') ?? '';
-  const queryKey = ['photos', albumKey] as const;
+  const queryKey = ['photos', albumKey, mediaType] as const;
   const { data } = useQuery({
     queryKey,
-    queryFn: () => fetchPhotos(albumIds),
+    queryFn: () => fetchPhotos(albumIds, mediaType),
     staleTime: 30_000,
     refetchInterval: 60_000,
   });

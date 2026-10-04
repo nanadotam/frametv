@@ -63,7 +63,7 @@ const GRID_CELL_OPTIONS = [
 const MODES_WITH_SETTINGS = new Set([
   'slideshow-single', 'slideshow-grid', 'pinterest', 'scrapbook',
   'clock-text', 'flipboard', 'unsplash-mood', 'easel',
-  'vinyl', 'scripture',
+  'vinyl', 'scripture', 'video',
 ]);
 
 const TV_SAFE_MODES = new Set([
@@ -503,6 +503,62 @@ function VinylQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) =>
   );
 }
 
+const VIDEO_HOLD_OPTIONS = [
+  { label: 'Play once', value: 0 },
+  { label: '1 min',     value: 1 },
+  { label: '5 min',     value: 5 },
+  { label: '15 min',    value: 15 },
+  { label: '30 min',    value: 30 },
+  { label: '1 hour',    value: 60 },
+];
+
+function VideoQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) => void }) {
+  const playback = (cfg.playback as string) ?? 'playlist';
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Playback</p>
+        <ChipRow
+          options={[
+            { label: 'Play album', value: 'playlist' },
+            { label: 'Loop one',   value: 'loop' },
+          ]}
+          value={playback}
+          onSelect={(v) => onChange({ ...cfg, playback: v })}
+        />
+      </div>
+      {playback === 'playlist' && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Each video</p>
+          <ChipRow
+            options={VIDEO_HOLD_OPTIONS}
+            value={(cfg.holdMinutes as number) ?? 0}
+            onSelect={(v) => onChange({ ...cfg, holdMinutes: v })}
+          />
+        </div>
+      )}
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Fit</p>
+        <ChipRow
+          options={[
+            { label: 'Fill screen', value: 'cover' },
+            { label: 'Show whole',  value: 'contain' },
+          ]}
+          value={(cfg.fit as string) ?? 'cover'}
+          onSelect={(v) => onChange({ ...cfg, fit: v })}
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Shuffle</span>
+        <Switch
+          checked={(cfg.shuffle as boolean) ?? false}
+          onCheckedChange={(v) => onChange({ ...cfg, shuffle: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ScriptureQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) => void }) {
   return (
     <div className="space-y-4">
@@ -558,6 +614,8 @@ function QuickSettingsContent({
       return <VinylQuickSettings cfg={cfg} onChange={onChange} />;
     case 'scripture':
       return <ScriptureQuickSettings cfg={cfg} onChange={onChange} />;
+    case 'video':
+      return <VideoQuickSettings cfg={cfg} onChange={onChange} />;
     case 'coverflow':
     case 'eisenhower':
       return (

@@ -10,6 +10,24 @@ See `VERSIONING.md` for how versions get bumped and tagged.
 
 ## [Unreleased]
 
+### Added
+- Video mode: silent, looping clips from your albums with the usual
+  overlays. Plays an album back to back or loops one clip, with optional
+  shuffle, "time on each video" hold, and fill/fit framing.
+- Video albums: "New video album" on the Albums page and "Add video" on an
+  album. Videos are compressed in the browser (≤1080p H.264, no audio,
+  fast start) and uploaded straight to Supabase Storage — a 122 MB 4K clip
+  becomes ~6 MB.
+
+### Fixed
+- Uploaded-photo thumbnails redirected to a bare storage path instead of a
+  public URL.
+
+### Changed
+- Photo modes now load images only (`/api/photos` filters by `media_type`).
+- Requires migration `017_video_mode.sql` (adds `photos.media_type`,
+  `photos.duration_ms`, the `photos` storage bucket and the `video` mode).
+
 ## [0.1.0] - 2026-07-29
 
 Baseline tag — first version-tracked point in the project's history.

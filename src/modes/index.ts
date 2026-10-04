@@ -63,6 +63,11 @@ const VinylMode = dynamic(
   { ssr: false }
 );
 
+const VideoMode = dynamic(
+  () => import('./video/VideoMode'),
+  { ssr: false }
+);
+
 export const MODES: Record<ModeId, ComponentType<ModeProps>> = {
   'slideshow-single': SlideshowSingleMode,
   'slideshow-grid': SlideshowGridMode,
@@ -76,4 +81,5 @@ export const MODES: Record<ModeId, ComponentType<ModeProps>> = {
   eisenhower: EisenhowerMode,
   scripture: ScriptureMode,
   vinyl: VinylMode,
+  video: VideoMode,
 };

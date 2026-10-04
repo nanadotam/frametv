@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { usePhotos } from './usePhotos';
+import { usePhotos, type MediaType } from './usePhotos';
 import type { Photo } from '@/types/db';
 
 interface UsePhotoRotationOptions {
   albumIds?: string[];
   shuffle?: boolean;
+  mediaType?: MediaType;
 }
 
 export interface PhotoRotationResult {
@@ -33,8 +34,9 @@ function shuffleArray<T>(arr: T[]): T[] {
 export function usePhotoRotation({
   albumIds,
   shuffle = false,
+  mediaType = 'image',
 }: UsePhotoRotationOptions = {}): PhotoRotationResult {
-  const raw = usePhotos(albumIds);
+  const raw = usePhotos(albumIds, mediaType);
   const [index, setIndex] = useState(0);
   // Bump this counter to force a fresh shuffle without changing raw or shuffle flag
   const [shuffleKey, setShuffleKey] = useState(0);
