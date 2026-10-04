@@ -27,6 +27,9 @@ See `VERSIONING.md` for how versions get bumped and tagged.
     weave, exposure flicker, scratches and dust.
   - **Grid** — 3–6 clips playing at once in the photo grid's mosaic
     layouts; repeats of the same clip start staggered.
+- Multimodal Pinterest and Grid: a "Multimodal" switch mixes the active
+  albums' videos in among the stills. Video tiles show their poster, fade
+  the clip in once playing, and only download/play while on screen.
 
 ### Fixed
 - Uploaded-photo thumbnails redirected to a bare storage path instead of a

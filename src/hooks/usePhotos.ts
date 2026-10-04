@@ -6,7 +6,8 @@ import { getRealtimeClient } from '@/lib/supabase/realtime';
 import type { Photo } from '@/types/db';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-export type MediaType = 'image' | 'video';
+/** 'all' mixes stills and videos (multimodal Pinterest/Grid). */
+export type MediaType = 'image' | 'video' | 'all';
 
 async function fetchPhotos(albumIds: string[] | undefined, mediaType: MediaType): Promise<Photo[]> {
   const params = new URLSearchParams();

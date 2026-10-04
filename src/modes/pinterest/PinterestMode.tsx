@@ -6,6 +6,7 @@ import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { getPhotoRotation } from '@/lib/photoRotation';
 import type { Photo } from '@/types/db';
 import { photoThumbUrl, getConnectionSpeed, IMG_SIZES } from '@/lib/image-urls';
+import InlineVideo from '@/components/display/InlineVideo';
 
 interface PinterestConfig {
   rows?: number;
@@ -13,6 +14,8 @@ interface PinterestConfig {
   direction?: 'left' | 'right';
   cornerRadius?: number;
   gap?: number;
+  /** Mix the active albums' videos in among the stills */
+  multimodal?: boolean;
 }
 
 // 4× copies ensures seamless looping regardless of strip width.
@@ -53,11 +56,15 @@ const TrackPhoto = memo(function TrackPhoto({
   photo,
   rowHeightPx,
   cornerRadius,
+  isPaused,
 }: {
   photo: Photo;
   rowHeightPx: number;
   cornerRadius: number;
+  isPaused: boolean;
 }) {
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const isVideo = photo.media_type === 'video' && Boolean(photo.storage_path);
   const [naturalWidth, setNaturalWidth] = useState<number | null>(photo.width ?? null);
   const [naturalHeight, setNaturalHeight] = useState<number | null>(photo.height ?? null);
   const [mainLoaded, setMainLoaded] = useState(false);
@@ -73,6 +80,7 @@ const TrackPhoto = memo(function TrackPhoto({
   // If the display-quality image was preloaded it resolves instantly with no LQIP flash.
   useEffect(() => {
     setMainLoaded(false);
+    setVideoPlaying(false);
     setNaturalWidth(photo.width ?? null);
     setNaturalHeight(photo.height ?? null);
     setDisplaySrc(photoThumbUrl(photo, IMG_SIZES.thumb_small));
@@ -156,6 +164,24 @@ const TrackPhoto = memo(function TrackPhoto({
           transition: 'opacity 0.4s ease',
         }}
       />
+      {/* Videos: the poster above holds the slot; the clip fades in over it */}
+      {isVideo && (
+        <InlineVideo
+          key={photo.id}
+          src={photo.storage_path!}
+          isPaused={isPaused}
+          onPlaying={() => setVideoPlaying(true)}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            opacity: videoPlaying ? 1 : 0,
+            transition: 'opacity 0.6s ease',
+          }}
+        />
+      )}
     </div>
   );
 });
@@ -184,8 +210,13 @@ export default function PinterestMode({
         : 'left';
   const cornerRadius = cfg.cornerRadius ?? 24;
   const gap = cfg.gap ?? 12;
+  const multimodal = cfg.multimodal ?? false;
 
-  const { photos: allPhotos } = usePhotoRotation({ albumIds, shuffle: true });
+  const { photos: allPhotos } = usePhotoRotation({
+    albumIds,
+    shuffle: true,
+    mediaType: multimodal ? 'all' : 'image',
+  });
   const [viewportH, setViewportH] = useState(getViewportHeight);
 
   useEffect(() => {
@@ -442,6 +473,7 @@ export default function PinterestMode({
                   photo={photo}
                   rowHeightPx={rowHeightPx}
                   cornerRadius={cornerRadius}
+                  isPaused={isPaused}
                 />
               ))}
             </div>

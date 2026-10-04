@@ -9,12 +9,15 @@ import { getPhotoRotation, cellRotationStyle } from '@/lib/photoRotation';
 import { seedFocalCache, getFocal, focalToObjectPosition, detectAndPersistFocal } from '@/lib/focalPoint';
 import type { Photo } from '@/types/db';
 import { photoThumbUrl, photoFullUrl, getConnectionSpeed, IMG_SIZES } from '@/lib/image-urls';
+import InlineVideo from '@/components/display/InlineVideo';
 
 interface SlideshowGridConfig {
   cellIntervalSeconds?: number;
   focusMode?: boolean;
   staggerMs?: number;
   maxCells?: number;
+  /** Mix the active albums' videos in among the stills */
+  multimodal?: boolean;
 }
 
 interface CellState {
@@ -119,6 +122,25 @@ function useProgressiveSrc(photo: Photo | undefined) {
   return src;
 }
 
+/** Video cell: poster holds the frame, the clip fades in once playing.
+ *  No Ken Burns — the footage already moves. */
+function VideoCell({ photo, isPaused }: { photo: Photo; isPaused: boolean }) {
+  const [playing, setPlaying] = useState(false);
+  const poster = photoThumbUrl(photo, IMG_SIZES.thumb_large);
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: '#111', overflow: 'hidden' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={poster} alt="" style={FILL} />
+      <InlineVideo
+        src={photo.storage_path!}
+        isPaused={isPaused}
+        onPlaying={() => setPlaying(true)}
+        style={{ ...FILL, zIndex: 1, opacity: playing ? 1 : 0, transition: 'opacity 0.6s ease' }}
+      />
+    </div>
+  );
+}
+
 function PhotoCell({ photo, dwellMs, kbIdx }: {
   photo: Photo | null;
   dwellMs: number;
@@ -182,7 +204,7 @@ function PhotoCell({ photo, dwellMs, kbIdx }: {
 }
 
 // Per-cell transitions — picked from pool using flipKey for variety
-function GridCell({ cell, dwellMs }: { cell: CellState; dwellMs: number }) {
+function GridCell({ cell, dwellMs, isPaused }: { cell: CellState; dwellMs: number; isPaused: boolean }) {
   const tIdx = Math.abs(cell.flipKey) % CELL_TRANSITIONS.length;
   const t = CELL_TRANSITIONS[tIdx];
   return (
@@ -197,7 +219,9 @@ function GridCell({ cell, dwellMs }: { cell: CellState; dwellMs: number }) {
           exit={t.exit as never}
           transition={t.transition as never}
         >
-          <PhotoCell photo={cell.photo} dwellMs={dwellMs} kbIdx={tIdx} />
+          {cell.photo?.media_type === 'video' && cell.photo.storage_path
+            ? <VideoCell photo={cell.photo} isPaused={isPaused} />
+            : <PhotoCell photo={cell.photo} dwellMs={dwellMs} kbIdx={tIdx} />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -217,8 +241,13 @@ export default function SlideshowGridMode({
   const focusMode = cfg.focusMode ?? false;
   const staggerMs = cfg.staggerMs ?? 1000;
   const configuredMaxCells = Math.max(3, Math.min(cfg.maxCells ?? 6, 12));
+  const multimodal = cfg.multimodal ?? false;
 
-  const { photos } = usePhotoRotation({ albumIds, shuffle: true });
+  const { photos } = usePhotoRotation({
+    albumIds,
+    shuffle: true,
+    mediaType: multimodal ? 'all' : 'image',
+  });
   const maxCells  = Math.min(photos.length, focusMode ? 1 : configuredMaxCells);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [cells,  setCells]  = useState<CellState[]>([]);
@@ -435,7 +464,7 @@ export default function SlideshowGridMode({
                 background: '#000',
               }}
             >
-              {cells[i] && <GridCell cell={cells[i]} dwellMs={cellInterval} />}
+              {cells[i] && <GridCell cell={cells[i]} dwellMs={cellInterval} isPaused={isPaused} />}
             </motion.div>
           ))}
         </AnimatePresence>

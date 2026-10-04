@@ -142,6 +142,16 @@ function GridConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange:
           onCheckedChange={(v) => onChange({ ...cfg, shuffle: v })}
         />
       </div>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <Label>Multimodal</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">Mix videos from the active albums in with the photos.</p>
+        </div>
+        <Switch
+          checked={(cfg.multimodal as boolean) ?? false}
+          onCheckedChange={(v) => onChange({ ...cfg, multimodal: v })}
+        />
+      </div>
     </div>
   );
 }
@@ -194,6 +204,16 @@ function PinterestConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
         <Switch
           checked={direction === 'right'}
           onCheckedChange={(v) => onChange({ ...cfg, direction: v ? 'right' : 'left', reverse_direction: undefined })}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <Label>Multimodal</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">Mix videos from the active albums in with the photos.</p>
+        </div>
+        <Switch
+          checked={(cfg.multimodal as boolean) ?? false}
+          onCheckedChange={(v) => onChange({ ...cfg, multimodal: v })}
         />
       </div>
     </div>

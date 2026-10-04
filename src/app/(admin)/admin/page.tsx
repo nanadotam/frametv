@@ -237,6 +237,16 @@ function GridQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) => 
           onCheckedChange={(v) => onChange({ ...cfg, shuffle: v })}
         />
       </div>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <span className="text-sm font-medium">Multimodal</span>
+          <p className="text-xs text-muted-foreground mt-0.5">Mix in videos from the active albums.</p>
+        </div>
+        <Switch
+          checked={(cfg.multimodal as boolean) ?? false}
+          onCheckedChange={(v) => onChange({ ...cfg, multimodal: v })}
+        />
+      </div>
     </div>
   );
 }
@@ -347,6 +357,16 @@ function PinterestQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg
         <Switch
           checked={direction === 'right'}
           onCheckedChange={(v) => onChange({ ...cfg, direction: v ? 'right' : 'left', reverse_direction: undefined })}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <span className="text-sm font-medium">Multimodal</span>
+          <p className="text-xs text-muted-foreground mt-0.5">Mix in videos from the active albums.</p>
+        </div>
+        <Switch
+          checked={(cfg.multimodal as boolean) ?? false}
+          onCheckedChange={(v) => onChange({ ...cfg, multimodal: v })}
         />
       </div>
     </div>

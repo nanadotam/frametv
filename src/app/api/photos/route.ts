@@ -12,8 +12,10 @@ export async function GET(request: NextRequest) {
     const albumIds = searchParams.get('albumIds')?.split(',').filter(Boolean) ?? [];
     const limit = parseInt(searchParams.get('limit') ?? '50', 10);
     const offset = parseInt(searchParams.get('offset') ?? '0', 10);
-    // Photo modes get images only; the video mode asks for mediaType=video.
-    const mediaType = searchParams.get('mediaType') === 'video' ? 'video' : 'image';
+    // Photo modes get images only; the video mode asks for mediaType=video;
+    // multimodal Pinterest/Grid ask for mediaType=all.
+    const mediaParam = searchParams.get('mediaType');
+    const mediaType = mediaParam === 'video' || mediaParam === 'all' ? mediaParam : 'image';
 
     const supabase = createServiceClient();
 
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
       } else if (albumIds.length > 0) {
         query = query.in('album_id', albumIds);
       }
-      if (filterMedia) query = query.eq('media_type', mediaType);
+      if (filterMedia && mediaType !== 'all') query = query.eq('media_type', mediaType);
       return query;
     };
 
@@ -39,7 +41,7 @@ export async function GET(request: NextRequest) {
     // 42703 = undefined_column: migration 017 hasn't been applied yet, so
     // every row is an image. Keep photo modes working until it is.
     if (error?.code === '42703') {
-      ({ data: photos, count, error } = mediaType === 'image'
+      ({ data: photos, count, error } = mediaType !== 'video'
         ? await buildQuery(false)
         : { data: [], count: 0, error: null });
     }
