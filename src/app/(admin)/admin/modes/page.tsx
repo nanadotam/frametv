@@ -476,10 +476,54 @@ const VIDEO_HOLD_OPTIONS: { label: string; value: number }[] = [
   { label: '1 hour',    value: 60 },
 ];
 
+const VIDEO_TEMPLATES: { value: string; label: string; hint: string }[] = [
+  { value: 'normal',  label: 'Normal',  hint: 'The clip as recorded.' },
+  { value: 'crt',     label: 'Old TV',  hint: 'Curved tube, scanlines and a VCR on-screen display.' },
+  { value: 'fisheye', label: 'Fisheye', hint: 'A round wide-angle lens with heavy barrel distortion.' },
+  { value: 'film',    label: 'Film',    hint: 'Thick cinema bars, grain, warm stock and gate weave.' },
+  { value: 'grid',    label: 'Grid',    hint: 'Several clips playing at once in a mosaic.' },
+];
+
 function VideoModeConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (cfg: Record<string, unknown>) => void }) {
   const playback = (cfg.playback as string) ?? 'playlist';
+  const template = (cfg.template as string) ?? 'normal';
+  const isGrid = template === 'grid';
   return (
     <div className="space-y-5">
+      <div className="space-y-1.5">
+        <Label>Template</Label>
+        <Select value={template} onValueChange={(v) => onChange({ ...cfg, template: v })}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {VIDEO_TEMPLATES.map((t) => (
+              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {VIDEO_TEMPLATES.find((t) => t.value === template)?.hint}
+        </p>
+      </div>
+      {isGrid && (
+        <div className="space-y-1.5">
+          <Label>Videos on screen</Label>
+          <Select
+            value={String((cfg.gridCells as number) ?? 4)}
+            onValueChange={(v) => onChange({ ...cfg, gridCells: Number(v) })}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {[3, 4, 5, 6].map((n) => (
+                <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Each tile plays its own clip. Fewer clips than tiles? Repeats start at different points.
+          </p>
+        </div>
+      )}
+      {!isGrid && <>
       <div className="space-y-1.5">
         <Label>Playback</Label>
         <Select value={playback} onValueChange={(v) => onChange({ ...cfg, playback: v })}>
@@ -512,16 +556,19 @@ function VideoModeConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
           </p>
         </div>
       )}
-      <div className="space-y-1.5">
-        <Label>Fit</Label>
-        <Select value={(cfg.fit as string) ?? 'cover'} onValueChange={(v) => onChange({ ...cfg, fit: v })}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="cover">Fill the screen (crop edges)</SelectItem>
-            <SelectItem value="contain">Show the whole video</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      {template === 'normal' && (
+        <div className="space-y-1.5">
+          <Label>Fit</Label>
+          <Select value={(cfg.fit as string) ?? 'cover'} onValueChange={(v) => onChange({ ...cfg, fit: v })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="cover">Fill the screen (crop edges)</SelectItem>
+              <SelectItem value="contain">Show the whole video</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      </>}
       <div className="flex items-center justify-between">
         <Label>Shuffle videos</Label>
         <Switch

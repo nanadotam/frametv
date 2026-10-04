@@ -514,8 +514,35 @@ const VIDEO_HOLD_OPTIONS = [
 
 function VideoQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) => void }) {
   const playback = (cfg.playback as string) ?? 'playlist';
+  const template = (cfg.template as string) ?? 'normal';
+  const isGrid = template === 'grid';
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Template</p>
+        <ChipRow
+          options={[
+            { label: 'Normal',  value: 'normal' },
+            { label: 'Old TV',  value: 'crt' },
+            { label: 'Fisheye', value: 'fisheye' },
+            { label: 'Film',    value: 'film' },
+            { label: 'Grid',    value: 'grid' },
+          ]}
+          value={template}
+          onSelect={(v) => onChange({ ...cfg, template: v })}
+        />
+      </div>
+      {isGrid && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Videos on screen</p>
+          <ChipRow
+            options={[3, 4, 5, 6].map((n) => ({ label: String(n), value: n }))}
+            value={(cfg.gridCells as number) ?? 4}
+            onSelect={(v) => onChange({ ...cfg, gridCells: v })}
+          />
+        </div>
+      )}
+      {!isGrid && <>
       <div className="space-y-2">
         <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Playback</p>
         <ChipRow
@@ -537,17 +564,20 @@ function VideoQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) =>
           />
         </div>
       )}
-      <div className="space-y-2">
-        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Fit</p>
-        <ChipRow
-          options={[
-            { label: 'Fill screen', value: 'cover' },
-            { label: 'Show whole',  value: 'contain' },
-          ]}
-          value={(cfg.fit as string) ?? 'cover'}
-          onSelect={(v) => onChange({ ...cfg, fit: v })}
-        />
-      </div>
+      {template === 'normal' && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Fit</p>
+          <ChipRow
+            options={[
+              { label: 'Fill screen', value: 'cover' },
+              { label: 'Show whole',  value: 'contain' },
+            ]}
+            value={(cfg.fit as string) ?? 'cover'}
+            onSelect={(v) => onChange({ ...cfg, fit: v })}
+          />
+        </div>
+      )}
+      </>}
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Shuffle</span>
         <Switch

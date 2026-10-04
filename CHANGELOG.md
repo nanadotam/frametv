@@ -18,6 +18,15 @@ See `VERSIONING.md` for how versions get bumped and tagged.
   album. Videos are compressed in the browser (≤1080p H.264, no audio,
   fast start) and uploaded straight to Supabase Storage — a 122 MB 4K clip
   becomes ~6 MB.
+- Video templates, rendered on the GPU (WebGL) with CSS fallbacks:
+  - **Old TV** — curved tube, scanlines, aperture grille, colour bleed,
+    rolling band and a VCR "PLAY ▶" / date-stamp on-screen display.
+  - **Fisheye** — round wide-angle lens with barrel distortion, fringing and
+    a dark rim.
+  - **Film** — 2.39:1 scope bars, 24 fps grain, faded warm stock, gate
+    weave, exposure flicker, scratches and dust.
+  - **Grid** — 3–6 clips playing at once in the photo grid's mosaic
+    layouts; repeats of the same clip start staggered.
 
 ### Fixed
 - Uploaded-photo thumbnails redirected to a bare storage path instead of a
