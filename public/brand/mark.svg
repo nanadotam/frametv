@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    FrameTV mark — a cream gallery frame that is also a screen (power LED),
+    showing a dusk landscape: "your photos, living on the wall".
+    Palette: ink #0B0C0B · cream #F2EDE2 · green #0AC46E · sun #FFC96B
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1A1C1A"/>
+      <stop offset="1" stop-color="#0B0C0B"/>
+    </linearGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B3A26"/>
+      <stop offset="0.62" stop-color="#11744A"/>
+      <stop offset="1" stop-color="#2FD58A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFE3A3" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#FFE3A3" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="screen">
+      <rect x="106" y="154" width="300" height="204" rx="12"/>
+    </clipPath>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#tile)"/>
+
+  <!-- Frame -->
+  <rect x="76" y="124" width="360" height="264" rx="30" fill="#F2EDE2"/>
+
+  <!-- Artwork -->
+  <g clip-path="url(#screen)">
+    <rect x="106" y="154" width="300" height="204" fill="url(#sky)"/>
+    <circle cx="322" cy="226" r="62" fill="url(#glow)"/>
+    <circle cx="322" cy="226" r="30" fill="#FFC96B"/>
+    <path d="M106 300 C 160 262, 214 262, 262 290 S 360 318, 406 280 L 406 358 L 106 358 Z" fill="#0A9A57"/>
+    <path d="M106 330 C 170 300, 240 304, 300 326 S 380 344, 406 324 L 406 358 L 106 358 Z" fill="#06512F"/>
+  </g>
+
+  <!-- Power LED -->
+  <circle cx="256" cy="373" r="5.5" fill="#0AC46E"/>
+</svg>

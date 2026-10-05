@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- FrameTV mark, simplified for 16–48px (favicons, browser tabs):
+       bigger frame, bigger sun, one hill, no glow or LED. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B3A26"/>
+      <stop offset="1" stop-color="#18A866"/>
+    </linearGradient>
+    <clipPath id="screen">
+      <rect x="84" y="132" width="344" height="248" rx="14"/>
+    </clipPath>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="#0E0F0E"/>
+  <rect x="40" y="88" width="432" height="336" rx="44" fill="#F2EDE2"/>
+  <g clip-path="url(#screen)">
+    <rect x="84" y="132" width="344" height="248" fill="url(#sky)"/>
+    <circle cx="330" cy="214" r="46" fill="#FFC96B"/>
+    <path d="M84 318 C 170 262, 270 270, 428 314 L 428 380 L 84 380 Z" fill="#06512F"/>
+  </g>
+</svg>

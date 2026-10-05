@@ -61,6 +61,7 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Run on all routes except static files and _next internals
-    '/((?!_next/static|_next/image|favicon.ico|icons/|manifest.json|sw.js).*)',
+    // and public brand/SEO files (crawlers fetch these logged-out)
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|opengraph-image|twitter-image|robots.txt|sitemap.xml|brand/|icons/|icon-|manifest.json|sw.js).*)',
   ],
 };

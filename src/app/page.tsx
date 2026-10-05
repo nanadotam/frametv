@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Tv, Settings, Monitor, Zap, Images, LayoutGrid, CalendarDays, LogOut } from 'lucide-react';
+import { Settings, Monitor, Zap, Images, LayoutGrid, CalendarDays, LogOut } from 'lucide-react';
+import BrandMark from '@/components/BrandMark';
 
 export default function Home() {
   const [isSignedIn, setIsSignedIn] = useState(false);
@@ -25,9 +26,7 @@ export default function Home() {
       {/* Header */}
       <header className="flex items-center justify-between px-6 md:px-10 py-4 border-b border-border">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-md shadow-primary/30">
-            <Tv size={18} className="text-primary-foreground" />
-          </div>
+          <BrandMark size={40} className="shrink-0 drop-shadow-md" />
           <div>
             <p className="font-bold text-lg leading-none tracking-tight">FrameTV</p>
             <p className="text-xs text-muted-foreground mt-0.5">Choose a view</p>

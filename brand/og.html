@@ -1,0 +1,140 @@
+<!doctype html>
+<!-- FrameTV Open Graph / social card source. Rendered to
+     src/app/opengraph-image.png (1200×630) by brand/generate.sh. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=block" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0B0C0B;
+    --cream: #F2EDE2;
+    --green: #0AC46E;
+    --sun: #FFC96B;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(900px 520px at 88% 110%, rgba(10, 196, 110, 0.30), transparent 60%),
+      radial-gradient(600px 400px at 0% 0%, rgba(255, 201, 107, 0.08), transparent 70%),
+      var(--ink);
+    color: var(--cream);
+    font-family: 'DM Sans', sans-serif;
+    position: relative;
+  }
+  /* Fine grain so the gradients don't band */
+  body::after {
+    content: '';
+    position: absolute; inset: 0;
+    opacity: 0.07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .copy { position: absolute; left: 80px; top: 84px; width: 580px; }
+  .brand { display: flex; align-items: center; gap: 18px; }
+  .brand img { width: 76px; height: 76px; }
+  .word {
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: 62px; letter-spacing: -0.03em; line-height: 1;
+  }
+  .word span { color: var(--green); }
+  h1 {
+    margin-top: 44px;
+    font-family: 'Syne', sans-serif; font-weight: 700;
+    font-size: 46px; line-height: 1.08; letter-spacing: -0.02em;
+  }
+  p.sub {
+    margin-top: 20px; font-size: 23px; line-height: 1.4;
+    color: rgba(242, 237, 226, 0.66);
+  }
+  .chips { margin-top: 34px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .chip {
+    font-size: 17px; font-weight: 600; padding: 9px 16px; border-radius: 999px;
+    border: 1px solid rgba(242, 237, 226, 0.16); background: rgba(242, 237, 226, 0.05);
+    color: rgba(242, 237, 226, 0.85);
+  }
+
+  /* Framed screen */
+  .frame {
+    position: absolute; left: 712px; top: 150px;
+    width: 600px; height: 400px; padding: 26px 26px 42px;
+    background: var(--cream); border-radius: 30px;
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0,0,0,0.2);
+    transform: rotate(-3deg);
+  }
+  .led {
+    position: absolute; left: 50%; bottom: 16px; width: 9px; height: 9px;
+    margin-left: -4.5px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 10px rgba(10, 196, 110, 0.8);
+  }
+  .screen {
+    position: relative; width: 100%; height: 100%; border-radius: 10px; overflow: hidden;
+    display: grid; grid-template-columns: 1.25fr 1fr; grid-template-rows: 1fr 1fr; gap: 4px;
+    background: #000;
+  }
+  .tile { position: relative; overflow: hidden; }
+  .t1 {
+    grid-row: 1 / 3;
+    background:
+      radial-gradient(70px 70px at 68% 34%, #FFD98A 0 38%, rgba(255, 217, 138, 0.35) 40%, transparent 72%),
+      linear-gradient(180deg, #0B3A26 0%, #11744A 58%, #2FD58A 100%);
+  }
+  .t1::before, .t1::after { content: ''; position: absolute; left: -10%; right: -10%; border-radius: 50%; }
+  .t1::before { bottom: -38%; height: 70%; background: #0A9A57; }
+  .t1::after  { bottom: -52%; height: 74%; background: #06512F; left: -30%; }
+  .t2 { background: linear-gradient(160deg, #FF9A6B 0%, #E2547A 48%, #5B2A86 100%); }
+  .t2::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 38%;
+    background: linear-gradient(180deg, transparent, rgba(20, 8, 40, 0.75));
+  }
+  .t3 { background: linear-gradient(200deg, #9FD7F5 0%, #3E8FC9 45%, #123A63 100%); }
+  .t3::after {
+    content: ''; position: absolute; left: -20%; right: -20%; bottom: -30%; height: 60%;
+    border-radius: 50%; background: rgba(240, 248, 255, 0.85);
+  }
+  .clock {
+    position: absolute; left: 22px; bottom: 16px; z-index: 2;
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 52px; letter-spacing: -0.02em;
+    color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45);
+  }
+  .clock small {
+    display: block; font-family: 'DM Sans', sans-serif; font-weight: 500;
+    font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85;
+  }
+  .url {
+    position: absolute; left: 80px; bottom: 44px;
+    font-size: 18px; font-weight: 500; letter-spacing: 0.02em; color: rgba(242, 237, 226, 0.45);
+  }
+</style>
+</head>
+<body>
+  <div class="copy">
+    <div class="brand">
+      <img src="mark.svg" alt="">
+      <div class="word">Frame<span>TV</span></div>
+    </div>
+    <h1>Turn any screen into a living picture frame.</h1>
+    <p class="sub">Your albums, video loops, clocks and music — scheduled around your day.</p>
+    <div class="chips">
+      <span class="chip">Photos</span>
+      <span class="chip">Video</span>
+      <span class="chip">Clock</span>
+      <span class="chip">Spotify</span>
+      <span class="chip">Scripture</span>
+    </div>
+  </div>
+
+  <div class="frame">
+    <div class="screen">
+      <div class="tile t1"><div class="clock"><small>Sunday</small>9:41</div></div>
+      <div class="tile t2"></div>
+      <div class="tile t3"></div>
+    </div>
+    <div class="led"></div>
+  </div>
+
+  <div class="url">frametv.vercel.app</div>
+</body>
+</html>

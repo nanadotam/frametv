@@ -11,6 +11,14 @@ See `VERSIONING.md` for how versions get bumped and tagged.
 ## [Unreleased]
 
 ### Added
+- Brand identity: new FrameTV mark (a cream gallery frame with a power LED
+  showing a dusk landscape) with a simplified small-size variant, and
+  editable sources + `brand/generate.sh` to regenerate every asset.
+- Favicon (.ico 16/32/48 + SVG), Apple touch icon, PWA icons including a
+  maskable icon, and a 1200×630 Open Graph / Twitter card.
+- SEO metadata: title template, description, keywords, Open Graph and
+  Twitter tags, theme colour, `robots.txt` and `sitemap.xml`; the display
+  page is `noindex`.
 - Video mode: silent, looping clips from your albums with the usual
   overlays. Plays an album back to back or loops one clip, with optional
   shuffle, "time on each video" hold, and fill/fit framing.
@@ -32,6 +40,7 @@ See `VERSIONING.md` for how versions get bumped and tagged.
   the clip in once playing, and only download/play while on screen.
 
 ### Fixed
+- The browser tab showed the default Vercel triangle favicon.
 - Uploaded-photo thumbnails redirected to a bare storage path instead of a
   public URL.
 

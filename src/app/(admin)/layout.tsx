@@ -6,6 +6,7 @@ import { Tv, Images, LayoutGrid, Settings, Home, Radio, LogOut, Music2 } from 'l
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import BrandMark from '@/components/BrandMark';
 
 const NAV = [
   { href: '/admin',           label: 'Remote',    icon: Home },
@@ -34,9 +35,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Sidebar — desktop */}
         <aside className="hidden md:flex flex-col w-56 border-r border-border bg-card shrink-0">
           <div className="flex items-center gap-2.5 px-4 py-4 border-b border-border">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-sky-500 flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20">
-              <Tv size={15} className="text-white" />
-            </div>
+            <BrandMark size={32} className="shrink-0" />
             <div>
               <p className="text-sm font-semibold leading-none tracking-tight">FrameTV</p>
               <p className="text-xs text-muted-foreground mt-0.5">Admin Panel</p>

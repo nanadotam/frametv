@@ -2,8 +2,14 @@ import { cookies } from 'next/headers';
 import { getDisplayUserFromCookieStore } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { ensureUserDefaults } from '@/lib/userData';
+import type { Metadata } from 'next';
 import DisplayClient from './DisplayClient';
 import type { DisplayState, Mode } from '@/types/db';
+
+export const metadata: Metadata = {
+  title: 'Display',
+  robots: { index: false, follow: false },
+};
 
 // Reads the session cookie and pre-fetches display_state + modes on the
 // server, so the client never has to make a round-trip to /api/auth/me,

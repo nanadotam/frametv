@@ -1,8 +1,9 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { DM_Sans, Syne, JetBrains_Mono, Geist, Playfair_Display, Poppins } from 'next/font/google';
 import { Providers } from '@/components/providers';
 import './globals.css';
 import { cn } from "@/lib/utils";
+import { SITE_URL } from "@/lib/siteUrl";
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans', preload: false });
 
@@ -42,19 +43,56 @@ const poppins = Poppins({
   preload: false,
 });
 
+const DESCRIPTION =
+  'Turn any TV, monitor or Mac into a living picture frame — your photo albums, ' +
+  'video loops, clocks, scripture and Spotify, scheduled around your day.';
+
+// Icons (favicon.ico, icon.svg, apple-icon.png) and social images
+// (opengraph-image.jpg, twitter-image.jpg) are file conventions in src/app,
+// generated from brand/ by brand/generate.sh.
 export const metadata: Metadata = {
-  title: 'FrameTV',
-  description: 'Your personal ambient display OS',
-  manifest: '/manifest.json',
-  icons: {
-    icon: [
-      { url: '/icon.svg', type: 'image/svg+xml' },
-      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-    ],
-    apple: '/apple-touch-icon.png',
-    shortcut: '/favicon.ico',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'FrameTV — your screen, as a living picture frame',
+    template: '%s · FrameTV',
   },
+  description: DESCRIPTION,
+  applicationName: 'FrameTV',
+  keywords: [
+    'digital picture frame',
+    'ambient display',
+    'TV photo slideshow',
+    'Samsung Frame alternative',
+    'Google Drive slideshow',
+    'screensaver',
+    'smart TV',
+    'video loop',
+  ],
+  manifest: '/manifest.json',
+  openGraph: {
+    type: 'website',
+    siteName: 'FrameTV',
+    title: 'FrameTV — your screen, as a living picture frame',
+    description: DESCRIPTION,
+    url: '/',
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'FrameTV — your screen, as a living picture frame',
+    description: DESCRIPTION,
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'FrameTV',
+    statusBarStyle: 'black-translucent',
+  },
+  formatDetection: { telephone: false },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0B0C0B',
+  colorScheme: 'dark',
 };
 
 export default function RootLayout({

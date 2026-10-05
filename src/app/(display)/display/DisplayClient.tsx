@@ -78,7 +78,7 @@ function LoadingSkeleton() {
     <div className="w-full h-full bg-black flex items-center justify-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/icon.svg"
+        src="/brand/mark.svg"
         alt="FrameTV"
         style={{ width: 96, height: 96, opacity: 0.18, animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' }}
       />
