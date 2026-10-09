@@ -2,10 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, RefreshCw, Star, Trash2, RotateCw, Info, X, Film, Play } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Star, Trash2, RotateCw, Info, X, Film, Play, Copy } from 'lucide-react';
 import { Button } from '@/components/admin/Button';
+import { Modal } from '@/components/admin/Modal';
 import type { Album, Photo } from '@/types/db';
-import { uploadVideo, type VideoUploadStage } from '@/lib/video/upload';
+import { UploadPanel } from '@/components/admin/UploadPanel';
+import {
+  useVideoUploads,
+  type DuplicateChoice,
+  type DuplicatePrompt,
+} from '@/lib/video/useVideoUploads';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -26,12 +32,6 @@ function formatDuration(ms: number | null | undefined): string {
   if (!ms) return '';
   const total = Math.round(ms / 1000);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
-}
-
-function uploadLabel(s: VideoUploadStage): string {
-  if (s.stage === 'compressing') return `Compressing… ${Math.round(s.progress * 100)}%`;
-  if (s.stage === 'uploading') return 'Uploading…';
-  return 'Saving…';
 }
 
 function formatDate(iso: string | null): string {
@@ -108,6 +108,71 @@ function InfoModal({ photo, onClose }: { photo: Photo; onClose: () => void }) {
   );
 }
 
+// ─── Duplicate Dialog ─────────────────────────────────────────────────────────
+
+function DuplicateDialog({
+  prompt,
+  onChoose,
+}: {
+  prompt: DuplicatePrompt;
+  onChoose: (choice: DuplicateChoice, applyToAll: boolean) => void;
+}) {
+  const [applyToAll, setApplyToAll] = useState(false);
+  const here = prompt.kind === 'here';
+  const albums = [...new Set(prompt.matches.map((m) => m.albumName))];
+  const choose = (c: DuplicateChoice) => onChoose(c, applyToAll);
+
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => { if (!open) choose('cancel'); }}
+      title={here ? 'Video already in this album' : 'Video exists in another album'}
+      description={prompt.file.name}
+    >
+      <p className="text-sm text-fg-muted mb-5">
+        {here
+          ? 'This video has already been uploaded here. Replace the existing copy with a fresh upload, or skip it?'
+          : <>This video is already in <span className="text-fg font-medium">{albums.join(', ')}</span>. Copy it from there instantly, or upload and compress it again?</>}
+      </p>
+
+      <div className="flex flex-col gap-2">
+        {here ? (
+          <Button onClick={() => choose('replace')}>
+            <RefreshCw size={15} /> Replace
+          </Button>
+        ) : (
+          <>
+            <Button onClick={() => choose('copy')}>
+              <Copy size={15} /> Copy from {albums.length === 1 ? albums[0] : 'other album'}
+            </Button>
+            <Button variant="secondary" onClick={() => choose('upload')}>
+              Upload anyway
+            </Button>
+          </>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" onClick={() => choose('skip')}>Skip</Button>
+          <Button variant="ghost" onClick={() => choose('cancel')}>
+            {prompt.remaining > 0 ? 'Cancel all' : 'Cancel'}
+          </Button>
+        </div>
+      </div>
+
+      {prompt.remaining > 0 && (
+        <label className="mt-4 flex items-center gap-2 text-xs text-fg-muted cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={applyToAll}
+            onChange={(e) => setApplyToAll(e.target.checked)}
+            className="accent-accent"
+          />
+          Do this for every remaining {here ? 'video already in this album' : 'video found in another album'}
+        </label>
+      )}
+    </Modal>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AlbumPhotosPage() {
@@ -119,9 +184,21 @@ export default function AlbumPhotosPage() {
   const [syncing, setSyncing] = useState(false);
   const [infoPhoto, setInfoPhoto] = useState<Photo | null>(null);
   const [rotatingId, setRotatingId] = useState<string | null>(null);
-  const [videoUpload, setVideoUpload] = useState<VideoUploadStage | null>(null);
-  const [uploadError, setUploadError] = useState('');
   const videoInput = useRef<HTMLInputElement>(null);
+  const uploads = useVideoUploads({
+    albumId: id,
+    onAdded: (video) => setPhotos((prev) => [...prev, video]),
+    // New upload takes the first old copy's place in the grid
+    onReplaced: (video, oldIds) =>
+      setPhotos((prev) => {
+        const old = new Set(oldIds);
+        const at = prev.findIndex((p) => old.has(p.id));
+        const rest = prev.filter((p) => !old.has(p.id));
+        if (at < 0) return [...rest, video];
+        rest.splice(Math.min(at, rest.length), 0, video);
+        return rest;
+      }),
+  });
 
   const videoCount = photos.filter((p) => p.media_type === 'video').length;
 
@@ -178,21 +255,10 @@ export default function AlbumPhotosPage() {
     setRotatingId(null);
   };
 
-  const handleVideoFiles = async (files: FileList | null) => {
+  const handleVideoFiles = (files: FileList | null) => {
     if (!files?.length) return;
-    setUploadError('');
-    try {
-      // One at a time — each compression already saturates the encoder
-      for (const file of Array.from(files)) {
-        const video = await uploadVideo(file, id, setVideoUpload);
-        setPhotos((prev) => [...prev, video]);
-      }
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Video upload failed');
-    } finally {
-      setVideoUpload(null);
-      if (videoInput.current) videoInput.current.value = '';
-    }
+    uploads.enqueue(Array.from(files));
+    if (videoInput.current) videoInput.current.value = '';
   };
 
   const syncDrive = async () => {
@@ -235,9 +301,8 @@ export default function AlbumPhotosPage() {
           size="sm"
           variant="secondary"
           onClick={() => videoInput.current?.click()}
-          loading={videoUpload !== null}
         >
-          <Film size={15} /> {videoUpload ? uploadLabel(videoUpload) : 'Add video'}
+          <Film size={15} /> Add video
         </Button>
         {album?.source_type === 'drive' && (
           <Button size="sm" variant="secondary" onClick={syncDrive} loading={syncing}>
@@ -245,12 +310,6 @@ export default function AlbumPhotosPage() {
           </Button>
         )}
       </div>
-
-      {uploadError && (
-        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-          {uploadError}
-        </div>
-      )}
 
       {/* Photo grid */}
       {loading ? (
@@ -359,6 +418,22 @@ export default function AlbumPhotosPage() {
           })}
         </div>
       )}
+
+      {uploads.duplicatePrompt && (
+        <DuplicateDialog
+          key={uploads.duplicatePrompt.file.name + uploads.duplicatePrompt.remaining}
+          prompt={uploads.duplicatePrompt}
+          onChoose={uploads.answerDuplicate}
+        />
+      )}
+
+      <UploadPanel
+        items={uploads.items}
+        busy={uploads.busy}
+        onRetry={uploads.retry}
+        onCancel={uploads.cancelQueued}
+        onClose={uploads.clearFinished}
+      />
 
       {/* Info modal */}
       {infoPhoto && (

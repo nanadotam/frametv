@@ -38,13 +38,30 @@ See `VERSIONING.md` for how versions get bumped and tagged.
 - Multimodal Pinterest and Grid: a "Multimodal" switch mixes the active
   albums' videos in among the stills. Video tiles show their poster, fade
   the clip in once playing, and only download/play while on screen.
+- Duplicate video detection: uploading a clip that's already in the album
+  offers Replace / Skip / Cancel; one that's in another album offers Copy
+  from that album (no re-encode) / Upload anyway / Skip / Cancel, with
+  "do this for every remaining" for big batches.
+- Google-Drive-style upload tray (bottom right): an overall progress bar
+  plus a row per file showing waiting / converting / compressing /
+  uploading / done / skipped / copied / failed. Failed rows show the
+  reason, the time it failed and how long it ran, with per-file and
+  "Retry failed" buttons. More videos can be added while a batch runs.
+- DSLR / cinema-camera footage the browser can't decode (e.g. Canon
+  10-bit 4:2:2 H.264) is converted in the browser with ffmpeg.wasm (loaded
+  only when needed) and then uploaded as normal — no manual export step.
 
 ### Fixed
 - The browser tab showed the default Vercel triangle favicon.
 - Uploaded-photo thumbnails redirected to a bare storage path instead of a
   public URL.
+- A batch video upload stopped at the first bad file with WebCodecs'
+  raw "Unsupported configuration" error. Files are now checked before
+  decoding, and one failure no longer stops the rest of the batch.
 
 ### Changed
+- Video uploads cap the output at 30 fps — smaller files, no visible
+  difference on a wall TV.
 - Photo modes now load images only (`/api/photos` filters by `media_type`).
 - Requires migration `017_video_mode.sql` (adds `photos.media_type`,
   `photos.duration_ms`, the `photos` storage bucket and the `video` mode).

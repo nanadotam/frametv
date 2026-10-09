@@ -11,6 +11,7 @@ interface CreateVideoBody {
   durationMs?: number;
   bytes?: number;
   originalName?: string;
+  fingerprint?: string;
 }
 
 // Registers a video the browser already uploaded via /api/videos/upload-url.
@@ -64,7 +65,10 @@ export async function POST(request: NextRequest) {
         mime_type: 'video/mp4',
         bytes: body.bytes ?? null,
         taken_at: new Date().toISOString(),
-        metadata: { originalName: body.originalName ?? null },
+        metadata: {
+          originalName: body.originalName ?? null,
+          fingerprint: body.fingerprint ?? null,
+        },
       })
       .select()
       .single();

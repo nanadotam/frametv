@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Photo } from '@/types/db';
 
 export type VideoUploadStage =
+  | { stage: 'converting'; progress: number }
   | { stage: 'compressing'; progress: number }
   | { stage: 'uploading' }
   | { stage: 'saving' };
@@ -24,14 +25,13 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
 export async function uploadVideo(
   file: File,
   albumId: string,
+  fingerprint: string,
   onStage: (s: VideoUploadStage) => void
 ): Promise<Photo> {
   onStage({ stage: 'compressing', progress: 0 });
   // Loaded on demand — mediabunny is only needed on this one admin action
   const { transcodeForDisplay } = await import('./transcode');
-  const out = await transcodeForDisplay(file, (progress) =>
-    onStage({ stage: 'compressing', progress })
-  );
+  const out = await transcodeForDisplay(file, (progress, stage) => onStage({ stage, progress }));
 
   if (out.video.size > MAX_UPLOAD_BYTES) {
     throw new Error(
@@ -75,7 +75,41 @@ export async function uploadVideo(
         durationMs: out.durationMs,
         bytes: out.video.size,
         originalName: file.name,
+        fingerprint,
       }),
+    })
+  );
+  return video;
+}
+
+export interface DuplicateMatch {
+  id: string;
+  albumId: string;
+  albumName: string;
+}
+
+/** Videos this account already has that came from the same source file. */
+export async function findDuplicates(
+  fingerprint: string,
+  name: string
+): Promise<DuplicateMatch[]> {
+  const { matches } = await jsonOrThrow<{ matches: DuplicateMatch[] }>(
+    await fetch('/api/videos/duplicates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprint, name }),
+    })
+  );
+  return matches;
+}
+
+/** Copies an already-uploaded video into another album — no re-encode. */
+export async function copyVideo(sourceId: string, albumId: string): Promise<Photo> {
+  const { video } = await jsonOrThrow<{ video: Photo }>(
+    await fetch('/api/videos/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceId, albumId }),
     })
   );
   return video;
