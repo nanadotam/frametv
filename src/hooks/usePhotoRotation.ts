@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePhotos, type MediaType } from './usePhotos';
 import type { Photo } from '@/types/db';
 
@@ -31,6 +31,21 @@ function shuffleArray<T>(arr: T[]): T[] {
   return copy;
 }
 
+/**
+ * Updates an existing order with a fresh list: surviving photos stay where
+ * they are (with fresh data), deleted ones drop out, new ones are slotted in
+ * at random positions.
+ */
+function mergeOrder(prev: Photo[], next: Photo[]): Photo[] {
+  const byId = new Map(next.map((p) => [p.id, p]));
+  const kept = prev.flatMap((p) => byId.get(p.id) ?? []);
+  const keptIds = new Set(kept.map((p) => p.id));
+  for (const p of shuffleArray(next.filter((p) => !keptIds.has(p.id)))) {
+    kept.splice(Math.floor(Math.random() * (kept.length + 1)), 0, p);
+  }
+  return kept;
+}
+
 export function usePhotoRotation({
   albumIds,
   shuffle = false,
@@ -38,21 +53,34 @@ export function usePhotoRotation({
 }: UsePhotoRotationOptions = {}): PhotoRotationResult {
   const raw = usePhotos(albumIds, mediaType);
   const [index, setIndex] = useState(0);
+  const indexRef = useRef(0);
+  useEffect(() => { indexRef.current = index; }, [index]);
   // Bump this counter to force a fresh shuffle without changing raw or shuffle flag
   const [shuffleKey, setShuffleKey] = useState(0);
   const orderedRef = useRef<Photo[]>([]);
+  const [ordered, setOrdered] = useState<Photo[]>([]);
+  // Shuffle key the current order was built with — a new key means a full
+  // reshuffle; otherwise refetches (every minute, or on any photo change)
+  // keep the running order instead of reshuffling everything mid-show
+  const orderKeyRef = useRef<string | null>(null);
 
-  const ordered = useMemo(() => {
-    if (raw.length === 0) return [];
-    return shuffle ? shuffleArray(raw) : raw;
-  // shuffleKey intentionally included to re-randomize on demand
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const key = `${shuffle}:${shuffleKey}`;
+    const fresh = orderKeyRef.current !== key;
+    orderKeyRef.current = key;
+    setOrdered((prev) => {
+      if (raw.length === 0) return [];
+      if (!shuffle) return raw;
+      return fresh || prev.length === 0 ? shuffleArray(raw) : mergeOrder(prev, raw);
+    });
   }, [raw, shuffle, shuffleKey]);
 
-  // Keep ref in sync and reset index when the list changes identity
+  // Keep the same photo current across list changes when it still exists
   useEffect(() => {
+    const currentId = orderedRef.current[indexRef.current]?.id;
     orderedRef.current = ordered;
-    setIndex(0);
+    const at = currentId ? ordered.findIndex((p) => p.id === currentId) : -1;
+    setIndex(at >= 0 ? at : 0);
   }, [ordered]);
 
   const advance = useCallback(() => {

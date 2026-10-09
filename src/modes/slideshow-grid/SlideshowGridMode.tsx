@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
-import { pickLayout, computeCellAR, type Layout } from './layout';
+import { planGrid, type Layout } from './layout';
 import { getPhotoRotation, cellRotationStyle } from '@/lib/photoRotation';
 import { seedFocalCache, getFocal, focalToObjectPosition, detectAndPersistFocal } from '@/lib/focalPoint';
 import type { Photo } from '@/types/db';
@@ -25,23 +25,51 @@ interface CellState {
   flipKey: number;
 }
 
-// Module-level AR cache — persists for page lifetime
+// Module-level AR cache — persists for page lifetime. Measured from the
+// thumbnail as actually rendered, so it reflects the photo's real orientation.
 const AR_CACHE = new Map<string, number>();
+const AR_PENDING = new Map<string, Promise<void>>();
 
-function measureAR(photo: Photo): void {
-  if (AR_CACHE.has(photo.id)) return;
-  const img = new Image();
-  (img as HTMLImageElement & { fetchPriority: string }).fetchPriority = 'low';
-  img.src = photoThumbUrl(photo, IMG_SIZES.ar);
-  img.onload = () => {
-    if (img.naturalWidth && img.naturalHeight) {
-      AR_CACHE.set(photo.id, img.naturalWidth / img.naturalHeight);
-    }
-  };
+function measureAR(photo: Photo): Promise<void> {
+  if (AR_CACHE.has(photo.id)) return Promise.resolve();
+  const pending = AR_PENDING.get(photo.id);
+  if (pending) return pending;
+  const p = new Promise<void>((resolve) => {
+    const img = new Image();
+    (img as HTMLImageElement & { fetchPriority: string }).fetchPriority = 'low';
+    img.onload = () => {
+      if (img.naturalWidth && img.naturalHeight) {
+        AR_CACHE.set(photo.id, img.naturalWidth / img.naturalHeight);
+      }
+      resolve();
+    };
+    img.onerror = () => resolve();
+    img.src = photoThumbUrl(photo, IMG_SIZES.ar);
+  }).finally(() => AR_PENDING.delete(photo.id));
+  AR_PENDING.set(photo.id, p);
+  return p;
 }
 
-function getAR(photoId: string): number {
-  return AR_CACHE.get(photoId) ?? 1;
+/** Shape the photo will be displayed at, or null if not measured yet. */
+function knownAR(photo: Photo): number | null {
+  let ar = AR_CACHE.get(photo.id) ?? null;
+  // Uploaded videos store their display dimensions
+  if (ar === null && photo.media_type === 'video' && photo.width && photo.height) {
+    ar = photo.width / photo.height;
+  }
+  if (ar === null) return null;
+  // Manual 90°/270° rotation turns the displayed shape on its side
+  const rot = getPhotoRotation(photo);
+  return rot === 90 || rot === 270 ? 1 / ar : ar;
+}
+
+function getAR(photo: Photo): number {
+  return knownAR(photo) ?? 1;
+}
+
+function getScreenAR(): number {
+  if (typeof window === 'undefined' || !window.innerHeight) return 16 / 9;
+  return window.innerWidth / window.innerHeight;
 }
 
 const FILL: React.CSSProperties = {
@@ -158,7 +186,7 @@ function PhotoCell({ photo, dwellMs, kbIdx }: {
 
   // Focal point → CSS object-position for smart face-aware cropping
   const focal = photo ? getFocal(photo) : null;
-  const photoAR = photo ? getAR(photo.id) : 1;
+  const photoAR = photo ? getAR(photo) : 1;
   const objPos = focalToObjectPosition(focal, photoAR);
 
   // When manual rotation is applied, disable EXIF auto-rotation to prevent
@@ -262,29 +290,46 @@ export default function SlideshowGridMode({
   const initialized    = useRef(false);
   // Track IDs shown in the last cycle so we never reuse them in the same grid
   const recentlyUsedRef = useRef<Set<string>>(new Set());
+  const [screenAR, setScreenAR] = useState(getScreenAR);
+  const screenARRef = useRef(screenAR);
+  useEffect(() => {
+    const onResize = () => setScreenAR(getScreenAR());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useEffect(() => { screenARRef.current = screenAR; }, [screenAR]);
 
   // ── One-time init ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (photos.length === 0 || initialized.current) return;
     initialized.current = true;
 
-    photos.slice(0, 30).forEach(measureAR);
     seedFocalCache(photos);
+    const first = photos.slice(0, Math.min(photos.length, Math.max(maxCells * 4, 20)));
+    photos.slice(0, 40).forEach(measureAR);
 
-    const initialARs = photos.slice(0, maxCells).map((p) => getAR(p.id));
-    const initial = pickLayout(initialARs, null, maxCells, focusMode);
-    prevCountRef.current = initial.count;
-    layoutRef.current    = initial;
-    setLayout(initial);
-    setCells(
-      initial.areas.map((_, i) => ({
-        photo: photos[i % photos.length],
-        flipKey: i,
-      }))
-    );
-    photoIdxRef.current = initial.count % photos.length;
-    onReady?.();
-    setIsReady(true);
+    // Give the first shapes a moment to measure so the opening layout fits too
+    let cancelled = false;
+    let done = false;
+    const timeout = new Promise((r) => setTimeout(r, 1500));
+    Promise.race([Promise.all(first.map(measureAR)), timeout]).then(() => {
+      if (cancelled) return;
+      done = true;
+      const plan = planGrid(first.map(getAR), null, maxCells, screenARRef.current, focusMode);
+      prevCountRef.current = plan.layout.count;
+      layoutRef.current    = plan.layout;
+      setLayout(plan.layout);
+      setCells(plan.picks.map((p, i) => ({ photo: first[p], flipKey: i })));
+      recentlyUsedRef.current = new Set(plan.picks.map((p) => first[p].id));
+      photoIdxRef.current = plan.layout.count % photos.length;
+      onReady?.();
+      setIsReady(true);
+    });
+    return () => {
+      cancelled = true;
+      // Unmounted / list changed before the first layout landed — retry
+      if (!done) initialized.current = false;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photos.length]);
 
@@ -299,68 +344,44 @@ export default function SlideshowGridMode({
     const pending: ReturnType<typeof setTimeout>[] = [];
     let cancelled = false;
 
+    // Measure well past the next pool so shapes are known before they're needed
     function preload(start: number) {
-      for (let i = 0; i < 12; i++) {
-        measureAR(photos[(start + i) % photos.length]);
+      for (let i = 0; i < 40; i++) {
+        void measureAR(photos[(start + i) % photos.length]);
       }
     }
 
     function runCycle() {
-      // maxCells is from the component scope (respects focusMode)
-
-      // Peek at upcoming photos for AR + focal seed
-      const peekPhotos = Array.from({ length: maxCells }, (_, i) =>
-        photos[(photoIdxRef.current + i) % photos.length]
-      );
-      peekPhotos.forEach(measureAR);
-      const peekARs = peekPhotos.map((p) => getAR(p.id));
-
-      // Score every candidate layout against the actual incoming photo ARs
-      const newLayout = pickLayout(peekARs, prevCountRef.current, maxCells, focusMode);
-      prevCountRef.current = newLayout.count;
-
-      // Build a candidate pool from the next slice of the photo rotation.
-      // We only exclude recently-shown photos when the library is large enough
-      // that the exclusion won't leave the matcher with too few candidates —
-      // this prevents low-variety libraries from always producing bad fits.
-      const MIN_POOL = newLayout.count * 2;
+      // Candidate pool from the next slice of the rotation. Recently shown
+      // photos are skipped when the library is big enough, and photos whose
+      // shape is already measured are preferred — an unknown shape would be
+      // guessed as square and could land in the wrong cell.
       const recentlyUsed = recentlyUsedRef.current;
       const freshCount = photos.filter((p) => !recentlyUsed.has(p.id)).length;
-      const excluded = freshCount >= MIN_POOL ? recentlyUsed : new Set<string>();
+      const excluded = freshCount >= maxCells * 2 ? recentlyUsed : new Set<string>();
 
-      const POOL_SIZE = Math.min(photos.length, Math.max(newLayout.count * 4, 20));
-      const pool: { photo: Photo; ar: number }[] = [];
-
-      for (let i = 0; pool.length < POOL_SIZE; i++) {
-        if (i >= photos.length) break;
-        const p = photos[(photoIdxRef.current + i) % photos.length];
-        if (!excluded.has(p.id) && !pool.find((c) => c.photo.id === p.id)) {
-          pool.push({ photo: p, ar: getAR(p.id) });
-        }
-      }
+      const POOL_SIZE = Math.min(photos.length, Math.max(maxCells * 4, 20));
+      const window_ = Array.from({ length: Math.min(photos.length, POOL_SIZE * 2) }, (_, i) =>
+        photos[(photoIdxRef.current + i) % photos.length]
+      ).filter((p, i, arr) => !excluded.has(p.id) && arr.findIndex((q) => q.id === p.id) === i);
+      const measured = window_.filter((p) => knownAR(p) !== null);
+      let pool = (measured.length >= maxCells * 2 ? measured : window_).slice(0, POOL_SIZE);
 
       // Fallback: if the pool is too small, allow recently-used photos
-      for (let i = 0; pool.length < newLayout.count; i++) {
-        const p = photos[(photoIdxRef.current + i) % photos.length];
-        if (!pool.find((c) => c.photo.id === p.id)) {
-          pool.push({ photo: p, ar: getAR(p.id) });
+      if (pool.length < maxCells) {
+        const seen = new Set(pool.map((p) => p.id));
+        for (let i = 0; i < photos.length && pool.length < maxCells; i++) {
+          const p = photos[(photoIdxRef.current + i) % photos.length];
+          if (!seen.has(p.id)) { seen.add(p.id); pool = [...pool, p]; }
         }
       }
 
-      // Greedy AR matching: for each cell pick the pool photo whose AR is
-      // closest to the cell's display AR (log-scale diff = scale-invariant).
-      const remaining = [...pool];
-      const batch: Photo[] = newLayout.areas.map((area) => {
-        const target = computeCellAR(area);
-        let bestIdx = 0;
-        let bestScore = Infinity;
-        remaining.forEach(({ ar }, i) => {
-          const score = Math.abs(Math.log(ar / target));
-          if (score < bestScore) { bestScore = score; bestIdx = i; }
-        });
-        const [chosen] = remaining.splice(bestIdx, 1);
-        return chosen.photo;
-      });
+      // Pick the template and the photo for each cell together, so the
+      // layout matches the shapes of the photos actually going into it
+      const plan = planGrid(pool.map(getAR), prevCountRef.current, maxCells, screenARRef.current, focusMode);
+      const newLayout = plan.layout;
+      prevCountRef.current = newLayout.count;
+      const batch: Photo[] = plan.picks.map((i) => pool[i]);
 
       // Advance rotation index by the number of cells used this cycle
       photoIdxRef.current = (photoIdxRef.current + newLayout.count) % photos.length;

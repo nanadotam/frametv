@@ -50,6 +50,13 @@ See `VERSIONING.md` for how versions get bumped and tagged.
 - DSLR / cinema-camera footage the browser can't decode (e.g. Canon
   10-bit 4:2:2 H.264) is converted in the browser with ffmpeg.wasm (loaded
   only when needed) and then uploaded as normal — no manual export step.
+- Pinterest: "Change photos every" setting (30 s – 10 min). A page stays up
+  for that long — or for its longest video, whichever is longer — while
+  videos keep looping, then rolls over slot by slot.
+- Grid: picks the template and which photo goes in which cell together,
+  from the shapes of the upcoming photos, so a run of portraits gets a
+  portrait layout instead of being cropped into landscape cells. Adds
+  mixed portrait/landscape templates and uses the real screen shape.
 
 ### Fixed
 - The browser tab showed the default Vercel triangle favicon.
@@ -58,6 +65,9 @@ See `VERSIONING.md` for how versions get bumped and tagged.
 - A batch video upload stopped at the first bad file with WebCodecs'
   raw "Unsupported configuration" error. Files are now checked before
   decoding, and one failure no longer stops the rest of the batch.
+- Pinterest swapped the whole wall within seconds whenever the photo list
+  refreshed (every minute, or whenever any photo changed) and ignored its
+  interval setting. Refreshes now keep the running order in every mode.
 
 ### Changed
 - Video uploads cap the output at 30 fps — smaller files, no visible

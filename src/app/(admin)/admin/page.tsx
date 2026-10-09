@@ -321,6 +321,14 @@ function ScrapbookQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg
   );
 }
 
+const PINTEREST_INTERVALS = [
+  { label: '30s', value: 30 },
+  { label: '1 min', value: 60 },
+  { label: '2 min', value: 120 },
+  { label: '5 min', value: 300 },
+  { label: '10 min', value: 600 },
+];
+
 function PinterestQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg) => void }) {
   const speedNum = typeof cfg.speed === 'number'
     ? cfg.speed
@@ -350,6 +358,14 @@ function PinterestQuickSettings({ cfg, onChange }: { cfg: Cfg; onChange: (c: Cfg
           options={[{ label: '2 rows', value: 2 }, { label: '3 rows', value: 3 }, { label: '4 rows', value: 4 }]}
           value={(cfg.rows as number) ?? 3}
           onSelect={(v) => onChange({ ...cfg, rows: v })}
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Change photos every</p>
+        <ChipRow
+          options={PINTEREST_INTERVALS}
+          value={(cfg.intervalSeconds as number) ?? 120}
+          onSelect={(v) => onChange({ ...cfg, intervalSeconds: v })}
         />
       </div>
       <div className="flex items-center justify-between">

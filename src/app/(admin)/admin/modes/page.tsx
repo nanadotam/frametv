@@ -199,6 +199,23 @@ function PinterestConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
           </SelectContent>
         </Select>
       </div>
+      <div className="space-y-1.5">
+        <Label>Change photos every</Label>
+        <Select
+          value={String((cfg.intervalSeconds as number) ?? 120)}
+          onValueChange={(v) => onChange({ ...cfg, intervalSeconds: Number(v) })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="30">30 seconds</SelectItem>
+            <SelectItem value="60">1 minute</SelectItem>
+            <SelectItem value="120">2 minutes</SelectItem>
+            <SelectItem value="300">5 minutes</SelectItem>
+            <SelectItem value="600">10 minutes</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">Videos loop until the page changes — a page always stays up at least as long as its longest clip.</p>
+      </div>
       <div className="flex items-center justify-between">
         <Label>Reverse direction</Label>
         <Switch

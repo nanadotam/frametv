@@ -16,14 +16,26 @@ interface PinterestConfig {
   gap?: number;
   /** Mix the active albums' videos in among the stills */
   multimodal?: boolean;
+  /** How long each page of photos stays up before rolling over to the next. */
+  intervalSeconds?: number;
 }
 
 // 4× copies ensures seamless looping regardless of strip width.
 const COPIES = 4;
 // Photos shown per row per page.
 const PHOTOS_PER_ROW = 12;
-// How many full rotations each belt completes before photos begin rolling over.
-const ROTATIONS_BEFORE_SWAP = 2;
+const DEFAULT_INTERVAL_SECONDS = 120;
+// The roll-over cascades slot by slot across this many seconds.
+const ROLLOVER_SECONDS = 8;
+
+/** A page stays up for the interval, or until its longest clip has played once. */
+function pageHoldSeconds(page: Photo[], intervalSeconds: number): number {
+  const longestClip = page.reduce(
+    (max, p) => (p.media_type === 'video' && p.duration_ms ? Math.max(max, p.duration_ms / 1000) : max),
+    0
+  );
+  return Math.max(intervalSeconds, longestClip);
+}
 
 function getViewportHeight() {
   return typeof window === 'undefined' ? 900 : window.innerHeight;
@@ -211,6 +223,7 @@ export default function PinterestMode({
   const cornerRadius = cfg.cornerRadius ?? 24;
   const gap = cfg.gap ?? 12;
   const multimodal = cfg.multimodal ?? false;
+  const intervalSeconds = Math.max(5, Number(cfg.intervalSeconds) || DEFAULT_INTERVAL_SECONDS);
 
   const { photos: allPhotos } = usePhotoRotation({
     albumIds,
@@ -245,9 +258,10 @@ export default function PinterestMode({
 
   // ── Rolling-swap state (all refs — mutated only inside RAF tick) ────────────
 
-  // rawPos (pixels) at which the last rolling swap completed, per row.
-  // Row 0 is master; rows 1+ follow the same visual cycle.
-  const lastSwapAtRef = useRef<number[]>([]);
+  // Unpaused seconds the current page has been up, and — once a roll-over
+  // has started — seconds into it (-1 = not rolling).
+  const pageElapsedRef = useRef(0);
+  const rolloverElapsedRef = useRef(-1);
   // How many photo slots (across all rows, for this column index) have been
   // replaced in the current rolling transition.
   const slotsSwappedRef = useRef(0);
@@ -257,23 +271,32 @@ export default function PinterestMode({
   // (from new photo aspect ratios) don't cause the progress calculation to jump.
   const transitionCycleWidthRef = useRef(0);
 
-  // Initialise page 0 and preload page 1 whenever the full photo list changes.
+  // Start at page 0 on first load or when the row count changes. Later list
+  // refreshes (refetches, uploads elsewhere) only update the *upcoming* page —
+  // resetting here used to swap the whole wall after ~1 s whenever the photo
+  // table changed.
+  const builtForPageSizeRef = useRef(0);
   useEffect(() => {
     if (allPhotos.length === 0) return;
-    pageIndexRef.current = 0;
-    rawPosRef.current = [];
-    lastSwapAtRef.current = [];
-    slotsSwappedRef.current = 0;
-    pendingNextRef.current = [];
-    transitionCycleWidthRef.current = 0;
+    const fresh = builtForPageSizeRef.current !== pageSize || displayPhotosRef.current.length === 0;
+    if (fresh) {
+      builtForPageSizeRef.current = pageSize;
+      pageIndexRef.current = 0;
+      rawPosRef.current = [];
+      pageElapsedRef.current = 0;
+      rolloverElapsedRef.current = -1;
+      slotsSwappedRef.current = 0;
+      pendingNextRef.current = [];
+      transitionCycleWidthRef.current = 0;
 
-    const page0 = getPage(allPhotos, 0, pageSize);
-    displayPhotosRef.current = page0;
-    setDisplayPhotos(page0);
+      const page0 = getPage(allPhotos, 0, pageSize);
+      displayPhotosRef.current = page0;
+      setDisplayPhotos(page0);
+    }
 
-    const page1 = getPage(allPhotos, 1, pageSize);
-    nextPhotosRef.current = page1;
-    preloadImages(page1);
+    const upcoming = getPage(allPhotos, pageIndexRef.current + 1, pageSize);
+    nextPhotosRef.current = upcoming;
+    preloadImages(upcoming);
   }, [allPhotos, pageSize]);
 
   useEffect(() => {
@@ -292,6 +315,10 @@ export default function PinterestMode({
   }, [isPaused]);
 
   const pxPerSecond = 24 * speed;
+  const intervalSecondsRef = useRef(intervalSeconds);
+  useEffect(() => {
+    intervalSecondsRef.current = intervalSeconds;
+  }, [intervalSeconds]);
 
   useEffect(() => {
     if (displayPhotos.length === 0) return;
@@ -320,76 +347,60 @@ export default function PinterestMode({
         const liveWidth = track.scrollWidth / COPIES;
         if (liveWidth < 10) continue;
 
-        // During a rolling transition, use the captured width so that aspect-
-        // ratio changes from incoming photos don't cause the progress to jump.
-        const cycleWidth =
-          transitionCycleWidthRef.current > 0 ? transitionCycleWidthRef.current : liveWidth;
-
         const prevRaw = rawPosRef.current[r] ?? 0;
         const newRaw = prevRaw + pxPerSecond * dt;
         rawPosRef.current[r] = newRaw;
 
         // ── Rolling swap (row 0 is master) ────────────────────────────────────
         if (r === 0) {
-          const lastSwapAt = lastSwapAtRef.current[0] ?? 0;
-          const rawSince = newRaw - lastSwapAt;
+          pageElapsedRef.current += dt;
+          const hold = pageHoldSeconds(displayPhotosRef.current, intervalSecondsRef.current);
 
-          if (rawSince >= ROTATIONS_BEFORE_SWAP * cycleWidth) {
-            // Capture the cycle width once when we first enter the transition.
-            if (transitionCycleWidthRef.current === 0) {
-              transitionCycleWidthRef.current = liveWidth;
-            }
+          if (rolloverElapsedRef.current < 0 && pageElapsedRef.current >= hold && nextPhotosRef.current.length > 0) {
+            // Capture the incoming set and belt width once, at roll-over start
+            rolloverElapsedRef.current = 0;
+            pendingNextRef.current = [...nextPhotosRef.current];
+            transitionCycleWidthRef.current = liveWidth;
+          }
 
-            // Capture the incoming photo set once at transition start.
-            if (pendingNextRef.current.length === 0 && nextPhotosRef.current.length > 0) {
-              pendingNextRef.current = [...nextPhotosRef.current];
-            }
+          if (rolloverElapsedRef.current >= 0 && pendingNextRef.current.length > 0) {
+            rolloverElapsedRef.current += dt;
+            const progress = rolloverElapsedRef.current / ROLLOVER_SECONDS;
+            // Number of slots that should have been swapped by now.
+            const targetSwapped = Math.min(Math.ceil(progress * PHOTOS_PER_ROW), PHOTOS_PER_ROW);
 
-            if (pendingNextRef.current.length > 0) {
-              const tw = transitionCycleWidthRef.current;
-              // Progress through the "transition rotation" (0 → 1).
-              const progress = (rawSince - ROTATIONS_BEFORE_SWAP * tw) / tw;
-              // Number of slots that should have been swapped by now.
-              const targetSwapped = Math.min(
-                Math.ceil(progress * PHOTOS_PER_ROW),
-                PHOTOS_PER_ROW
-              );
-
-              if (targetSwapped > slotsSwappedRef.current) {
-                // Build updated photo array, replacing only the newly due slots.
-                // Slots are distributed round-robin: photo at (row r, slot s)
-                // lives at index s * rowCount + r in the flat displayPhotos array.
-                const current = displayPhotosRef.current;
-                const updated = [...current];
-                for (let slot = slotsSwappedRef.current; slot < targetSwapped; slot++) {
-                  for (let rr = 0; rr < rowCount; rr++) {
-                    const idx = slot * rowCount + rr;
-                    if (idx < pendingNextRef.current.length) {
-                      updated[idx] = pendingNextRef.current[idx];
-                    }
+            if (targetSwapped > slotsSwappedRef.current) {
+              // Build updated photo array, replacing only the newly due slots.
+              // Slots are distributed round-robin: photo at (row r, slot s)
+              // lives at index s * rowCount + r in the flat displayPhotos array.
+              const updated = [...displayPhotosRef.current];
+              for (let slot = slotsSwappedRef.current; slot < targetSwapped; slot++) {
+                for (let rr = 0; rr < rowCount; rr++) {
+                  const idx = slot * rowCount + rr;
+                  if (idx < pendingNextRef.current.length) {
+                    updated[idx] = pendingNextRef.current[idx];
                   }
                 }
-                slotsSwappedRef.current = targetSwapped;
+              }
+              slotsSwappedRef.current = targetSwapped;
 
-                // Keep ref in sync immediately so the next tick reads fresh data.
-                displayPhotosRef.current = updated;
-                setDisplayPhotos(updated);
+              // Keep ref in sync immediately so the next tick reads fresh data.
+              displayPhotosRef.current = updated;
+              setDisplayPhotos(updated);
 
-                if (slotsSwappedRef.current >= PHOTOS_PER_ROW) {
-                  // All slots rolled over — transition complete.
-                  lastSwapAtRef.current[0] = newRaw;
-                  transitionCycleWidthRef.current = 0;
-                  slotsSwappedRef.current = 0;
-                  pendingNextRef.current = [];
+              if (slotsSwappedRef.current >= PHOTOS_PER_ROW) {
+                // All slots rolled over — the new page's hold starts now.
+                pageElapsedRef.current = 0;
+                rolloverElapsedRef.current = -1;
+                transitionCycleWidthRef.current = 0;
+                slotsSwappedRef.current = 0;
+                pendingNextRef.current = [];
 
-                  // Advance page index and preload the next-next set.
-                  pageIndexRef.current += 1;
-                  const all = allPhotosRef.current;
-                  const pSize = rowCount * PHOTOS_PER_ROW;
-                  const nextNext = getPage(all, pageIndexRef.current + 1, pSize);
-                  nextPhotosRef.current = nextNext;
-                  preloadImages(nextNext);
-                }
+                // Advance page index and preload the next-next set.
+                pageIndexRef.current += 1;
+                const nextNext = getPage(allPhotosRef.current, pageIndexRef.current + 1, rowCount * PHOTOS_PER_ROW);
+                nextPhotosRef.current = nextNext;
+                preloadImages(nextNext);
               }
             }
           }
