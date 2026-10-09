@@ -57,6 +57,11 @@ See `VERSIONING.md` for how versions get bumped and tagged.
   from the shapes of the upcoming photos, so a run of portraits gets a
   portrait layout instead of being cropped into landscape cells. Adds
   mixed portrait/landscape templates and uses the real screen shape.
+- `pnpm fix-orientation` (macOS): finds photos stored sideways or upside
+  down — phones sometimes record the wrong orientation — by reading face
+  roll angles with Apple Vision, and sets their rotation. Re-runs only check
+  new photos; hand-set rotations are respected (`--dry-run`, `--recheck`,
+  `--user=<id>`).
 
 ### Fixed
 - The browser tab showed the default Vercel triangle favicon.
@@ -68,6 +73,9 @@ See `VERSIONING.md` for how versions get bumped and tagged.
 - Pinterest swapped the whole wall within seconds whenever the photo list
   refreshed (every minute, or whenever any photo changed) and ignored its
   interval setting. Refreshes now keep the running order in every mode.
+- Grid and Scrapbook: photos rotated 90°/270° were turned in place and left
+  empty corners; they now fill their cell. Pinterest's loading placeholder
+  is rotated too.
 
 ### Changed
 - Video uploads cap the output at 30 fps — smaller files, no visible

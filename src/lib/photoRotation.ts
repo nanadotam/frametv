@@ -31,10 +31,25 @@ export function fullscreenRotationStyle(rotation: number): CSSProperties {
 }
 
 /**
- * Cell / track rotation style.
- * Simple CSS rotation — objectFit: cover handles the cropping for grid/track items
- * where the container is bounded and not full-viewport.
+ * Cell / track rotation style for an absolutely-positioned, object-fit: cover
+ * img. 180° is a plain rotation. For 90/270° the img box is sized to the
+ * cell's height × width (container query units) before rotating, so the
+ * turned photo still covers the cell — the ancestor cell must set
+ * `containerType: 'size'` (see CELL_CONTAINER).
  */
 export function cellRotationStyle(rotation: number): CSSProperties {
-  return rotation ? { transform: `rotate(${rotation}deg)` } : {};
+  if (!rotation) return {};
+  if (rotation === 180) return { transform: 'rotate(180deg)' };
+  return {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: '100cqh',
+    height: '100cqw',
+    maxWidth: 'none',
+    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+  };
 }
+
+/** Put on the cell that holds a cellRotationStyle img. */
+export const CELL_CONTAINER: CSSProperties = { containerType: 'size' };

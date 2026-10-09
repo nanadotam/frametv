@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { format } from 'date-fns';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
-import { getPhotoRotation, cellRotationStyle } from '@/lib/photoRotation';
+import { getPhotoRotation, cellRotationStyle, CELL_CONTAINER } from '@/lib/photoRotation';
 import type { Photo } from '@/types/db';
 import { photoThumbUrl, getConnectionSpeed, IMG_SIZES } from '@/lib/image-urls';
 
@@ -237,6 +237,7 @@ function PolaroidCard({ item, showDate }: { item: PlacedPolaroid; showDate: bool
             aspectRatio: '1 / 1',
             overflow: 'hidden',
             background: '#111',
+            ...CELL_CONTAINER,
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}

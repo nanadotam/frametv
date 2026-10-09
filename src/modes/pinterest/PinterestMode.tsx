@@ -140,12 +140,14 @@ const TrackPhoto = memo(function TrackPhoto({
           alt=""
           style={{
             position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
+            width: isSideways ? `${rowHeightPx}px` : '100%',
+            height: isSideways ? `${containerW}px` : '100%',
+            top: '50%',
+            left: '50%',
             objectFit: 'cover',
+            maxWidth: 'none',
             filter: 'blur(12px)',
-            transform: 'scale(1.1)',
+            transform: `translate(-50%, -50%) scale(1.1)${rotation ? ` rotate(${rotation}deg)` : ''}`,
           }}
         />
       )}

@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { ModeProps } from '@/modes/types';
 import { usePhotoRotation } from '@/hooks/usePhotoRotation';
 import { planGrid, type Layout } from './layout';
-import { getPhotoRotation, cellRotationStyle } from '@/lib/photoRotation';
+import { getPhotoRotation, cellRotationStyle, CELL_CONTAINER } from '@/lib/photoRotation';
 import { seedFocalCache, getFocal, focalToObjectPosition, detectAndPersistFocal } from '@/lib/focalPoint';
 import type { Photo } from '@/types/db';
 import { photoThumbUrl, photoFullUrl, getConnectionSpeed, IMG_SIZES } from '@/lib/image-urls';
@@ -195,7 +195,7 @@ function PhotoCell({ photo, dwellMs, kbIdx }: {
     rotation !== 0 ? { imageOrientation: 'none' } : {};
 
   return (
-    <div style={{ position: 'absolute', inset: 0, background: '#111', overflow: 'hidden' }}>
+    <div style={{ position: 'absolute', inset: 0, background: '#111', overflow: 'hidden', ...CELL_CONTAINER }}>
       <motion.div
         style={{ position: 'absolute', inset: 0 }}
         initial={{ scale: 1, x: '0%', y: '0%' }}
@@ -208,14 +208,14 @@ function PhotoCell({ photo, dwellMs, kbIdx }: {
         {lqipSrc && !mainLoaded && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={lqipSrc} aria-hidden alt=""
-            style={{ ...FILL, ...orientationOverride, filter: 'blur(20px)', transform: 'scale(1.1)', objectPosition: objPos }} />
+            style={{ ...FILL, ...orientationOverride, ...rotStyle, filter: 'blur(20px)', objectPosition: objPos }} />
         )}
         {src && (
           <>
             {/* Blurred background fill — keeps edges dark while sharp image fades in */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={src} aria-hidden alt=""
-              style={{ ...FILL, ...orientationOverride, filter: 'blur(24px) brightness(0.55)', transform: `scale(1.15)${rotation ? ` rotate(${rotation}deg)` : ''}`, objectPosition: objPos }} />
+              style={{ ...FILL, ...orientationOverride, ...rotStyle, filter: 'blur(24px) brightness(0.55)', objectPosition: objPos }} />
             {/* Sharp main image — fades in on load, triggers face detection */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={src} alt=""
