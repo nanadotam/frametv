@@ -76,6 +76,10 @@ See `VERSIONING.md` for how versions get bumped and tagged.
 - Grid and Scrapbook: photos rotated 90°/270° were turned in place and left
   empty corners; they now fill their cell. Pinterest's loading placeholder
   is rotated too.
+- Grid repeated videos (and some photos) every couple of grids: only the
+  previous grid was excluded, and items picked from further ahead came
+  round again. Grid now tracks everything shown this round — nothing
+  repeats until every photo and video has had a turn.
 
 ### Changed
 - Video uploads cap the output at 30 fps — smaller files, no visible

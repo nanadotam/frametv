@@ -279,6 +279,8 @@ export default function SlideshowGridMode({
   const maxCells  = Math.min(photos.length, focusMode ? 1 : configuredMaxCells);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [cells,  setCells]  = useState<CellState[]>([]);
+  const cellsRef = useRef<CellState[]>([]);
+  useEffect(() => { cellsRef.current = cells; }, [cells]);
   // isReady gates the cascade effect without putting `layout` in its deps
   const [isReady, setIsReady] = useState(false);
 
@@ -288,8 +290,9 @@ export default function SlideshowGridMode({
   // in the effect's dep array (which would cancel pending timeouts on every setLayout call)
   const layoutRef      = useRef<Layout | null>(null);
   const initialized    = useRef(false);
-  // Track IDs shown in the last cycle so we never reuse them in the same grid
-  const recentlyUsedRef = useRef<Set<string>>(new Set());
+  // Everything shown so far this round. Nothing — photo or video — repeats
+  // until every item in the rotation has had a turn; then a new round starts.
+  const shownRef = useRef<Set<string>>(new Set());
   const [screenAR, setScreenAR] = useState(getScreenAR);
   const screenARRef = useRef(screenAR);
   useEffect(() => {
@@ -320,7 +323,7 @@ export default function SlideshowGridMode({
       layoutRef.current    = plan.layout;
       setLayout(plan.layout);
       setCells(plan.picks.map((p, i) => ({ photo: first[p], flipKey: i })));
-      recentlyUsedRef.current = new Set(plan.picks.map((p) => first[p].id));
+      shownRef.current = new Set(plan.picks.map((p) => first[p].id));
       photoIdxRef.current = plan.layout.count % photos.length;
       onReady?.();
       setIsReady(true);
@@ -344,37 +347,41 @@ export default function SlideshowGridMode({
     const pending: ReturnType<typeof setTimeout>[] = [];
     let cancelled = false;
 
-    // Measure well past the next pool so shapes are known before they're needed
-    function preload(start: number) {
-      for (let i = 0; i < 40; i++) {
-        void measureAR(photos[(start + i) % photos.length]);
+    const POOL_SIZE = Math.min(photos.length, Math.max(maxCells * 4, 20));
+
+    /** Next not-yet-shown items in rotation order, starting at the cursor. */
+    function upcoming(limit: number): Photo[] {
+      const out: Photo[] = [];
+      for (let i = 0; i < photos.length && out.length < limit; i++) {
+        const p = photos[(photoIdxRef.current + i) % photos.length];
+        if (!shownRef.current.has(p.id)) out.push(p);
       }
+      return out;
+    }
+
+    // Measure the upcoming unshown items so their shapes are known before
+    // they're needed
+    function preload() {
+      upcoming(40).forEach((p) => void measureAR(p));
     }
 
     function runCycle() {
-      // Candidate pool from the next slice of the rotation. Recently shown
-      // photos are skipped when the library is big enough, and photos whose
-      // shape is already measured are preferred — an unknown shape would be
-      // guessed as square and could land in the wrong cell.
-      const recentlyUsed = recentlyUsedRef.current;
-      const freshCount = photos.filter((p) => !recentlyUsed.has(p.id)).length;
-      const excluded = freshCount >= maxCells * 2 ? recentlyUsed : new Set<string>();
-
-      const POOL_SIZE = Math.min(photos.length, Math.max(maxCells * 4, 20));
-      const window_ = Array.from({ length: Math.min(photos.length, POOL_SIZE * 2) }, (_, i) =>
-        photos[(photoIdxRef.current + i) % photos.length]
-      ).filter((p, i, arr) => !excluded.has(p.id) && arr.findIndex((q) => q.id === p.id) === i);
-      const measured = window_.filter((p) => knownAR(p) !== null);
-      let pool = (measured.length >= maxCells * 2 ? measured : window_).slice(0, POOL_SIZE);
-
-      // Fallback: if the pool is too small, allow recently-used photos
-      if (pool.length < maxCells) {
-        const seen = new Set(pool.map((p) => p.id));
-        for (let i = 0; i < photos.length && pool.length < maxCells; i++) {
-          const p = photos[(photoIdxRef.current + i) % photos.length];
-          if (!seen.has(p.id)) { seen.add(p.id); pool = [...pool, p]; }
-        }
+      // Round over — too few unshown items left to fill a grid. Start a new
+      // round, keeping what's on screen now excluded so it can't reappear
+      // straight away.
+      if (upcoming(maxCells).length < maxCells) {
+        const onScreen = new Set(
+          cellsRef.current.flatMap((c) => (c.photo ? [c.photo.id] : []))
+        );
+        shownRef.current = photos.length - onScreen.size >= maxCells ? onScreen : new Set();
       }
+
+      // Candidate pool: the next unshown items, preferring ones whose shape
+      // is already measured — an unknown shape would be guessed as square
+      // and could land in the wrong cell.
+      const window_ = upcoming(POOL_SIZE * 2);
+      const measured = window_.filter((p) => knownAR(p) !== null);
+      const pool = (measured.length >= maxCells * 2 ? measured : window_).slice(0, POOL_SIZE);
 
       // Pick the template and the photo for each cell together, so the
       // layout matches the shapes of the photos actually going into it
@@ -383,12 +390,13 @@ export default function SlideshowGridMode({
       prevCountRef.current = newLayout.count;
       const batch: Photo[] = plan.picks.map((i) => pool[i]);
 
-      // Advance rotation index by the number of cells used this cycle
-      photoIdxRef.current = (photoIdxRef.current + newLayout.count) % photos.length;
-      // Remember what's showing so the next cycle can exclude them
-      recentlyUsedRef.current = new Set(batch.map((p) => p.id));
+      // Mark them shown for this round, and move the cursor to the first
+      // item still waiting its turn
+      batch.forEach((p) => shownRef.current.add(p.id));
+      const next = upcoming(1)[0];
+      if (next) photoIdxRef.current = photos.findIndex((p) => p.id === next.id);
 
-      preload(photoIdxRef.current);
+      preload();
 
       // Update layout ref + state (state for rendering, ref for the effect)
       layoutRef.current = newLayout;
