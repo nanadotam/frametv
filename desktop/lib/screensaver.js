@@ -18,10 +18,25 @@ const SAVERS_DIR = path.join(HOME, 'Library', 'Screen Savers');
 const SAVER_NAME = 'Mantel.saver';
 const LEGACY_NAMES = ['FrameTVScreenSaver.saver'];
 const MODULE = 'FrameTVScreenSaver';
-const PREF_DIRS = [
-  path.join(HOME, 'Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver/Data/Library/Preferences/ByHost'),
-  path.join(HOME, 'Library/Preferences/ByHost'),
+// Every process that may host the screensaver or its Options panel keeps
+// its own copy: the screensaver itself (legacyScreenSaver, and its Intel
+// twin) and, since macOS 26, the Wallpaper settings extension that shows
+// the Options sheet. `null` = the user's own ByHost domain.
+const CONTAINERS = [
+  'com.apple.ScreenSaver.Engine.legacyScreenSaver',
+  'com.apple.ScreenSaver.Engine.legacyScreenSaver.x86-64',
+  'com.apple.wallpaper.extension.legacy',
 ];
+const PREF_DIRS = [
+  ...CONTAINERS.map((c) => path.join(HOME, 'Library/Containers', c, 'Data/Library/Preferences/ByHost')),
+  null,
+];
+const HOME_BYHOST = path.join(HOME, 'Library/Preferences/ByHost');
+
+/** `defaults` arguments addressing the module's domain in one location. */
+function domainArgs(dir, uuid) {
+  return dir ? [path.join(dir, `${MODULE}.${uuid}`)] : ['-currentHost', MODULE];
+}
 
 function bundledSaverPath(app) {
   return app.isPackaged
@@ -62,7 +77,9 @@ async function unquarantine(p) {
 
 /** Restart the screensaver host so it picks up a new bundle or settings. */
 async function restartHost() {
-  await run('/usr/bin/killall', ['legacyScreenSaver']).catch(() => {});
+  for (const name of ['legacyScreenSaver', 'legacyScreenSaver-x86_64', 'WallpaperLegacyExtension']) {
+    await run('/usr/bin/killall', [name]).catch(() => {});
+  }
 }
 
 async function status(app) {
@@ -74,8 +91,9 @@ async function status(app) {
     for (const dir of PREF_DIRS) {
       // Ask cfprefsd (`defaults export`) rather than reading the plist file:
       // a fresh `defaults import` may not be flushed to disk yet.
-      const domain = path.join(dir, `${MODULE}.${uuid}`);
-      const { stdout } = await run('/usr/bin/defaults', ['export', domain, '-']).catch(() => ({ stdout: '' }));
+      if (dir && !fs.existsSync(path.dirname(path.dirname(dir)))) continue;
+      const args = domainArgs(dir, uuid);
+      const { stdout } = await run('/usr/bin/defaults', [...args.slice(0, -1), 'export', args.at(-1), '-']).catch(() => ({ stdout: '' }));
       if (!stdout) continue;
       const tmp = path.join(os.tmpdir(), `mantel-status-${process.pid}.plist`);
       fs.writeFileSync(tmp, stdout);
@@ -134,15 +152,18 @@ async function connect({ origin, token, deviceToken }) {
   let lastError = null;
   for (const dir of PREF_DIRS) {
     try {
-      fs.mkdirSync(dir, { recursive: true });
+      if (dir) fs.mkdirSync(dir, { recursive: true });
       // `defaults import` goes through cfprefsd, so a running screensaver
       // host doesn't overwrite us with a stale cached copy.
-      await run('/usr/bin/defaults', ['import', path.join(dir, `${MODULE}.${uuid}`), plist]);
+      const args = domainArgs(dir, uuid);
+      await run('/usr/bin/defaults', [...args.slice(0, -1), 'import', args.at(-1), plist]);
       wrote++;
     } catch (err) {
       lastError = err;
     }
   }
+  // Earlier builds wrote a mis-named copy here; tidy it up.
+  fs.rmSync(path.join(HOME_BYHOST, `${MODULE}.${uuid}.${uuid}.plist`), { force: true });
   fs.rmSync(tmp, { force: true });
   fs.rmSync(plist, { force: true });
   if (!wrote) throw lastError ?? new Error('Could not save the screensaver settings.');

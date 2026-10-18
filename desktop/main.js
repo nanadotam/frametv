@@ -212,7 +212,33 @@ ipcMain.handle('mantel:connect-saver', async (event) => {
   const { token, deviceToken } = await res.json();
   await saver.connect({ origin: SITE_ORIGIN, token, deviceToken });
   writeState({ saverConnectedAt: new Date().toISOString() });
-  return { ok: true };
+  return { ok: true, code: await newConnectCode() };
+});
+
+// A short code the Options panel can redeem if it still asks to sign in.
+async function newConnectCode() {
+  try {
+    const res = await net.fetch(`${SITE}/api/screensaver/code`, { method: 'POST', credentials: 'include' });
+    return res.ok ? (await res.json()).code : null;
+  } catch {
+    return null;
+  }
+}
+ipcMain.handle('mantel:connect-code', (event) => (fromLocal(event) ? newConnectCode() : null));
+
+// macOS marketing version from the Darwin kernel version (Darwin 25 = macOS 26).
+ipcMain.handle('mantel:macos', () => {
+  const darwin = Number(require('os').release().split('.')[0]);
+  return darwin >= 25 ? darwin + 1 : darwin >= 20 ? darwin - 9 : 10 + (darwin - 4) / 10;
+});
+ipcMain.handle('mantel:open-settings-pane', (event, pane) => {
+  if (!fromLocal(event)) return;
+  const urls = {
+    wallpaper: 'x-apple.systempreferences:com.apple.Wallpaper-Settings.extension',
+    screensaver: 'x-apple.systempreferences:com.apple.ScreenSaver-Settings.extension',
+    legacy: 'x-apple.systempreferences:com.apple.preference.desktopscreeneffect',
+  };
+  return shell.openExternal(urls[pane] || urls.screensaver);
 });
 
 ipcMain.handle('mantel:open-screensaver-settings', (event) => fromLocal(event) && saver.openSettings());
@@ -303,9 +329,21 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.setAsDefaultProtocolClient('mantel');
-  app.on('open-url', (event) => {
+  // mantel://setup and mantel://looks come from the screensaver's Options panel.
+  const handleUrl = (url) => {
+    const target = String(url).replace(/^mantel:\/\//, '').split(/[/?#]/)[0];
+    const go = () => {
+      if (target === 'setup') openSetup();
+      else if (target === 'looks') openSite('/admin/modes');
+      win?.show();
+      win?.focus();
+      app.focus({ steal: true });
+    };
+    app.isReady() ? go() : app.whenReady().then(go);
+  };
+  app.on('open-url', (event, url) => {
     event.preventDefault();
-    if (win) win.focus();
+    handleUrl(url);
   });
   app.on('second-instance', () => {
     if (win) {

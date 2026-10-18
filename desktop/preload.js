@@ -25,6 +25,9 @@ if (isLocal) {
     copy: (text) => ipcRenderer.invoke('mantel:copy', text),
     signIn: () => ipcRenderer.invoke('mantel:sign-in'),
     update: () => ipcRenderer.invoke('mantel:update'),
+    connectCode: () => ipcRenderer.invoke('mantel:connect-code'),
+    macos: () => ipcRenderer.invoke('mantel:macos'),
+    openSettingsPane: (pane) => ipcRenderer.invoke('mantel:open-settings-pane', pane),
   });
 }
 

@@ -36,6 +36,14 @@
   .more { margin-top: 18px; padding: 18px 20px; display: flex; gap: 16px; align-items: center; }
   .more .t { flex: 1; }
   a { color: var(--tint); font-weight: 600; text-decoration: none; cursor: pointer; }
+  .codebox { margin-top: 12px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--fill); }
+  .codebox > div:first-child { flex: 1; display: flex; flex-direction: column; font-size: 13px; }
+  .code { font: 700 22px ui-monospace, Menlo, monospace; letter-spacing: .08em; -webkit-user-select: all; user-select: all; }
+  .row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+  select { -webkit-app-region: no-drag; font: 13px -apple-system; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--sep); background: var(--cell); color: var(--label); }
+  .guide { margin: 10px 0 2px 18px; display: flex; flex-direction: column; gap: 6px; color: var(--label-2); }
+  .guide b { color: var(--label); }
+  details summary { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -45,7 +53,7 @@
     <img src="icon.svg" alt="">
     <div>
       <h1>Set up your screensaver</h1>
-      <div class="sub">Four quick steps. We’ll tell you exactly what to click.</div>
+      <div class="sub">Four quick steps. We do the hard parts for you.</div>
     </div>
   </div>
   <div class="update" id="update"></div>
@@ -80,7 +88,7 @@
       <div class="badge">3</div>
       <div>
         <h2>Connect it to your account</h2>
-        <p id="connect-text">Points the screensaver at your photos and looks.</p>
+        <p id="connect-text">Points the screensaver at your photos and looks. No signing in inside System Settings.</p>
         <div class="actions">
           <button class="btn primary small" id="connect">Connect</button>
           <span class="spinner" id="connect-spin" style="display:none"></span>
@@ -88,6 +96,15 @@
         <div class="note" id="connect-note" style="display:none">
           If macOS asks <b>“Mantel would like to access data from other apps”</b>, click <b>Allow</b>. That’s how Mantel saves your
           screensaver’s settings. It can’t read anything else.
+        </div>
+        <div class="codebox" id="codebox" style="display:none">
+          <div>
+            <b>Connect code</b>
+            <span class="muted">Only needed if the screensaver’s Options still asks you to connect. Paste it there.</span>
+          </div>
+          <div class="code" id="code">····-····</div>
+          <button class="btn gray small" id="copy-code">Copy</button>
+          <button class="btn plain" id="new-code" title="Get a new code">↻</button>
         </div>
         <div class="err" id="connect-err"></div>
       </div>
@@ -97,18 +114,21 @@
     <section class="step card rise d4" id="s-choose">
       <div class="badge">4</div>
       <div>
-        <h2>Choose Mantel in System Settings</h2>
-        <p>Click below, scroll to <b>Other</b>, and pick <b>Mantel</b>. To set how soon it starts, go to <b>Lock Screen</b> → “Start Screen Saver when inactive”.</p>
+        <div class="row">
+          <h2>Turn it on in System Settings</h2>
+          <select id="osver" title="Your macOS version"></select>
+        </div>
+        <ol class="guide" id="guide"></ol>
         <div class="actions">
-          <button class="btn primary small" id="settings">Open Screen Saver settings</button>
+          <button class="btn primary small" id="settings">Open System Settings for me</button>
           <button class="btn gray small" id="preview">Preview now</button>
         </div>
-        <div class="note">
-          <b>If macOS says the screensaver “can’t be opened” or is from an unidentified developer:</b> that’s Apple’s check for apps outside
-          the App Store, and nothing is wrong. Click <b>Done</b>, then open <a id="privacy">Privacy &amp; Security</a>, scroll down and click
-          <b>Open Anyway</b>. Or paste this in Terminal and press Return:
+        <details class="note">
+          <summary><b>macOS says the screensaver “can’t be opened”?</b></summary>
+          <p style="margin-top:8px">That’s Apple’s check for apps outside the App Store, and nothing is wrong. Click <b>Done</b>, open
+          <a id="privacy">Privacy &amp; Security</a>, scroll down and click <b>Open Anyway</b>. Or paste this in Terminal and press Return:</p>
           <div style="margin-top:8px"><code class="cmd"><span>xattr -dr com.apple.quarantine ~/Library/Screen\ Savers/Mantel.saver</span><button data-copy="xattr -dr com.apple.quarantine ~/Library/Screen\ Savers/Mantel.saver">Copy</button></code></div>
-        </div>
+        </details>
       </div>
     </section>
   </div>
@@ -165,7 +185,8 @@
     $('install').style.display = installed ? 'none' : '';
     setStep('s-install', !signedIn ? 'locked' : installed ? 'done' : 'current');
 
-    $('connect-text').textContent = s.connected ? 'Connected. The screensaver will show your Mantel display.' : 'Points the screensaver at your photos and looks.';
+    $('connect-text').textContent = s.connected ? 'Connected. The screensaver shows your Mantel display.' : 'Points the screensaver at your photos and looks. No signing in inside System Settings.';
+    if (s.connected && $('codebox').style.display === 'none' && !refresh.asked) { refresh.asked = true; m.connectCode().then(showCode); }
     $('connect').textContent = s.connected ? 'Reconnect' : 'Connect';
     setStep('s-connect', !installed ? 'locked' : s.connected ? 'done' : 'current');
     setStep('s-choose', s.installed ? 'current' : 'locked');
@@ -182,15 +203,53 @@
 
   $('signin').onclick = () => m.signIn();
   $('install').onclick = () => busy('install', 'install-spin', 'install-err', async () => { await m.installSaver(); toast('Screensaver installed'); });
+  function showCode(code) {
+    if (!code) return;
+    $('code').textContent = code;
+    $('codebox').style.display = 'flex';
+  }
   $('connect').onclick = () => {
     $('connect-note').style.display = 'block';
     busy('connect', 'connect-spin', 'connect-err', async () => {
       const r = await m.connectSaver();
       if (r && r.needsSignIn) return m.signIn();
+      showCode(r && r.code);
       toast('Connected to your account');
+      $('s-choose').scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
   };
-  $('settings').onclick = () => m.openScreensaverSettings();
+  $('copy-code').onclick = () => { m.copy($('code').textContent); toast('Code copied'); };
+  $('new-code').onclick = async () => showCode(await m.connectCode());
+
+  // Version-specific directions. Mantel's screensaver needs macOS 13+.
+  const GUIDES = [
+    { min: 26, label: 'macOS 26 Tahoe or newer', pane: 'wallpaper', steps: [
+      'Click <b>Open System Settings for me</b> below. It opens <b>Wallpaper</b>.',
+      'Scroll down to <b>Screen Saver</b> and find <b>Mantel</b> under <b>Other</b>. Click it.',
+      'Click <b>Options…</b> and pick a look. That’s it.',
+      'To choose when it starts: <b>Lock Screen</b> → “Start Screen Saver when inactive”.' ] },
+    { min: 14, label: 'macOS 14 Sonoma / 15 Sequoia', pane: 'screensaver', steps: [
+      'Click <b>Open System Settings for me</b>. It opens <b>Screen Saver</b>.',
+      'Scroll to <b>Other</b> and click <b>Mantel</b>.',
+      'Click <b>Options…</b> and pick a look.',
+      'To choose when it starts: <b>Lock Screen</b> → “Start Screen Saver when inactive”.' ] },
+    { min: 13, label: 'macOS 13 Ventura', pane: 'screensaver', steps: [
+      'Click <b>Open System Settings for me</b>. It opens <b>Screen Saver</b>.',
+      'Click <b>Mantel</b> in the list of screensavers.',
+      'Click <b>Options…</b> and pick a look.',
+      'To choose when it starts: <b>Lock Screen</b> → “Start Screen Saver when inactive”.' ] },
+    { min: 0, label: 'macOS 12 Monterey or older', pane: 'legacy', steps: [
+      'Mantel’s screensaver needs <b>macOS 13 Ventura</b> or newer. Update in <b>System Preferences → Software Update</b>.',
+      'Until then, open Mantel in Safari or Chrome and make it full screen. Your photos show the same way.' ] },
+  ];
+  let guide = GUIDES[0];
+  function renderGuide() {
+    $('guide').innerHTML = guide.steps.map((t) => `<li>${t}</li>`).join('');
+    $('settings').style.display = guide.min === 0 ? 'none' : '';
+  }
+  GUIDES.forEach((g, i) => $('osver').appendChild(Object.assign(document.createElement('option'), { value: i, textContent: g.label })));
+  $('osver').onchange = () => { guide = GUIDES[+$('osver').value]; renderGuide(); };
+  $('settings').onclick = () => m.openSettingsPane(guide.pane);
   $('preview').onclick = () => m.preview();
   $('privacy').onclick = () => m.openPrivacy();
   $('devices').onclick = () => m.openSite('/admin/devices');
@@ -204,6 +263,12 @@
   };
 
   (async () => {
+    const ver = await m.macos();
+    const idx = GUIDES.findIndex((g) => ver >= g.min);
+    guide = GUIDES[idx < 0 ? GUIDES.length - 1 : idx];
+    $('osver').value = String(GUIDES.indexOf(guide));
+    $('osver').options[GUIDES.indexOf(guide)].textContent += ' (this Mac)';
+    renderGuide();
     site = await m.site();
     const update = await m.update();
     if (update) {
