@@ -33,7 +33,7 @@ jobs:
       - name: Version from tag
         if: startsWith(github.ref, 'refs/tags/mantel-v')
         working-directory: desktop
-        run: npm version --no-git-tag-version "${GITHUB_REF_NAME#mantel-v}"
+        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#mantel-v}"
 
       - name: Build Mantel.dmg
         working-directory: desktop
