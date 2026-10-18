@@ -1,0 +1,56 @@
+name: Mantel for Mac release
+
+# Push a tag like `mantel-v1.0.0` to build Mantel.dmg (the desktop app with
+# the screensaver bundled inside) and publish it as the repo's latest
+# release. The website's Download button points at
+# releases/latest/download/Mantel.dmg, so it picks the new build up at once.
+
+on:
+  push:
+    tags: ['mantel-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tools
+        run: brew install librsvg
+
+      - name: Install
+        working-directory: desktop
+        run: npm ci && node node_modules/electron/install.js
+
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/mantel-v')
+        working-directory: desktop
+        run: npm version --no-git-tag-version "${GITHUB_REF_NAME#mantel-v}"
+
+      - name: Build Mantel.dmg
+        working-directory: desktop
+        run: npm run dist
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/mantel-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" desktop/dist/Mantel.dmg \
+            --title "Mantel ${GITHUB_REF_NAME#mantel-v}" \
+            --latest \
+            --notes "Download **Mantel.dmg**, open it, and drag Mantel to Applications. The first time you open it, macOS may ask you to confirm in System Settings → Privacy & Security → Open Anyway. Full guide: https://mantelapp.vercel.app/help#mac"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/mantel-v') }}
+        with:
+          name: Mantel.dmg
+          path: desktop/dist/Mantel.dmg

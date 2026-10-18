@@ -1,0 +1,83 @@
+:root {
+  --tint: #f2622e;
+  --tint-2: #ff9a3c;
+  --bg: #f2f2f7;
+  --cell: #ffffff;
+  --label: #000;
+  --label-2: rgb(60 60 67 / 0.62);
+  --label-3: rgb(60 60 67 / 0.3);
+  --fill: rgb(120 120 128 / 0.12);
+  --sep: rgb(60 60 67 / 0.16);
+  --ok: #34c759;
+  --bad: #ff3b30;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 0 0 / 0.06);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tint: #ff6b35;
+    --bg: #000;
+    --cell: #1c1c1e;
+    --label: #fff;
+    --label-2: rgb(235 235 245 / 0.62);
+    --label-3: rgb(235 235 245 / 0.3);
+    --fill: rgb(118 118 128 / 0.24);
+    --sep: rgb(84 84 88 / 0.6);
+    --ok: #30d158;
+    --bad: #ff453a;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--label);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  overflow: hidden;
+}
+.drag { -webkit-app-region: drag; position: fixed; inset: 0 0 auto 0; height: 44px; z-index: 50; }
+.ember { background: linear-gradient(135deg, var(--tint-2), var(--tint) 55%, #e2366b); }
+.ember-text { background: linear-gradient(135deg, var(--tint-2), var(--tint) 60%, #e2366b); -webkit-background-clip: text; color: transparent; }
+
+button { font: inherit; border: 0; cursor: pointer; -webkit-app-region: no-drag; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 52px; padding: 0 26px; border-radius: 15px; font-size: 17px; font-weight: 600;
+  transition: transform .16s cubic-bezier(.2,.8,.2,1), opacity .16s;
+}
+.btn:active { transform: scale(.97); opacity: .85; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { color: #fff; background: linear-gradient(135deg, var(--tint-2), var(--tint) 55%, #e2366b); box-shadow: 0 8px 24px -8px var(--tint); }
+.btn.gray { background: var(--fill); color: var(--label); }
+.btn.plain { background: none; color: var(--tint); height: auto; padding: 8px; }
+.btn.small { height: 36px; padding: 0 14px; font-size: 14px; border-radius: 10px; }
+.btn.block { width: 100%; }
+
+.card { background: var(--cell); border-radius: 18px; box-shadow: var(--shadow); }
+.muted { color: var(--label-2); }
+code.cmd {
+  display: flex; align-items: center; gap: 8px; background: #1c1c1e; color: #fff; border-radius: 10px;
+  padding: 8px 8px 8px 12px; font: 12px/1.4 ui-monospace, Menlo, monospace; -webkit-user-select: text; user-select: text;
+}
+code.cmd span { flex: 1; overflow-x: auto; white-space: nowrap; }
+code.cmd button { background: rgb(255 255 255 / .16); color: #fff; border-radius: 7px; padding: 5px 10px; font: 600 12px -apple-system; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes pop { 0% { opacity: 0; transform: scale(.6) rotate(-8deg); } 70% { transform: scale(1.06) rotate(1deg); } 100% { opacity: 1; transform: none; } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+.rise { animation: rise .7s cubic-bezier(.2,.8,.2,1) both; }
+.d1 { animation-delay: .08s; } .d2 { animation-delay: .16s; } .d3 { animation-delay: .24s; } .d4 { animation-delay: .32s; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+
+.toast {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px);
+  background: var(--cell); box-shadow: 0 10px 30px rgb(0 0 0 / .18); border-radius: 999px; padding: 10px 18px;
+  font-weight: 600; transition: transform .35s cubic-bezier(.2,.8,.2,1); z-index: 99;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://images.unsplash.com data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src https:">
+<title>Welcome to Mantel</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .stage { position: relative; height: 100vh; display: flex; flex-direction: column; }
+  .slides { position: relative; flex: 1; }
+  .slide {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 60px 48px 20px; opacity: 0; pointer-events: none;
+    transform: translateX(40px); transition: opacity .55s cubic-bezier(.2,.8,.2,1), transform .55s cubic-bezier(.2,.8,.2,1);
+  }
+  .slide.active { opacity: 1; transform: none; pointer-events: auto; }
+  .slide.past { transform: translateX(-40px); }
+  h1 { font-size: clamp(34px, 5vw, 54px); line-height: 1.04; letter-spacing: -0.03em; font-weight: 800; }
+  .lead { margin-top: 14px; font-size: 19px; max-width: 520px; color: var(--label-2); }
+  .icon { width: 132px; height: 132px; border-radius: 30px; box-shadow: 0 24px 50px -16px rgb(242 98 46 / .7); }
+  .slide.active .icon { animation: pop .9s cubic-bezier(.2,.8,.2,1) both, float 5s 1s ease-in-out infinite; }
+  .glow { position: absolute; inset: -20% 0 auto; height: 70%; background: radial-gradient(50% 50% at 50% 40%, rgb(255 154 60 / .35), transparent 70%); pointer-events: none; }
+
+  /* Mac mockup */
+  .mac { width: min(560px, 70vw); margin-bottom: 34px; }
+  .screen { position: relative; aspect-ratio: 16/10; border-radius: 14px; border: 9px solid #1d1d1f; overflow: hidden; background: #000; box-shadow: 0 30px 60px -24px rgb(0 0 0 / .5); }
+  .screen img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1.4s ease, transform 6s ease; transform: scale(1); }
+  .screen img.on { opacity: 1; transform: scale(1.06); }
+  .clock { position: absolute; right: 18px; bottom: 14px; color: #fff; text-align: right; text-shadow: 0 2px 14px rgb(0 0 0 / .5); }
+  .clock b { display: block; font-size: 40px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+  .clock small { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; opacity: .85; }
+  .base { height: 10px; margin: 0 -6%; border-radius: 0 0 14px 14px; background: linear-gradient(#d9d9de, #a9a9b0); }
+  .shelf { height: 14px; margin: 18px -12% 0; border-radius: 6px; background: linear-gradient(#f6e3c6, #b98b5e); box-shadow: 0 14px 24px -10px rgb(120 60 20 / .5); }
+  @media (prefers-color-scheme: dark) { .base { background: linear-gradient(#3a3a3e, #1f1f22); } .shelf { background: linear-gradient(#6b4a2e, #3a2616); } }
+
+  /* Devices */
+  .devices { display: flex; align-items: flex-end; gap: 22px; margin-bottom: 34px; }
+  .dev { border: 8px solid #1d1d1f; border-radius: 12px; overflow: hidden; background: #000; box-shadow: var(--shadow); opacity: 0; }
+  .slide.active .dev { animation: rise .7s cubic-bezier(.2,.8,.2,1) both; }
+  .dev img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tv { width: 300px; aspect-ratio: 16/9; border-radius: 8px; }
+  .ipad { width: 120px; aspect-ratio: 3/4; border-radius: 16px; }
+  .phone { width: 64px; aspect-ratio: 9/19; border-radius: 14px; border-width: 5px; }
+  .url { margin-top: 18px; display: inline-flex; gap: 8px; align-items: center; background: var(--cell); box-shadow: var(--shadow); border-radius: 999px; padding: 8px 16px; font-weight: 600; }
+
+  /* Steps */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 28px 0 32px; max-width: 640px; }
+  .step { padding: 18px 14px; text-align: center; opacity: 0; }
+  .slide.active .step { animation: rise .6s cubic-bezier(.2,.8,.2,1) both; }
+  .step .n { width: 34px; height: 34px; margin: 0 auto 8px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-weight: 800; }
+  .step b { display: block; font-size: 15px; }
+  .step span { font-size: 13px; color: var(--label-2); }
+
+  footer { display: flex; align-items: center; justify-content: space-between; padding: 22px 40px 30px; }
+  .dots { display: flex; gap: 7px; }
+  .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--label-3); transition: all .35s; }
+  .dot.on { width: 22px; background: var(--tint); }
+  .ctas { display: flex; gap: 10px; }
+</style>
+</head>
+<body>
+<div class="drag"></div>
+<div class="stage">
+  <div class="slides">
+    <section class="slide active" data-i="0">
+      <div class="glow"></div>
+      <img class="icon" src="icon.svg" alt="">
+      <h1 class="rise d2" style="margin-top:34px">Welcome to <span class="ember-text">Mantel</span></h1>
+      <p class="lead rise d3">Your memories, on display.</p>
+    </section>
+
+    <section class="slide" data-i="1">
+      <div class="mac">
+        <div class="screen" id="screen">
+          <div class="clock"><b id="time">9:41</b><small id="date">Sunday</small></div>
+        </div>
+        <div class="base"></div>
+        <div class="shelf"></div>
+      </div>
+      <h1>Your screensaver, <span class="ember-text">reimagined.</span></h1>
+      <p class="lead">When your Mac is resting, Mantel fills the screen with the people and places you love: slideshows, gallery walls, scrapbooks, clocks and more.</p>
+    </section>
+
+    <section class="slide" data-i="2">
+      <div class="devices">
+        <div class="dev tv" style="animation-delay:.05s"><img data-photo="6" alt=""></div>
+        <div class="dev ipad" style="animation-delay:.18s"><img data-photo="13" alt=""></div>
+        <div class="dev phone" style="animation-delay:.3s"><img data-photo="4" alt=""></div>
+      </div>
+      <h1>Your laptop doesn’t have to stay on.</h1>
+      <p class="lead">Mantel also runs on smart TVs, iPads and any web browser, so your photos can stay up on the wall even when your Mac is closed.</p>
+      <div class="url" id="siteUrl">mantelapp.vercel.app</div>
+    </section>
+
+    <section class="slide" data-i="3">
+      <img class="icon" src="icon.svg" alt="" style="width:88px;height:88px;border-radius:21px">
+      <h1 style="margin-top:22px">Let’s set you up.</h1>
+      <div class="steps">
+        <div class="step card" style="animation-delay:.05s"><div class="n ember">1</div><b>Your account</b><span>Free: name, email, password</span></div>
+        <div class="step card" style="animation-delay:.15s"><div class="n ember">2</div><b>Your photos</b><span>Paste a Google Drive folder</span></div>
+        <div class="step card" style="animation-delay:.25s"><div class="n ember">3</div><b>Your screensaver</b><span>We’ll walk you through it</span></div>
+      </div>
+      <div class="ctas" style="flex-direction:column;width:min(360px,80vw)">
+        <button class="btn primary block" id="signup">Create my account</button>
+        <button class="btn gray block" id="signin">I already have an account</button>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <div class="dots" id="dots"></div>
+    <div class="ctas">
+      <button class="btn plain" id="back" style="visibility:hidden">Back</button>
+      <button class="btn primary" id="next">Continue</button>
+    </div>
+  </footer>
+</div>
+
+<script src="photos.js"></script>
+<script>
+  const PHOTOS = window.PHOTOS;
+  const slides = [...document.querySelectorAll('.slide')];
+  const dots = document.getElementById('dots');
+  slides.forEach(() => dots.appendChild(Object.assign(document.createElement('span'), { className: 'dot' })));
+  let i = 0;
+
+  document.querySelectorAll('img[data-photo]').forEach((img) => (img.src = PHOTOS[+img.dataset.photo]));
+
+  // Crossfading "screensaver" on slide 2
+  const screen = document.getElementById('screen');
+  const reel = [0, 5, 2, 12, 1].map((n, k) => {
+    const img = new Image();
+    img.src = PHOTOS[n];
+    if (k === 0) img.className = 'on';
+    screen.insertBefore(img, screen.firstChild);
+    return img;
+  });
+  let r = 0;
+  setInterval(() => { reel[r].className = ''; r = (r + 1) % reel.length; reel[r].className = 'on'; }, 3200);
+  const tick = () => {
+    const d = new Date();
+    document.getElementById('time').textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M/i, '');
+    document.getElementById('date').textContent = d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  };
+  tick(); setInterval(tick, 15000);
+
+  window.mantel?.site?.().then((s) => (document.getElementById('siteUrl').textContent = s.replace(/^https?:\/\//, '')));
+
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => { s.classList.toggle('active', k === i); s.classList.toggle('past', k < i); });
+    [...dots.children].forEach((d, k) => d.classList.toggle('on', k === i));
+    document.getElementById('back').style.visibility = i ? 'visible' : 'hidden';
+    document.getElementById('next').style.display = i === slides.length - 1 ? 'none' : '';
+  }
+  document.getElementById('next').onclick = () => show(i + 1);
+  document.getElementById('back').onclick = () => show(i - 1);
+  document.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight' || e.key === 'Enter') show(i + 1); if (e.key === 'ArrowLeft') show(i - 1); });
+  document.getElementById('signup').onclick = () => window.mantel.finishOnboarding('signup');
+  document.getElementById('signin').onclick = () => window.mantel.finishOnboarding('signin');
+  show(0);
+</script>
+</body>
+</html>

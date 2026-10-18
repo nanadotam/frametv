@@ -1,0 +1,50 @@
+{
+  "name": "mantel-desktop",
+  "productName": "Mantel",
+  "version": "1.0.0",
+  "description": "Mantel for Mac — your memories, on display. Sets up the Mantel screensaver and opens your Mantel account.",
+  "main": "main.js",
+  "author": "Nana Amoako",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "saver": "bash ./scripts/build-saver.sh",
+    "dist": "bash ./scripts/build-saver.sh && electron-builder --mac --universal"
+  },
+  "build": {
+    "appId": "app.mantel.desktop",
+    "productName": "Mantel",
+    "copyright": "Mantel",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "lib/**", "ui/**", "package.json"],
+    "extraResources": [{ "from": "saver/Mantel.saver", "to": "Mantel.saver" }],
+    "protocols": [{ "name": "Mantel", "schemes": ["mantel"] }],
+    "mac": {
+      "category": "public.app-category.photography",
+      "icon": "build/icon.icns",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "minimumSystemVersion": "13.0",
+      "target": [{ "target": "dmg", "arch": ["universal"] }]
+    },
+    "dmg": {
+      "title": "Mantel",
+      "format": "ULFO",
+      "artifactName": "Mantel.dmg",
+      "background": "build/dmg-background.png",
+      "icon": "build/icon.icns",
+      "iconSize": 112,
+      "window": { "width": 600, "height": 400 },
+      "contents": [
+        { "x": 160, "y": 200, "type": "file" },
+        { "x": 440, "y": 200, "type": "link", "path": "/Applications" }
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3"
+  }
+}

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://images.unsplash.com data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src https:">
+<title>Set up your screensaver</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow-y: auto; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 64px 32px 48px; }
+  .top { display: flex; align-items: center; gap: 14px; }
+  .top img { width: 52px; height: 52px; border-radius: 13px; }
+  h1 { font-size: 32px; letter-spacing: -0.02em; font-weight: 800; line-height: 1.1; }
+  .sub { margin-top: 4px; color: var(--label-2); font-size: 16px; }
+  .update { display: none; margin-top: 18px; padding: 12px 16px; border-radius: 14px; background: rgb(242 98 46 / .12); color: var(--tint); font-weight: 600; }
+  .steps { margin-top: 26px; display: flex; flex-direction: column; gap: 12px; }
+  .step { padding: 18px 20px; display: grid; grid-template-columns: 36px 1fr; gap: 14px; transition: opacity .3s; }
+  .step.locked { pointer-events: none; }
+  .step.locked > * { opacity: .45; }
+  .badge { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #fff; background: var(--label-3); }
+  .step.current .badge { background: linear-gradient(135deg, var(--tint-2), var(--tint) 55%, #e2366b); }
+  .step.done .badge { background: var(--ok); }
+  .step h2 { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .step p { color: var(--label-2); margin-top: 3px; }
+  .actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .note { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--fill); font-size: 13.5px; color: var(--label-2); }
+  .note b { color: var(--label); }
+  .alert { margin: 12px 0 4px; max-width: 280px; padding: 14px; border-radius: 12px; text-align: center; background: #ececec; color: #1d1d1f; box-shadow: var(--shadow); }
+  @media (prefers-color-scheme: dark) { .alert { background: #2a2a2c; color: #fff; } }
+  .alert b { font-size: 12.5px; display: block; }
+  .alert small { display: block; font-size: 11px; opacity: .7; margin-top: 4px; }
+  .err { color: var(--bad); font-weight: 600; margin-top: 10px; display: none; }
+  .ai { margin-top: 18px; padding: 18px 20px; }
+  .ai h3 { font-size: 16px; }
+  .ok { color: var(--ok); font-weight: 700; }
+  .more { margin-top: 18px; padding: 18px 20px; display: flex; gap: 16px; align-items: center; }
+  .more .t { flex: 1; }
+  a { color: var(--tint); font-weight: 600; text-decoration: none; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="drag"></div>
+<div class="wrap">
+  <div class="top rise">
+    <img src="icon.svg" alt="">
+    <div>
+      <h1>Set up your screensaver</h1>
+      <div class="sub">Four quick steps. We’ll tell you exactly what to click.</div>
+    </div>
+  </div>
+  <div class="update" id="update"></div>
+
+  <div class="steps">
+    <!-- 1. Account -->
+    <section class="step card rise d1" id="s-account">
+      <div class="badge">1</div>
+      <div>
+        <h2>Sign in to Mantel</h2>
+        <p id="account-text">Checking…</p>
+        <div class="actions"><button class="btn primary small" id="signin" style="display:none">Sign in</button></div>
+      </div>
+    </section>
+
+    <!-- 2. Install -->
+    <section class="step card rise d2" id="s-install">
+      <div class="badge">2</div>
+      <div>
+        <h2>Install the screensaver</h2>
+        <p id="install-text">Adds Mantel to your Mac’s list of screensavers.</p>
+        <div class="actions">
+          <button class="btn primary small" id="install">Install screensaver</button>
+          <span class="spinner" id="install-spin" style="display:none"></span>
+        </div>
+        <div class="err" id="install-err"></div>
+      </div>
+    </section>
+
+    <!-- 3. Connect -->
+    <section class="step card rise d3" id="s-connect">
+      <div class="badge">3</div>
+      <div>
+        <h2>Connect it to your account</h2>
+        <p id="connect-text">Points the screensaver at your photos and looks.</p>
+        <div class="actions">
+          <button class="btn primary small" id="connect">Connect</button>
+          <span class="spinner" id="connect-spin" style="display:none"></span>
+        </div>
+        <div class="note" id="connect-note" style="display:none">
+          If macOS asks <b>“Mantel would like to access data from other apps”</b>, click <b>Allow</b>. That’s how Mantel saves your
+          screensaver’s settings. It can’t read anything else.
+        </div>
+        <div class="err" id="connect-err"></div>
+      </div>
+    </section>
+
+    <!-- 4. Choose -->
+    <section class="step card rise d4" id="s-choose">
+      <div class="badge">4</div>
+      <div>
+        <h2>Choose Mantel in System Settings</h2>
+        <p>Click below, scroll to <b>Other</b>, and pick <b>Mantel</b>. To set how soon it starts, go to <b>Lock Screen</b> → “Start Screen Saver when inactive”.</p>
+        <div class="actions">
+          <button class="btn primary small" id="settings">Open Screen Saver settings</button>
+          <button class="btn gray small" id="preview">Preview now</button>
+        </div>
+        <div class="note">
+          <b>If macOS says the screensaver “can’t be opened” or is from an unidentified developer:</b> that’s Apple’s check for apps outside
+          the App Store, and nothing is wrong. Click <b>Done</b>, then open <a id="privacy">Privacy &amp; Security</a>, scroll down and click
+          <b>Open Anyway</b>. Or paste this in Terminal and press Return:
+          <div style="margin-top:8px"><code class="cmd"><span>xattr -dr com.apple.quarantine ~/Library/Screen\ Savers/Mantel.saver</span><button data-copy="xattr -dr com.apple.quarantine ~/Library/Screen\ Savers/Mantel.saver">Copy</button></code></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card ai rise">
+    <h3>✨ Stuck? Ask an AI to walk you through it</h3>
+    <p class="muted" style="margin-top:4px">Copy this prompt into ChatGPT, Claude or Gemini and describe what you see. It already knows how Mantel installs.</p>
+    <div class="actions"><button class="btn gray small" id="ai">Copy help prompt</button></div>
+  </section>
+
+  <section class="card more rise">
+    <div class="t">
+      <b>Your Mac doesn’t need to stay on</b>
+      <p class="muted">Open Mantel on a smart TV, an iPad or any browser too. Go to Devices to add one.</p>
+    </div>
+    <button class="btn gray small" id="devices">Devices</button>
+    <button class="btn primary small" id="done">Open Mantel</button>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const m = window.mantel;
+  let site = '';
+
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  function setStep(id, state) {
+    const el = $(id);
+    el.classList.remove('done', 'current', 'locked');
+    el.classList.add(state);
+    if (state === 'done') el.querySelector('.badge').textContent = '✓';
+  }
+
+  async function refresh() {
+    const s = await m.status();
+    const signedIn = !!s.account;
+    $('account-text').innerHTML = signedIn
+      ? `Signed in as <b>${s.account.name || s.account.email}</b>.`
+      : 'Sign in (or create a free account) so the screensaver knows whose photos to show.';
+    $('signin').style.display = signedIn ? 'none' : '';
+    setStep('s-account', signedIn ? 'done' : 'current');
+
+    const installed = s.installed && s.upToDate;
+    $('install-text').textContent = installed ? 'Installed. Mantel is in your list of screensavers.' : s.installed ? 'A newer version is ready. Click to update it.' : 'Adds Mantel to your Mac’s list of screensavers.';
+    $('install').textContent = s.installed ? 'Update screensaver' : 'Install screensaver';
+    $('install').style.display = installed ? 'none' : '';
+    setStep('s-install', !signedIn ? 'locked' : installed ? 'done' : 'current');
+
+    $('connect-text').textContent = s.connected ? 'Connected. The screensaver will show your Mantel display.' : 'Points the screensaver at your photos and looks.';
+    $('connect').textContent = s.connected ? 'Reconnect' : 'Connect';
+    setStep('s-connect', !installed ? 'locked' : s.connected ? 'done' : 'current');
+    setStep('s-choose', s.connected && installed ? 'current' : 'locked');
+  }
+
+  async function busy(btn, spin, err, fn) {
+    $(err).style.display = 'none';
+    $(btn).disabled = true;
+    $(spin).style.display = '';
+    try { await fn(); }
+    catch (e) { $(err).textContent = (e && e.message || 'Something went wrong.').replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); $(err).style.display = 'block'; }
+    finally { $(btn).disabled = false; $(spin).style.display = 'none'; await refresh(); }
+  }
+
+  $('signin').onclick = () => m.signIn();
+  $('install').onclick = () => busy('install', 'install-spin', 'install-err', async () => { await m.installSaver(); toast('Screensaver installed'); });
+  $('connect').onclick = () => {
+    $('connect-note').style.display = 'block';
+    busy('connect', 'connect-spin', 'connect-err', async () => {
+      const r = await m.connectSaver();
+      if (r && r.needsSignIn) return m.signIn();
+      toast('Connected to your account');
+    });
+  };
+  $('settings').onclick = () => m.openScreensaverSettings();
+  $('preview').onclick = () => m.preview();
+  $('privacy').onclick = () => m.openPrivacy();
+  $('devices').onclick = () => m.openSite('/admin/devices');
+  $('done').onclick = () => m.openSite('/admin');
+  document.querySelectorAll('[data-copy]').forEach((b) => (b.onclick = () => { m.copy(b.dataset.copy); toast('Copied'); }));
+  $('ai').onclick = async () => {
+    const res = await fetch(`${site}/api/help-prompt`).catch(() => null);
+    const text = res && res.ok ? await res.text() : `I'm setting up the Mantel screensaver on my Mac (from ${site}) and need step-by-step help. What's going wrong: `;
+    m.copy(text);
+    toast('Prompt copied. Paste it into your AI chat.');
+  };
+
+  (async () => {
+    site = await m.site();
+    const update = await m.update();
+    if (update) {
+      $('update').style.display = 'block';
+      $('update').innerHTML = `Mantel ${update} is available. <a id="get">Download it</a>`;
+      $('get').onclick = () => m.openSite('/download');
+    }
+    refresh();
+  })();
+  window.addEventListener('focus', refresh);
+</script>
+</body>
+</html>
