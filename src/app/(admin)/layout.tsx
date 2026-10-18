@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { Icon } from '@phosphor-icons/react';
-import { PlayCircle, Images, SquaresFour, Devices, GearSix, ArrowSquareOut } from '@phosphor-icons/react';
+import { PlayCircle, Images, SquaresFour, Devices, GearSix, ArrowSquareOut, MonitorPlay } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import BrandMark from '@/components/BrandMark';
@@ -15,7 +15,7 @@ const TABS: { href: string; label: string; icon: Icon; match: string[] }[] = [
   { href: '/admin', label: 'Now', icon: PlayCircle, match: [] },
   { href: '/admin/albums', label: 'Library', icon: Images, match: ['/admin/albums'] },
   { href: '/admin/modes', label: 'Looks', icon: SquaresFour, match: ['/admin/modes', '/admin/music', '/admin/flipboard', '/admin/reminders'] },
-  { href: '/admin/devices', label: 'Devices', icon: Devices, match: ['/admin/devices'] },
+  { href: '/admin/devices', label: 'Devices', icon: Devices, match: ['/admin/devices', '/admin/screensaver'] },
   { href: '/admin/settings', label: 'Settings', icon: GearSix, match: ['/admin/settings', '/admin/schedule', '/admin/help'] },
 ];
 
@@ -55,7 +55,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               );
             })}
           </nav>
-          <div className="p-3">
+          <div className="space-y-2 p-3">
+            <Link
+              href="/admin/screensaver"
+              onClick={(e) => {
+                // Inside the Mac app, open its guided installer instead.
+                if (window.mantel?.isApp) {
+                  e.preventDefault();
+                  window.mantel.openScreensaverSetup();
+                }
+              }}
+              className="pressable bg-ember flex items-center gap-3 rounded-[12px] px-3 py-3 text-[15px] font-semibold text-white shadow-[0_8px_20px_-10px_var(--m-tint)]"
+            >
+              <MonitorPlay size={22} weight="fill" />
+              Set up screensaver
+            </Link>
             <Link
               href="/display"
               target="_blank"

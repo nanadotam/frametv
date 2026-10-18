@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Pause, Play, SkipBack, SkipForward, Shuffle, Sun, SunDim, SlidersHorizontal, Clock,
-  CalendarBlank, Plus, Images, Desktop, CaretRight, ArrowsClockwise,
+  CalendarBlank, Plus, Images, Desktop, CaretRight, ArrowsClockwise, MonitorPlay,
 } from '@phosphor-icons/react';
 import { Page } from '@/components/m/Page';
 import { Section, Row, ToggleRow, IconTile } from '@/components/m/List';
@@ -351,6 +351,12 @@ export default function NowPage() {
           title="Clock in the corner"
           checked={clock.enabled}
           onChange={toggleClock}
+        />
+        <Row
+          icon={<IconTile tone="ember"><MonitorPlay size={18} weight="fill" /></IconTile>}
+          title="Set up a screensaver"
+          subtitle="Mac, TV, iPad, Windows or any browser"
+          href="/admin/screensaver"
         />
         <Row
           icon={<IconTile tone="blue"><Desktop size={18} weight="bold" /></IconTile>}

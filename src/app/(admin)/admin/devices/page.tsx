@@ -1,9 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import {
   AppleLogo, Television, Globe, DeviceMobile, Laptop, Monitor, Link as LinkIcon, Copy,
-  CheckCircle, SignOut, Trash, ArrowSquareOut, DownloadSimple,
+  CheckCircle, SignOut, Trash, ArrowSquareOut, DownloadSimple, MonitorPlay, CaretRight,
 } from '@phosphor-icons/react';
 import { Page } from '@/components/m/Page';
 import { Section, Row, IconTile } from '@/components/m/List';
@@ -146,6 +147,15 @@ export default function DevicesPage() {
 
   return (
     <Page title="Devices" subtitle="Put your memories on any screen.">
+      <Link href="/admin/screensaver" className="pressable bg-ember flex items-center gap-4 rounded-[20px] p-4 text-white shadow-[0_10px_30px_-12px_var(--m-tint)]">
+        <MonitorPlay size={36} weight="fill" />
+        <div className="flex-1">
+          <p className="text-[17px] font-semibold">Set up a screensaver</p>
+          <p className="text-[13px] text-white/85">Step-by-step guides for Mac, TV, iPad, Windows and more</p>
+        </div>
+        <CaretRight size={18} weight="bold" />
+      </Link>
+
       {/* ── Add a screen ── */}
       <div className="grid gap-3 sm:grid-cols-3">
         <a href={MAC_DOWNLOAD_URL} className="pressable flex flex-col rounded-[20px] bg-cell p-4 shadow-cell">
