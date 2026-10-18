@@ -120,7 +120,9 @@ function createWindow() {
   // Keep Mantel pages in the window; everything else opens in the browser.
   const isInternal = (url) => url.startsWith(SITE_ORIGIN) || url.startsWith('file://');
   wc.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http')) shell.openExternal(url);
+    // "Open display" gets its own Mantel window (signed in, full-screen ready).
+    if (url.startsWith(SITE_ORIGIN) && /^\/(display|s\/)/.test(new URL(url).pathname)) openDisplay(url);
+    else if (url.startsWith('http')) shell.openExternal(url);
     return { action: 'deny' };
   });
   wc.on('will-navigate', (event, url) => {
@@ -162,6 +164,73 @@ function createWindow() {
     }, 7000);
   }
 }
+
+// ── Display window ───────────────────────────────────────────────────────────
+// The live picture frame in its own window, sharing the app's sign-in.
+// F or ⌃⌘F toggles full screen, Esc leaves it.
+
+let displayWin = null;
+
+const DISPLAY_HINT = `(() => {
+  if (document.getElementById('mantel-fs-hint')) return;
+  const b = document.createElement('button');
+  b.id = 'mantel-fs-hint';
+  b.textContent = '⛶  Full screen  (F)';
+  b.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;padding:9px 14px;border-radius:999px;border:0;' +
+    'background:rgba(0,0,0,.55);color:#fff;font:600 13px -apple-system,system-ui;backdrop-filter:blur(12px);cursor:pointer;' +
+    'transition:opacity .4s;opacity:1';
+  b.onclick = () => window.mantel && window.mantel.toggleFullscreen();
+  document.body.appendChild(b);
+  let t;
+  const show = () => { b.style.opacity = '1'; clearTimeout(t); t = setTimeout(() => (b.style.opacity = '0'), 3000); };
+  document.addEventListener('mousemove', show);
+  show();
+})();`;
+
+function openDisplay(url = `${SITE}/display`) {
+  if (displayWin && !displayWin.isDestroyed()) {
+    displayWin.focus();
+    return;
+  }
+  displayWin = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 480,
+    minHeight: 300,
+    title: 'Mantel Display',
+    backgroundColor: '#000000',
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 14, y: 14 },
+    fullscreenable: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
+  });
+  const dwc = displayWin.webContents;
+  dwc.setWindowOpenHandler(({ url: u }) => {
+    if (u.startsWith('http')) shell.openExternal(u);
+    return { action: 'deny' };
+  });
+  dwc.on('did-finish-load', () => {
+    if (!displayWin.isFullScreen()) dwc.executeJavaScript(DISPLAY_HINT).catch(() => {});
+  });
+  dwc.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || input.meta || input.control || input.alt) return;
+    if (input.key === 'f' || input.key === 'F') {
+      displayWin.setFullScreen(!displayWin.isFullScreen());
+      event.preventDefault();
+    } else if (input.key === 'Escape' && displayWin.isFullScreen()) {
+      displayWin.setFullScreen(false);
+      event.preventDefault();
+    }
+  });
+  displayWin.on('enter-full-screen', () => dwc.executeJavaScript("document.getElementById('mantel-fs-hint')?.remove()").catch(() => {}));
+  displayWin.on('leave-full-screen', () => dwc.executeJavaScript(DISPLAY_HINT).catch(() => {}));
+  displayWin.on('closed', () => (displayWin = null));
+  dwc.loadURL(url);
+}
+
+ipcMain.on('display:fullscreen', (event) => {
+  if (displayWin && event.sender === displayWin.webContents) displayWin.setFullScreen(!displayWin.isFullScreen());
+});
 
 function openSite(pathname) {
   if (!win) createWindow();
@@ -314,12 +383,15 @@ function buildMenu() {
         { label: 'Devices', accelerator: 'Cmd+4', click: () => openSite('/admin/devices') },
         { label: 'Settings', accelerator: 'Cmd+,', click: () => openSite('/admin/settings') },
         { type: 'separator' },
+        { label: 'Open Display', accelerator: 'Cmd+D', click: () => openDisplay() },
+        { type: 'separator' },
         { label: 'Back', accelerator: 'Cmd+[', click: () => view?.webContents.navigationHistory.goBack() },
         { label: 'Forward', accelerator: 'Cmd+]', click: () => view?.webContents.navigationHistory.goForward() },
         { label: 'Home', accelerator: 'Cmd+Shift+H', click: () => openSite('/admin') },
         { label: 'Reload', accelerator: 'Cmd+R', click: () => view?.webContents.reload() },
       ],
     },
+    { label: 'View', submenu: [{ role: 'togglefullscreen' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }] },
     { role: 'windowMenu' },
     {
       role: 'help',

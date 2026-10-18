@@ -10,6 +10,7 @@ const api = {
   isApp: true,
   openScreensaverSetup: () => ipcRenderer.invoke('mantel:open-setup'),
   openSite: (pathname) => ipcRenderer.invoke('mantel:open-site', pathname),
+  toggleFullscreen: () => ipcRenderer.send('display:fullscreen'),
 };
 
 if (isLocal) {
