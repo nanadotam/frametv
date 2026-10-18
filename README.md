@@ -40,5 +40,4 @@ The app is ad-hoc signed, not notarized, so first launch needs
 System Settings → Privacy & Security → Open Anyway. `/help#mac` walks people
 through it.
 
-See `SCHEMA.md` for the data model, `VERSIONING.md` for versioning, and
-`docs/REBUILD_PLAN.md` for the 2026 rebuild notes.
+See `SCHEMA.md` for the data model and `VERSIONING.md` for versioning.
