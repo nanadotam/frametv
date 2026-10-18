@@ -44,6 +44,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A release may already exist (e.g. published from a local build):
+          # just replace its DMG.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" desktop/dist/Mantel.dmg --clobber
+            exit 0
+          fi
           gh release create "$GITHUB_REF_NAME" desktop/dist/Mantel.dmg \
             --title "Mantel ${GITHUB_REF_NAME#mantel-v}" \
             --latest \
