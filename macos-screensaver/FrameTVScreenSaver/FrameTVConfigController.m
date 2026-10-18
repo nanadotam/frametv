@@ -7,6 +7,7 @@
 #import "WVSSAddress.h"
 #import <WebKit/WebKit.h>
 #import <ScreenSaver/ScreenSaver.h>
+#import "MantelIcon.h"
 
 static NSString *const kFrameTVBaseURL = @"https://mantelapp.vercel.app";
 static NSString *const kFrameTVAuthorizePath = @"/screensaver/authorize";
@@ -15,17 +16,45 @@ static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
 static NSString *const kRigBundleIdentifier = @"com.frametv.FrameTVScreenSaverRig";
 static NSString *const kDeviceTokenDefaultsKey = @"FrameTVDeviceToken";
 static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
+static NSString *const kDesktopAppBundleIdentifier = @"app.mantel.desktop";
+
+// Friendly names + SF Symbols for each look, matching the Mantel app.
+static NSDictionary<NSString *, NSArray<NSString *> *> *MantelLooks(void) {
+  return @{
+    @"slideshow-single" : @[ @"Slideshow", @"photo" ],
+    @"slideshow-grid" : @[ @"Gallery Wall", @"square.grid.3x2" ],
+    @"pinterest" : @[ @"Pinboard", @"rectangle.split.3x1" ],
+    @"scrapbook" : @[ @"Scrapbook", @"pin" ],
+    @"video" : @[ @"Video Loops", @"film" ],
+    @"clock-text" : @[ @"Clock", @"clock" ],
+    @"unsplash-mood" : @[ @"Mood", @"mountain.2" ],
+    @"scripture" : @[ @"Verse", @"book" ],
+    @"vinyl" : @[ @"Vinyl", @"opticaldisc" ],
+    @"coverflow" : @[ @"Cover Flow", @"square.stack" ],
+    @"flipboard" : @[ @"Flip Board", @"textformat.abc" ],
+    @"easel" : @[ @"Easel", @"pencil.line" ],
+    @"eisenhower" : @[ @"Priorities", @"checklist" ],
+  };
+}
+
+static NSArray<NSString *> *MantelLookOrder(void) {
+  return @[ @"slideshow-single", @"slideshow-grid", @"pinterest", @"scrapbook", @"video", @"clock-text",
+            @"unsplash-mood", @"scripture", @"vinyl", @"coverflow", @"flipboard", @"easel", @"eisenhower" ];
+}
 
 @interface FrameTVConfigController () <WKNavigationDelegate>
 
 @property(nonatomic, strong) WVSSConfig *config;
 
 @property(nonatomic, strong) NSWindow *sheetWindow;
-@property(nonatomic, strong) NSTextField *statusLabel;
-@property(nonatomic, strong) NSButton *primaryButton;
-@property(nonatomic, strong) NSPopUpButton *modePopup;
-@property(nonatomic, strong) NSTextField *modeLabel;
 @property(nonatomic, strong) NSArray<NSDictionary *> *modes;
+@property(nonatomic, copy) NSString *activeModeId;
+@property(nonatomic, strong) NSMutableArray<NSButton *> *lookButtons;
+@property(nonatomic, strong) NSView *lookGrid;
+@property(nonatomic, strong) NSTextField *codeField;
+@property(nonatomic, strong) NSButton *codeButton;
+@property(nonatomic, strong) NSTextField *codeError;
+@property(nonatomic, strong) NSTimer *pollTimer;
 
 @property(nonatomic, strong) NSWindow *signInWindow;
 @property(nonatomic, strong) WKWebView *signInWebView;
@@ -96,107 +125,200 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
   return self.isConnected && self.deviceToken.length > 0 && self.connectedOrigin.length > 0;
 }
 
-- (NSString *)statusText {
-  if (self.isConnected) {
-    return [NSString stringWithFormat:
-        @"Connected — this screensaver shows your Mantel display.\n\n%@\n\n"
-         "Change what's shown any time from the Mantel app or website — "
-         "no need to come back here.",
-        self.connectedURL];
-  }
-  return @"Sign in to point this screensaver at your Mantel display. "
-          "Once connected, you can change what it shows any time from Mantel "
-          "itself — on your phone, your Mac, anywhere — without reopening "
-          "this panel.";
-}
-
 #pragma mark - Main sheet UI
+//
+// Two states, rebuilt in place:
+//  • Not connected — "Open the Mantel app" (which connects this screensaver
+//    for you; this panel notices by itself), or paste a connect code. Email
+//    sign-in stays as a last resort.
+//  • Connected — pick what the screensaver shows, plus a jump into the app
+//    for everything else.
+
+static const CGFloat kW = 520;
+static const CGFloat kH = 600;
 
 - (void)buildSheetWindow {
-  NSRect frame = NSMakeRect(0, 0, 440, 480);
-  NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
+  NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, kW, kH)
                                                   styleMask:NSWindowStyleMaskTitled
                                                     backing:NSBackingStoreBuffered
                                                       defer:NO];
-  window.title = @"Mantel Screensaver";
+  window.title = @"Mantel";
   window.delegate = self;
   self.sheetWindow = window;
+  [self rebuild];
+}
 
-  NSView *content = window.contentView;
+- (void)rebuild {
+  NSView *content = self.sheetWindow.contentView;
+  for (NSView *v in [content.subviews copy]) [v removeFromSuperview];
+  [self.pollTimer invalidate];
+  self.pollTimer = nil;
+  self.lookButtons = [NSMutableArray array];
 
-  NSTextField *icon = [self labelWithFrame:NSMakeRect(188, 396, 64, 64)];
-  icon.font = [NSFont systemFontOfSize:44];
-  icon.alignment = NSTextAlignmentCenter;
-  icon.stringValue = @"📺";
+  // Icon + title
+  NSData *iconData = [[NSData alloc] initWithBase64EncodedString:kMantelIconPNGBase64 options:0];
+  NSImageView *icon = [NSImageView imageViewWithImage:[[NSImage alloc] initWithData:iconData]];
+  icon.frame = NSMakeRect((kW - 72) / 2, kH - 100, 72, 72);
+  icon.imageScaling = NSImageScaleProportionallyUpOrDown;
   [content addSubview:icon];
 
-  NSTextField *title = [self labelWithFrame:NSMakeRect(20, 358, 400, 28)];
-  title.font = [NSFont boldSystemFontOfSize:18];
-  title.alignment = NSTextAlignmentCenter;
-  title.stringValue = @"Welcome to Mantel";
-  [content addSubview:title];
-
-  NSTextField *status = [self labelWithFrame:NSMakeRect(30, 240, 380, 110)];
-  status.font = [NSFont systemFontOfSize:12.5];
-  status.textColor = [NSColor secondaryLabelColor];
-  status.alignment = NSTextAlignmentCenter;
-  status.lineBreakMode = NSLineBreakByWordWrapping;
-  status.maximumNumberOfLines = 0;
-  status.stringValue = self.statusText;
-  self.statusLabel = status;
-  [content addSubview:status];
-
-  // Mode picker row — populated/shown only once connected with a device
-  // token (see rebuildModeSection). Built here (hidden) so later state
-  // changes just toggle visibility instead of inserting/removing views.
-  NSTextField *modeLabel = [self labelWithFrame:NSMakeRect(30, 202, 110, 20)];
-  modeLabel.font = [NSFont systemFontOfSize:12];
-  modeLabel.alignment = NSTextAlignmentRight;
-  modeLabel.stringValue = @"Screensaver mode:";
-  self.modeLabel = modeLabel;
-  [content addSubview:modeLabel];
-
-  NSPopUpButton *modePopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(150, 198, 260, 26) pullsDown:NO];
-  modePopup.target = self;
-  modePopup.action = @selector(modeSelected:);
-  self.modePopup = modePopup;
-  [content addSubview:modePopup];
-
-  NSButton *primary = [NSButton buttonWithTitle:self.isConnected ? @"Sign In as a Different Account" : @"Sign In"
-                                          target:self
-                                          action:@selector(primaryButtonPressed:)];
-  primary.frame = NSMakeRect(120, 148, 200, 32);
-  primary.bezelStyle = NSBezelStyleRounded;
-  primary.keyEquivalent = @"\r";
-  self.primaryButton = primary;
-  [content addSubview:primary];
-
-  if (self.isRunningAsStandaloneApp) {
-    NSButton *uninstall = [NSButton buttonWithTitle:@"Uninstall Everything…"
-                                              target:self
-                                              action:@selector(uninstallPressed:)];
-    uninstall.frame = NSMakeRect(120, 102, 200, 24);
-    uninstall.bezelStyle = NSBezelStyleInline;
-    uninstall.contentTintColor = [NSColor systemRedColor];
-    [content addSubview:uninstall];
-  }
-
   if (self.isConnected) {
-    NSButton *disconnect = [NSButton buttonWithTitle:@"Disconnect"
-                                               target:self
-                                               action:@selector(disconnectPressed:)];
-    disconnect.frame = NSMakeRect(20, 20, 90, 28);
-    disconnect.bezelStyle = NSBezelStyleRounded;
-    [content addSubview:disconnect];
+    [self buildConnectedIn:content];
+  } else {
+    [self buildConnectIn:content];
   }
 
   NSButton *done = [NSButton buttonWithTitle:@"Done" target:self action:@selector(donePressed:)];
-  done.frame = NSMakeRect(340, 20, 80, 28);
+  done.frame = NSMakeRect(kW - 110, 18, 90, 30);
   done.bezelStyle = NSBezelStyleRounded;
+  done.keyEquivalent = @"\r";
   [content addSubview:done];
+}
 
-  [self rebuildModeSection];
+- (NSTextField *)text:(NSString *)string frame:(NSRect)frame size:(CGFloat)size weight:(NSFontWeight)weight {
+  NSTextField *label = [self labelWithFrame:frame];
+  label.stringValue = string;
+  label.font = [NSFont systemFontOfSize:size weight:weight];
+  label.alignment = NSTextAlignmentCenter;
+  label.lineBreakMode = NSLineBreakByWordWrapping;
+  label.maximumNumberOfLines = 0;
+  return label;
+}
+
+- (void)buildConnectedIn:(NSView *)content {
+  [content addSubview:[self text:@"Mantel" frame:NSMakeRect(20, kH - 136, kW - 40, 28) size:22 weight:NSFontWeightBold]];
+  NSTextField *status = [self text:@"● Connected. Your screensaver shows your Mantel photos."
+                             frame:NSMakeRect(20, kH - 160, kW - 40, 18) size:12.5 weight:NSFontWeightMedium];
+  status.textColor = [NSColor systemGreenColor];
+  [content addSubview:status];
+
+  NSTextField *heading = [self text:@"What should it show?" frame:NSMakeRect(24, kH - 200, kW - 48, 20) size:14 weight:NSFontWeightSemibold];
+  heading.alignment = NSTextAlignmentLeft;
+  [content addSubview:heading];
+
+  NSView *grid = [[NSView alloc] initWithFrame:NSMakeRect(20, 118, kW - 40, kH - 330)];
+  self.lookGrid = grid;
+  [content addSubview:grid];
+  [self layoutLooks];
+
+  NSButton *more = [NSButton buttonWithTitle:@"More options in the Mantel app…" target:self action:@selector(openAppLooks:)];
+  more.frame = NSMakeRect((kW - 300) / 2, 70, 300, 32);
+  more.bezelStyle = NSBezelStyleRounded;
+  [content addSubview:more];
+
+  NSButton *disconnect = [NSButton buttonWithTitle:@"Disconnect" target:self action:@selector(disconnectPressed:)];
+  disconnect.frame = NSMakeRect(20, 18, 110, 30);
+  disconnect.bezelStyle = NSBezelStyleRounded;
+  [content addSubview:disconnect];
+
   if (self.hasModeAccess) [self fetchModes];
+}
+
+- (void)layoutLooks {
+  for (NSView *v in [self.lookGrid.subviews copy]) [v removeFromSuperview];
+  [self.lookButtons removeAllObjects];
+
+  // Looks the user has enabled (or every look until the list has loaded).
+  NSMutableArray<NSString *> *ids = [NSMutableArray array];
+  NSSet *enabled = self.modes ? [NSSet setWithArray:[self.modes valueForKey:@"id"]] : nil;
+  for (NSString *lookId in MantelLookOrder()) {
+    if (!enabled || [enabled containsObject:lookId]) [ids addObject:lookId];
+  }
+
+  const NSInteger cols = 4;
+  const CGFloat gap = 8;
+  const CGFloat w = (self.lookGrid.bounds.size.width - gap * (cols - 1)) / cols;
+  const CGFloat h = 62;
+  CGFloat top = self.lookGrid.bounds.size.height;
+  for (NSUInteger i = 0; i < ids.count; i++) {
+    NSString *lookId = ids[i];
+    NSArray *meta = MantelLooks()[lookId];
+    NSButton *b = [NSButton buttonWithTitle:meta[0] target:self action:@selector(lookPressed:)];
+    b.identifier = lookId;
+    [b setButtonType:NSButtonTypePushOnPushOff];
+    b.bezelStyle = NSBezelStyleFlexiblePush;
+    b.image = [NSImage imageWithSystemSymbolName:meta[1] accessibilityDescription:meta[0]];
+    b.imagePosition = NSImageAbove;
+    b.font = [NSFont systemFontOfSize:11.5 weight:NSFontWeightMedium];
+    NSInteger row = i / cols, col = i % cols;
+    b.frame = NSMakeRect(col * (w + gap), top - (row + 1) * h - row * gap, w, h);
+    [self.lookGrid addSubview:b];
+    [self.lookButtons addObject:b];
+  }
+  [self highlightActiveLook];
+}
+
+- (void)highlightActiveLook {
+  for (NSButton *b in self.lookButtons) {
+    BOOL on = [b.identifier isEqualToString:self.activeModeId];
+    b.state = on ? NSControlStateValueOn : NSControlStateValueOff;
+    b.bezelColor = on ? [NSColor systemOrangeColor] : nil;
+    b.contentTintColor = on ? [NSColor whiteColor] : nil;
+  }
+}
+
+- (void)buildConnectIn:(NSView *)content {
+  [content addSubview:[self text:@"Connect Mantel" frame:NSMakeRect(20, kH - 136, kW - 40, 28) size:22 weight:NSFontWeightBold]];
+  NSTextField *lead = [self text:@"Open the Mantel app and click Connect. This window updates by itself, with nothing to type."
+                           frame:NSMakeRect(50, kH - 196, kW - 100, 52) size:13.5 weight:NSFontWeightRegular];
+  lead.textColor = [NSColor secondaryLabelColor];
+  [content addSubview:lead];
+
+  BOOL appInstalled = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:kDesktopAppBundleIdentifier] != nil;
+  NSButton *open = [NSButton buttonWithTitle:appInstalled ? @"Open the Mantel App" : @"Get the Mantel App"
+                                       target:self
+                                       action:@selector(openAppSetup:)];
+  open.frame = NSMakeRect((kW - 260) / 2, kH - 252, 260, 40);
+  open.bezelStyle = NSBezelStyleFlexiblePush;
+  open.bezelColor = [NSColor systemOrangeColor];
+  open.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
+  [content addSubview:open];
+
+  NSTextField *or = [self text:@"or paste the connect code shown in the app"
+                         frame:NSMakeRect(20, kH - 300, kW - 40, 18) size:12 weight:NSFontWeightRegular];
+  or.textColor = [NSColor tertiaryLabelColor];
+  [content addSubview:or];
+
+  NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect((kW - 300) / 2, kH - 348, 190, 34)];
+  field.placeholderString = @"ABCD-EFGH";
+  field.font = [NSFont monospacedSystemFontOfSize:18 weight:NSFontWeightSemibold];
+  field.alignment = NSTextAlignmentCenter;
+  field.bezelStyle = NSTextFieldRoundedBezel;
+  field.target = self;
+  field.action = @selector(redeemPressed:);
+  self.codeField = field;
+  [content addSubview:field];
+
+  NSButton *connect = [NSButton buttonWithTitle:@"Connect" target:self action:@selector(redeemPressed:)];
+  connect.frame = NSMakeRect((kW - 300) / 2 + 200, kH - 347, 100, 32);
+  connect.bezelStyle = NSBezelStyleRounded;
+  self.codeButton = connect;
+  [content addSubview:connect];
+
+  NSTextField *err = [self text:@"" frame:NSMakeRect(20, kH - 380, kW - 40, 18) size:12 weight:NSFontWeightMedium];
+  err.textColor = [NSColor systemRedColor];
+  self.codeError = err;
+  [content addSubview:err];
+
+  NSButton *email = [NSButton buttonWithTitle:@"Sign in with email instead" target:self action:@selector(primaryButtonPressed:)];
+  email.frame = NSMakeRect((kW - 220) / 2, 70, 220, 24);
+  email.bezelStyle = NSBezelStyleInline;
+  [content addSubview:email];
+
+  // The app writes our settings from outside; notice it and switch views.
+  self.pollTimer = [NSTimer scheduledTimerWithTimeInterval:2 target:self selector:@selector(pollForConnection:) userInfo:nil repeats:YES];
+}
+
+- (void)pollForConnection:(NSTimer *)timer {
+  NSUserDefaults *defaults = self.rawDefaults;
+  [defaults synchronize];
+  WVSSConfig *fresh = [[WVSSConfig alloc] initWithUserDefaults:defaults];
+  if ([FrameTVConfigController isConfigConnected:fresh]) {
+    [self.config.addresses removeAllObjects];
+    [self.config.addresses addObjectsFromArray:fresh.addresses];
+    self.config.shouldFetchAddressList = NO;
+    [self rebuild];
+  }
 }
 
 - (NSTextField *)labelWithFrame:(NSRect)frame {
@@ -209,20 +331,77 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 }
 
 - (void)refreshStatus {
-  self.statusLabel.stringValue = self.statusText;
-  [self.primaryButton setTitle:self.isConnected ? @"Sign In as a Different Account" : @"Sign In"];
+  [self rebuild];
 }
 
 - (void)rebuildModeSection {
-  BOOL show = self.hasModeAccess;
-  self.modeLabel.hidden = !show;
-  self.modePopup.hidden = !show;
-  if (!show) {
-    [self.modePopup removeAllItems];
-  }
+  [self rebuild];
 }
 
-#pragma mark - Mode picker (screensaver-scoped bearer token)
+#pragma mark - Opening the Mantel app
+
+- (void)openURLString:(NSString *)string {
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:string]];
+}
+
+- (void)openAppSetup:(id)sender {
+  BOOL appInstalled = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:kDesktopAppBundleIdentifier] != nil;
+  [self openURLString:appInstalled ? @"mantel://setup" : [kFrameTVBaseURL stringByAppendingString:@"/download"]];
+}
+
+- (void)openAppLooks:(id)sender {
+  BOOL appInstalled = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:kDesktopAppBundleIdentifier] != nil;
+  NSString *origin = self.connectedOrigin.length ? self.connectedOrigin : kFrameTVBaseURL;
+  [self openURLString:appInstalled ? @"mantel://looks" : [origin stringByAppendingString:@"/admin/modes"]];
+}
+
+#pragma mark - Connect code
+
+- (void)redeemPressed:(id)sender {
+  NSString *code = [self.codeField.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+  if (code.length < 8) {
+    self.codeError.stringValue = @"Codes look like ABCD-EFGH.";
+    return;
+  }
+  self.codeError.stringValue = @"";
+  self.codeButton.enabled = NO;
+
+  NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:[kFrameTVBaseURL stringByAppendingString:@"/api/screensaver/redeem"]]];
+  request.HTTPMethod = @"POST";
+  [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+  request.HTTPBody = [NSJSONSerialization dataWithJSONObject:@{ @"code" : code } options:0 error:nil];
+
+  [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    NSDictionary *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    NSInteger status = [(NSHTTPURLResponse *)response statusCode];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.codeButton.enabled = YES;
+      if (error || status != 200 || ![json[@"token"] isKindOfClass:NSString.class]) {
+        self.codeError.stringValue = json[@"error"] ?: @"Couldn’t connect. Check your internet and try again.";
+        return;
+      }
+      [self applyToken:json[@"token"] deviceToken:json[@"deviceToken"] origin:json[@"origin"] ?: kFrameTVBaseURL];
+    });
+  }] resume];
+}
+
+- (void)applyToken:(NSString *)token deviceToken:(NSString *)deviceToken origin:(NSString *)origin {
+  NSString *shareUrl = [NSString stringWithFormat:@"%@/s/%@", origin, token];
+  [self.config.addresses removeAllObjects];
+  [self.config.addresses addObject:[WVSSAddress addressWithURL:shareUrl duration:-1]];
+  self.config.shouldFetchAddressList = NO;
+  [self.config synchronize];
+
+  NSUserDefaults *defaults = self.rawDefaults;
+  [defaults setObject:origin forKey:kOriginDefaultsKey];
+  if (deviceToken.length) [defaults setObject:deviceToken forKey:kDeviceTokenDefaultsKey];
+  [defaults synchronize];
+
+  [self dismissSignIn];
+  [self rebuild];
+}
+
+#pragma mark - Looks (screensaver-scoped bearer token)
 
 - (NSMutableURLRequest *)authedRequestForPath:(NSString *)path {
   NSString *urlString = [self.connectedOrigin stringByAppendingString:path];
@@ -236,73 +415,48 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
   if (!self.hasModeAccess) return;
 
   NSMutableURLRequest *request = [self authedRequestForPath:@"/api/modes"];
-  NSURLSessionDataTask *task = [[NSURLSession sharedSession]
-      dataTaskWithRequest:request
-        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+  [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
     if (error || !data) return;
-
-    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    NSArray<NSDictionary *> *modes = json[@"modes"];
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    NSArray<NSDictionary *> *modes = [json isKindOfClass:NSArray.class] ? json : json[@"modes"];
     if (![modes isKindOfClass:[NSArray class]]) return;
-
-    // Only modes the user has enabled are worth offering here.
     NSPredicate *enabledOnly = [NSPredicate predicateWithFormat:@"is_enabled == YES"];
     NSArray<NSDictionary *> *enabledModes = [modes filteredArrayUsingPredicate:enabledOnly];
-
     dispatch_async(dispatch_get_main_queue(), ^{
-      [self populateModePopupWithModes:enabledModes];
+      self.modes = enabledModes;
+      [self layoutLooks];
+      [self fetchActiveMode];
     });
-  }];
-  [task resume];
-}
-
-- (void)populateModePopupWithModes:(NSArray<NSDictionary *> *)modes {
-  self.modes = modes;
-  [self.modePopup removeAllItems];
-  for (NSDictionary *mode in modes) {
-    NSString *name = mode[@"name"] ?: mode[@"id"];
-    [self.modePopup addItemWithTitle:name];
-    self.modePopup.lastItem.representedObject = mode[@"id"];
-  }
-  [self fetchActiveMode];
+  }] resume];
 }
 
 - (void)fetchActiveMode {
   if (!self.hasModeAccess) return;
-
   NSMutableURLRequest *request = [self authedRequestForPath:@"/api/display-state"];
-  NSURLSessionDataTask *task = [[NSURLSession sharedSession]
-      dataTaskWithRequest:request
-        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+  [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
     if (error || !data) return;
     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    NSString *activeModeId = json[@"state"][@"active_mode_id"];
-    if (!activeModeId) return;
-
+    NSDictionary *state = json[@"state"] ?: json;
+    NSString *activeModeId = state[@"active_mode_id"];
+    if (![activeModeId isKindOfClass:NSString.class]) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-      for (NSInteger i = 0; i < self.modePopup.itemArray.count; i++) {
-        NSMenuItem *item = self.modePopup.itemArray[i];
-        if ([item.representedObject isEqual:activeModeId]) {
-          [self.modePopup selectItemAtIndex:i];
-          break;
-        }
-      }
+      self.activeModeId = activeModeId;
+      [self highlightActiveLook];
     });
-  }];
-  [task resume];
+  }] resume];
 }
 
-- (void)modeSelected:(id)sender {
-  NSString *modeId = self.modePopup.selectedItem.representedObject;
+- (void)lookPressed:(NSButton *)sender {
+  NSString *modeId = sender.identifier;
   if (!modeId.length || !self.hasModeAccess) return;
+  self.activeModeId = modeId;
+  [self highlightActiveLook];
 
   NSMutableURLRequest *request = [self authedRequestForPath:@"/api/screensaver/mode"];
   request.HTTPMethod = @"PATCH";
   [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-  request.HTTPBody = [NSJSONSerialization dataWithJSONObject:@{ @"mode_id": modeId } options:0 error:nil];
-
-  NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request];
-  [task resume];
+  request.HTTPBody = [NSJSONSerialization dataWithJSONObject:@{ @"mode_id" : modeId } options:0 error:nil];
+  [[[NSURLSession sharedSession] dataTaskWithRequest:request] resume];
 }
 
 #pragma mark - Actions
@@ -321,8 +475,8 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
   [defaults synchronize];
 
   self.modes = nil;
-  [self refreshStatus];
-  [self rebuildModeSection];
+  self.activeModeId = nil;
+  [self rebuild];
 }
 
 - (void)uninstallPressed:(id)sender {
@@ -400,6 +554,8 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 }
 
 - (void)donePressed:(id)sender {
+  [self.pollTimer invalidate];
+  self.pollTimer = nil;
   [self.delegate configController:self dismissConfigSheet:self.sheetWindow];
 }
 
@@ -498,23 +654,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
   }
   if (!token.length || !origin.length) return;
 
-  NSString *shareUrl = [NSString stringWithFormat:@"%@/s/%@", origin, token];
-  [self.config.addresses removeAllObjects];
-  [self.config.addresses addObject:[WVSSAddress addressWithURL:shareUrl duration:-1]];
-  self.config.shouldFetchAddressList = NO;
-  [self.config synchronize];
-
-  NSUserDefaults *defaults = self.rawDefaults;
-  [defaults setObject:origin forKey:kOriginDefaultsKey];
-  if (deviceToken.length) {
-    [defaults setObject:deviceToken forKey:kDeviceTokenDefaultsKey];
-  }
-  [defaults synchronize];
-
-  [self dismissSignIn];
-  [self refreshStatus];
-  [self rebuildModeSection];
-  if (self.hasModeAccess) [self fetchModes];
+  [self applyToken:token deviceToken:deviceToken origin:origin];
 }
 
 #pragma mark - NSWindowDelegate
