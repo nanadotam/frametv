@@ -8,7 +8,7 @@ import {
 } from '@phosphor-icons/react';
 import { Page } from '@/components/m/Page';
 import { Section, Row, IconTile } from '@/components/m/List';
-import { Button, Empty, IconButton, TextInput } from '@/components/m/Controls';
+import { Button, Empty, TextInput } from '@/components/m/Controls';
 import { Sheet } from '@/components/m/Sheet';
 import { toast } from '@/components/m/Toast';
 import { CoverImage } from '@/components/m/CoverImage';
@@ -130,9 +130,9 @@ export default function LibraryPage() {
       subtitle={loaded ? `${visible.length} album${visible.length === 1 ? '' : 's'} · ${activeIds.length || 'all'} on display` : ' '}
       wide
       actions={
-        <IconButton label="Add album" size={34} variant="tinted" onClick={() => setSheet('add')}>
-          <Plus size={18} weight="bold" />
-        </IconButton>
+        <Button size="sm" icon={<Plus size={14} weight="bold" />} onClick={() => setSheet('add')}>
+          Add photos
+        </Button>
       }
     >
       {loaded && visible.length === 0 ? (
@@ -186,6 +186,15 @@ export default function LibraryPage() {
               </div>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setSheet('add')}
+            className="pressable flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-[18px] border-2 border-dashed border-separator text-tint"
+          >
+            <Plus size={32} weight="bold" />
+            <span className="text-[15px] font-semibold">Add photos</span>
+            <span className="px-4 text-center text-[12px] text-label-2">Computer, Apple Photos, Drive or Google Photos</span>
+          </button>
         </div>
       )}
 

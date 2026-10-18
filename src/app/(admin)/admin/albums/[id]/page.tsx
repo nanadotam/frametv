@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { UploadSimple, AppleLogo, ArrowsClockwise } from '@phosphor-icons/react';
+import { UploadSimple, AppleLogo, ArrowsClockwise, GoogleDriveLogo } from '@phosphor-icons/react';
 import { Button as MButton } from '@/components/m/Controls';
 import { toast } from '@/components/m/Toast';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -284,7 +284,7 @@ export default function AlbumPhotosPage() {
     <div
       className="relative px-4 pt-4 pb-28 md:p-6 max-w-5xl mx-auto min-h-full"
       onDragOver={(e) => {
-        if (album?.source_type === 'drive' || !e.dataTransfer.types.includes('Files')) return;
+        if (!e.dataTransfer.types.includes('Files')) return;
         e.preventDefault();
         setDragging(true);
       }}
@@ -292,7 +292,6 @@ export default function AlbumPhotosPage() {
         if (e.currentTarget === e.target) setDragging(false);
       }}
       onDrop={(e) => {
-        if (album?.source_type === 'drive') return;
         e.preventDefault();
         setDragging(false);
         handleVideoFiles(e.dataTransfer.files);
@@ -327,35 +326,41 @@ export default function AlbumPhotosPage() {
           onChange={(e) => handleVideoFiles(e.target.files)}
         />
         <div className="mt-4 flex flex-wrap gap-2">
-          {album?.source_type !== 'drive' && (
-            <>
-              <MButton size="md" icon={<UploadSimple size={18} weight="bold" />} onClick={() => videoInput.current?.click()}>
-                Add photos &amp; videos
-              </MButton>
-              <MButton
-                size="md"
-                variant="gray"
-                icon={<AppleLogo size={18} weight="fill" />}
-                onClick={() => {
-                  toast('Choose “Photos” in the sidebar, then pick photos or a whole album');
-                  setTimeout(() => videoInput.current?.click(), 600);
-                }}
-              >
-                From Apple Photos
-              </MButton>
-            </>
+          {album?.source_type === 'drive' && album.drive_folder_id && (
+            <a href={`https://drive.google.com/drive/folders/${album.drive_folder_id}`} target="_blank" rel="noreferrer">
+              <MButton size="md" icon={<GoogleDriveLogo size={18} weight="fill" />}>Add photos in Google Drive</MButton>
+            </a>
           )}
+          <MButton
+            size="md"
+            variant={album?.source_type === 'drive' ? 'gray' : 'filled'}
+            icon={<UploadSimple size={18} weight="bold" />}
+            onClick={() => videoInput.current?.click()}
+          >
+            {album?.source_type === 'drive' ? 'Upload from this computer' : 'Add photos & videos'}
+          </MButton>
+          <MButton
+            size="md"
+            variant="gray"
+            icon={<AppleLogo size={18} weight="fill" />}
+            onClick={() => {
+              toast('Choose “Photos” in the sidebar, then pick photos or a whole album');
+              setTimeout(() => videoInput.current?.click(), 600);
+            }}
+          >
+            From Apple Photos
+          </MButton>
           {album?.source_type === 'drive' && (
             <MButton size="md" variant="gray" icon={<ArrowsClockwise size={18} weight="bold" />} onClick={syncDrive} loading={syncing}>
               Sync from Drive
             </MButton>
           )}
         </div>
-        {album?.source_type !== 'drive' && (
-          <p className="mt-3 text-[13px] text-label-2">
-            Tip: drag photos straight from Finder or the Photos app onto this page. They’re compressed on your device to save space without losing quality.
-          </p>
-        )}
+        <p className="mt-3 text-[13px] text-label-2">
+          {album?.source_type === 'drive'
+            ? 'New photos you put in the Drive folder appear here automatically. You can also drag photos onto this page to upload them.'
+            : 'Tip: drag photos straight from Finder or the Photos app onto this page. They’re compressed on your device to save space without losing quality.'}
+        </p>
       </div>
 
       {/* Photo grid */}
@@ -364,7 +369,7 @@ export default function AlbumPhotosPage() {
       ) : photos.length === 0 ? (
         <button
           type="button"
-          onClick={() => album?.source_type !== 'drive' && videoInput.current?.click()}
+          onClick={() => videoInput.current?.click()}
           className="flex w-full flex-col items-center rounded-[20px] border-2 border-dashed border-separator px-6 py-14 text-center"
         >
           <UploadSimple size={36} className="text-tint" />
