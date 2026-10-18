@@ -8,7 +8,8 @@ import BrandMark from '@/components/BrandMark';
 import { Button, TextInput } from '@/components/m/Controls';
 import { IconTile } from '@/components/m/List';
 import { Toaster, toast } from '@/components/m/Toast';
-import { LOOKS, LookArt } from '@/components/looks/catalog';
+import { LOOKS } from '@/components/looks/catalog';
+import { LivePreview } from '@/components/looks/LivePreview';
 import { MAC_DOWNLOAD_URL } from '@/lib/links';
 import { cn } from '@/lib/utils';
 
@@ -240,7 +241,7 @@ export default function WelcomePage() {
                       onClick={() => setLook(l.id)}
                       className={cn('pressable overflow-hidden rounded-[16px] bg-cell text-left shadow-cell ring-[3px]', look === l.id ? 'ring-tint' : 'ring-transparent')}
                     >
-                      <LookArt id={l.id} className="aspect-[4/3] w-full" />
+                      <LivePreview id={l.id} className="aspect-[4/3] w-full" />
                       <p className="px-3 py-2 text-[15px] font-semibold">{l.name}</p>
                     </button>
                   ))}

@@ -12,7 +12,8 @@ import { Button, Chip, Empty, IconButton } from '@/components/m/Controls';
 import { Sheet } from '@/components/m/Sheet';
 import { toast } from '@/components/m/Toast';
 import { CoverImage } from '@/components/m/CoverImage';
-import { LOOK_BY_ID, LOOKS, LookArt, ALBUM_LOOKS, lookName } from '@/components/looks/catalog';
+import { LOOK_BY_ID, LOOKS, ALBUM_LOOKS, lookName } from '@/components/looks/catalog';
+import { LivePreview } from '@/components/looks/LivePreview';
 import { QuickSettingsContent, MODES_WITH_SETTINGS, type Cfg } from '@/components/looks/QuickSettings';
 import { invalidateModes } from '@/hooks/useModes';
 import { cn } from '@/lib/utils';
@@ -243,7 +244,7 @@ export default function NowPage() {
             {coverAlbum && activeId && ALBUM_LOOKS.has(activeId) ? (
               <CoverImage src={`/api/photos/${coverAlbum.cover_photo_id}/thumbnail`} rotation={coverAlbum.cover_rotation} />
             ) : (
-              <LookArt id={activeId ?? 'slideshow-single'} className="absolute inset-0 h-full w-full" />
+              <LivePreview id={activeId ?? 'slideshow-single'} className="absolute inset-0 h-full w-full" />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
             {paused && (
@@ -406,7 +407,7 @@ export default function NowPage() {
                 onClick={() => chooseLook(l.id)}
                 className={cn('pressable overflow-hidden rounded-[16px] bg-cell text-left shadow-cell ring-2', active ? 'ring-tint' : 'ring-transparent')}
               >
-                <LookArt id={l.id} className="aspect-[4/3] w-full" />
+                <LivePreview id={l.id} className="aspect-[4/3] w-full" />
                 <div className="px-3 py-2.5">
                   <p className="text-[15px] font-semibold">{l.name}</p>
                   <p className="line-clamp-1 text-[12px] text-label-2">{l.blurb}</p>

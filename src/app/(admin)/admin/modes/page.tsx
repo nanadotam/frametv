@@ -2,13 +2,14 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircle, Television } from '@phosphor-icons/react';
+import { CheckCircle } from '@phosphor-icons/react';
 import { Page } from '@/components/m/Page';
 import { Section, ToggleRow } from '@/components/m/List';
 import { Button } from '@/components/m/Controls';
 import { Sheet } from '@/components/m/Sheet';
 import { toast } from '@/components/m/Toast';
-import { LOOKS, LOOK_GROUPS, LOOK_BY_ID, LookArt, type Look } from '@/components/looks/catalog';
+import { LOOKS, LOOK_GROUPS, LOOK_BY_ID, type Look } from '@/components/looks/catalog';
+import { LivePreview } from '@/components/looks/LivePreview';
 import { ModeConfigForm } from '@/components/looks/LookConfigForms';
 import { invalidateModes } from '@/hooks/useModes';
 import { cn } from '@/lib/utils';
@@ -133,7 +134,7 @@ function LooksContent() {
                     )}
                   >
                     <div className="relative">
-                      <LookArt id={look.id} className="aspect-[4/3] w-full" />
+                      <LivePreview id={look.id} className="aspect-[4/3] w-full" />
                       {active && (
                         <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-tint px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
                           <CheckCircle size={12} weight="fill" /> On now
@@ -158,35 +159,46 @@ function LooksContent() {
         title={open?.look.name ?? ''}
         description={open?.look.blurb}
         size="lg"
-        footer={
-          open && (
-            <div className="flex items-center gap-3">
-              <span className="flex-1 text-[13px] text-label-2">{saving ? 'Saving…' : 'Changes save automatically'}</span>
-              {open.look.id === activeId ? (
-                <Button variant="tinted" disabled>Showing now ✓</Button>
-              ) : (
-                <Button onClick={() => showNow(open.look.id)}>Show it now</Button>
-              )}
-            </div>
-          )
-        }
       >
         {open && (
           <>
-            <LookArt id={open.look.id} className="aspect-[16/9] w-full rounded-[18px]" />
-            {open.look.tvSafe && (
-              <p className="flex items-center gap-2 px-1 text-[13px] text-label-2">
-                <Television size={16} /> Works on older smart TVs too
-              </p>
-            )}
-            <div className="rounded-[14px] bg-cell p-4 shadow-cell">
-              <ModeConfigForm
-                mode={openMode ?? ({ id: open.look.id, name: open.look.name, config: open.cfg } as Mode)}
-                cfg={open.cfg}
-                onChange={(cfg) => changeCfg(open.look.id, cfg)}
-              />
+            <div className="relative overflow-hidden rounded-[20px] shadow-cell">
+              <LivePreview id={open.look.id} className="aspect-[16/9] w-full" />
+              <span className="absolute left-3 top-3 rounded-full bg-black/50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white backdrop-blur">
+                Preview
+              </span>
+              {open.look.id === activeId && (
+                <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-tint px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+                  <CheckCircle size={12} weight="fill" /> On your screens
+                </span>
+              )}
             </div>
-            <Section footer="Hidden looks don’t appear in the quick picker or in schedules.">
+
+            {open.look.id === activeId ? (
+              <p className="rounded-[14px] bg-ok/12 px-4 py-3 text-center text-[15px] font-medium text-ok">
+                This look is on your screens now. Changes below show up right away.
+              </p>
+            ) : (
+              <Button block size="xl" onClick={() => showNow(open.look.id)}>
+                Show {open.look.name} on my screens
+              </Button>
+            )}
+
+            <div>
+              <div className="mb-1.5 flex items-baseline justify-between px-4">
+                <h3 className="text-[13px] font-medium uppercase tracking-wide text-label-2">Customize</h3>
+                <span className="text-[12px] text-label-3">{saving ? 'Saving…' : 'Saves automatically'}</span>
+              </div>
+              <div className="look-form space-y-5 rounded-[14px] bg-cell p-4 shadow-cell">
+                <ModeConfigForm
+                  mode={openMode ?? ({ id: open.look.id, name: open.look.name, config: open.cfg } as Mode)}
+                  cfg={open.cfg}
+                  onChange={(cfg) => changeCfg(open.look.id, cfg)}
+                />
+              </div>
+            </div>
+
+            <Section footer={open.look.tvSafe ? 'This look also works on older smart TVs.' : 'Turn this off to hide the look from the quick picker and schedules.'}>
               <ToggleRow
                 title="Show in the quick picker"
                 checked={modeById[open.look.id]?.is_enabled !== false}

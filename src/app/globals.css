@@ -238,3 +238,20 @@ body {
     @apply font-sans;
   }
 }
+
+/* Live look previews (components/looks/LivePreview) */
+@keyframes mantel-drift { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+@keyframes mantel-pan { from { transform: scale(1.05) translateX(-3%); } to { transform: scale(1.15) translateX(3%); } }
+@keyframes mantel-progress { from { width: 0; } to { width: 100%; } }
+@keyframes mantel-spin { to { transform: rotate(360deg); } }
+
+/* Look settings forms: consistent, roomy labels */
+.look-form label, .look-form [data-slot="label"] { font-size: 15px; font-weight: 600; color: var(--m-label); }
+.look-form p.text-xs, .look-form .text-muted-foreground { font-size: 13px; color: var(--m-label-2); }
+
+/* Older feature pages (Music, Flip Board): bring text up to app sizes */
+.legacy-page .text-xs { font-size: 13px; line-height: 18px; }
+.legacy-page .text-sm { font-size: 15px; line-height: 20px; }
+.legacy-page .text-\[11px\], .legacy-page .text-\[10px\] { font-size: 12px; }
+.legacy-page [data-slot="card"] { border-radius: 14px; border: 0; box-shadow: var(--m-shadow); background: var(--m-cell); }
+.legacy-page input { min-height: 44px; font-size: 16px; }
