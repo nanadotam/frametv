@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mantel
 
-## Getting Started
+**Your memories, on display.** Mantel turns a Mac screensaver, a smart TV, an
+iPad or any browser into a living picture frame of your photos and videos.
 
-First, run the development server:
+- **Web app** (`src/`): Next.js 16 + Supabase. Account, Library (Google Drive
+  photo albums, uploaded video albums), Looks (slideshow, gallery wall,
+  pinboard, scrapbook, clock, verse, vinyl…), Devices, Settings. Deployed on
+  Vercel at https://mantelapp.vercel.app.
+- **Display** (`/display`, `/tv`): the full-screen picture frame. `/tv` is a
+  no-framework fallback for older smart-TV browsers.
+- **Mac screensaver** (`macos-screensaver/`): `Mantel.saver`, a WKWebView
+  screensaver (fork of webviewscreensaver) that shows your display.
+- **Mantel for Mac** (`desktop/`): Electron companion app. Onboarding, the
+  website, and a guided setup that installs and connects the screensaver.
+  Released as `Mantel.dmg` on GitHub Releases.
+
+## Develop
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev                     # web app on :3000
+cd desktop && npm install && MANTEL_URL=http://localhost:3000 npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Env vars: see `.env.local.example`. The server talks to Supabase only with
+`SUPABASE_SERVICE_ROLE_KEY`; every table has RLS on with no public policies.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Release the Mac app
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+git tag mantel-v1.0.0 && git push origin mantel-v1.0.0
+```
 
-## Learn More
+`.github/workflows/mantel-release.yml` builds `Mantel.dmg` (screensaver
+bundled inside) and publishes it as the latest release, which the site's
+Download button links to directly. Locally: `cd desktop && npm run dist`.
 
-To learn more about Next.js, take a look at the following resources:
+The app is ad-hoc signed, not notarized, so first launch needs
+System Settings → Privacy & Security → Open Anyway. `/help#mac` walks people
+through it.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See `SCHEMA.md` for the data model, `VERSIONING.md` for versioning, and
+`docs/REBUILD_PLAN.md` for the 2026 rebuild notes.

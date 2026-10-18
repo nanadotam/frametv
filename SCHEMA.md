@@ -203,11 +203,16 @@ erDiagram
   currently active on that user's display.
 - **`spotify_auth`**: one row per user, enforced by a unique constraint on
   `user_id` — each account's Spotify connection is independent.
-- **`drive_auth`**: table exists in the schema but is unused by the app;
-  Google Drive album sync uses public folder URLs + an API key, not OAuth.
-- **No row-level security**: tables are open (RLS disabled or permissive),
-  with authorization enforced entirely in the Next.js API layer via session
-  cookies (`admin` vs `display` session kinds).
+- Google Drive album sync uses link-shared folder URLs + an API key, not
+  OAuth (the unused `drive_auth` table was dropped in 018).
+- **Row-level security on, no policies** (migration 018): only the
+  service-role key used by the Next.js API can read or write. Authorization
+  lives in the API layer via session cookies/bearer tokens (`admin`,
+  `display`, `screensaver`, `widget` session kinds). Browsers get live
+  updates from per-user Broadcast topics `u:<app_users.realtime_key>`, sent
+  by the `broadcast_user_change` trigger.
+- **Recovery keys**: `app_users.recovery_key_hash` (pbkdf2) — shown to the
+  user once; resets the password via `/api/auth/recover`.
 - **Videos**: stored as `photos` rows with `media_type = 'video'` so albums
   double as video collections. The MP4 and its poster JPEG live in the
   public `photos` storage bucket under `videos/<album_id>/`; `storage_path`

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the FrameTV web app are documented here. Format
+All notable changes to the Mantel (formerly FrameTV) web app are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions
 follow [Semantic Versioning](https://semver.org/) (`vMAJOR.MINOR.PATCH` git
 tags at the repo root — separate from the screensaver's own
@@ -9,6 +9,37 @@ tags at the repo root — separate from the screensaver's own
 See `VERSIONING.md` for how versions get bumped and tagged.
 
 ## [Unreleased]
+
+### Security
+- Database locked down (migration 018): row-level security on every table
+  with no public policies, so the publishable key in the browser can no
+  longer read or write data. Live updates moved from postgres_changes to
+  per-user private Broadcast channels fed by triggers. All sessions were
+  revoked and Spotify connections cleared, since both were readable.
+- Brute-force limits on sign-in, PIN unlock, signup, recovery and TV
+  pairing codes (tracked through `auth_events`).
+- Passwords need 8+ characters; the service client refuses to fall back to
+  the public key.
+- Per-device screensaver links: each Mac gets its own revocable token.
+- TV pairing shows which device is asking before you approve it.
+
+### Added
+- Renamed to **Mantel**: new 3D app icon, social card and copy.
+- Recovery keys (shown once at signup, with QR code and downloadable card)
+  and a "Forgot password?" reset flow. No email needed.
+- Change password, devices & sessions list with sign-out, sign out
+  everywhere.
+- Redesigned app (mobile-first, Apple-style, light and dark mode, Phosphor
+  icons): Now, Library, Looks, Devices and Settings tabs; new sign-in,
+  signup and first-run Welcome flow.
+- Landing page, `/download` (straight from GitHub Releases) and `/help`
+  with a Gatekeeper walkthrough and a copyable "ask an AI" help prompt.
+- Video storage allowance per account (`VIDEO_QUOTA_MB`, default 500 MB)
+  with a usage meter in Library.
+- Mantel for Mac (`desktop/`): Electron companion app with animated
+  onboarding and a guided screensaver setup that installs and connects the
+  bundled `Mantel.saver`.
+
 
 ### Added
 - Brand identity: new FrameTV mark (a cream gallery frame with a power LED
