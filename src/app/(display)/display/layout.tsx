@@ -1,5 +1,6 @@
 'use client';
 
+import { warmDisplayCache } from '@/lib/cache/warmDisplay';
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -52,8 +53,14 @@ const PRECONNECT_HOSTS = [
 export default function DisplayLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Register service worker
+    // Offline support: cache the display and its photos (public/sw.js),
+    // then pre-download the rotation — now and every 30 minutes.
+    let warmTimer: ReturnType<typeof setInterval> | undefined;
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+      const warm = () => { if (navigator.onLine) warmDisplayCache().catch(() => {}); };
+      setTimeout(warm, 8000);
+      warmTimer = setInterval(warm, 30 * 60 * 1000);
     }
 
     // Request WakeLock to prevent screen from dimming
@@ -79,6 +86,7 @@ export default function DisplayLayout({ children }: { children: ReactNode }) {
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       wakeLock?.release().catch(() => {});
+      if (warmTimer) clearInterval(warmTimer);
     };
   }, []);
 
