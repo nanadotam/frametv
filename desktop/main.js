@@ -4,7 +4,7 @@
 //   • a guided screensaver setup that installs the bundled Mantel.saver
 //     and connects it to the signed-in account.
 
-const { app, BrowserWindow, ipcMain, shell, Menu, net, session, clipboard, nativeTheme } = require('electron');
+const { app, BaseWindow, WebContentsView, BrowserWindow, ipcMain, shell, Menu, net, session, clipboard, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const saver = require('./lib/screensaver');
@@ -34,20 +34,68 @@ function writeState(patch) {
 }
 
 // ── Window ───────────────────────────────────────────────────────────────────
+// A BaseWindow holding two views: a slim native-feeling toolbar (back,
+// forward, home, reload, screensaver) and the content below it, so the
+// toolbar never overlaps the website's own layout.
 
 const local = (page) => path.join(__dirname, 'ui', page);
+const TOOLBAR_HEIGHT = 46;
+
+let toolbar = null;
+let view = null;
+
+function layout() {
+  if (!win) return;
+  const [width, height] = win.getContentSize();
+  const onboarding = view.webContents.getURL().endsWith('onboarding.html');
+  const bar = onboarding ? 0 : TOOLBAR_HEIGHT;
+  toolbar.setBounds({ x: 0, y: 0, width, height: bar });
+  view.setBounds({ x: 0, y: bar, width, height: height - bar });
+}
+
+function sendToolbarState() {
+  if (!toolbar || !view) return;
+  const wc = view.webContents;
+  const url = wc.getURL();
+  let section = 'Mantel';
+  if (url.endsWith('setup.html')) section = 'Screensaver setup';
+  else if (url.startsWith(SITE_ORIGIN)) {
+    const p = new URL(url).pathname;
+    section =
+      p === '/admin' ? 'Now' :
+      p.startsWith('/admin/albums') ? 'Library' :
+      p.startsWith('/admin/modes') ? 'Looks' :
+      p.startsWith('/admin/devices') ? 'Devices' :
+      p.startsWith('/admin/settings') ? 'Settings' :
+      p.startsWith('/help') ? 'Help' :
+      wc.getTitle().replace(/ · Mantel$/, '') || 'Mantel';
+  }
+  toolbar.webContents.send('toolbar:state', {
+    canGoBack: wc.navigationHistory.canGoBack(),
+    canGoForward: wc.navigationHistory.canGoForward(),
+    loading: wc.isLoading(),
+    section,
+  });
+  layout();
+}
 
 function createWindow() {
-  win = new BrowserWindow({
+  win = new BaseWindow({
     width: 1120,
     height: 760,
     minWidth: 400,
     minHeight: 600,
     title: 'Mantel',
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 18 },
+    trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#000000' : '#f2f2f7',
     show: false,
+  });
+
+  toolbar = new WebContentsView({
+    webPreferences: { preload: path.join(__dirname, 'preload-toolbar.js'), contextIsolation: true, sandbox: true },
+  });
+  view = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -55,16 +103,27 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  toolbar.setBackgroundColor('#00000000');
+  win.contentView.addChildView(view);
+  win.contentView.addChildView(toolbar);
+  toolbar.webContents.loadFile(local('toolbar.html'));
+  win.on('resize', layout);
+  win.on('closed', () => {
+    win = null;
+    toolbar = null;
+    view = null;
+  });
 
-  win.once('ready-to-show', () => win.show());
+  const wc = view.webContents;
+  wc.once('did-finish-load', () => win?.show());
 
   // Keep Mantel pages in the window; everything else opens in the browser.
   const isInternal = (url) => url.startsWith(SITE_ORIGIN) || url.startsWith('file://');
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  wc.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http')) shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('will-navigate', (event, url) => {
+  wc.on('will-navigate', (event, url) => {
     if (url.startsWith('mantel://')) {
       event.preventDefault();
       return;
@@ -74,28 +133,49 @@ function createWindow() {
       shell.openExternal(url);
     }
   });
-
-  // The site adds space for the traffic lights when it sees this.
-  win.webContents.on('dom-ready', () => {
-    if (win.webContents.getURL().startsWith(SITE_ORIGIN)) {
-      win.webContents.insertCSS('header.sticky, main > div:first-child { padding-top: 0; } body { -webkit-user-select: none; } input, textarea { -webkit-user-select: text; }');
-    }
-  });
+  for (const ev of ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading', 'did-finish-load', 'dom-ready', 'page-title-updated']) {
+    wc.on(ev, sendToolbarState);
+  }
+  toolbar.webContents.on('did-finish-load', sendToolbarState);
 
   const state = readState();
-  if (!state.onboarded) win.loadFile(local('onboarding.html'));
-  else win.loadURL(`${SITE}/admin`);
+  if (!state.onboarded) wc.loadFile(local('onboarding.html'));
+  else wc.loadURL(`${SITE}/admin`);
+  layout();
+
+  // Dev aid: MANTEL_CAPTURE=dir saves the toolbar and page, then quits.
+  if (process.env.MANTEL_CAPTURE) {
+    setTimeout(async () => {
+      const dir = process.env.MANTEL_CAPTURE;
+      fs.writeFileSync(path.join(dir, 'toolbar.png'), (await toolbar.webContents.capturePage()).toPNG());
+      fs.writeFileSync(path.join(dir, 'page.png'), (await view.webContents.capturePage()).toPNG());
+      app.quit();
+    }, 7000);
+  }
 }
 
 function openSite(pathname) {
   if (!win) createWindow();
-  win.loadURL(`${SITE}${pathname}`);
+  view.webContents.loadURL(`${SITE}${pathname}`);
 }
 
 function openSetup() {
   if (!win) createWindow();
-  win.loadFile(local('setup.html'));
+  view.webContents.loadFile(local('setup.html'));
 }
+
+ipcMain.on('toolbar:action', (event, action) => {
+  if (!view || event.sender !== toolbar?.webContents) return;
+  if (action === 'ready') return sendToolbarState();
+  const wc = view.webContents;
+  if (action === 'back' && wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
+  if (action === 'forward' && wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward();
+  if (action === 'reload') wc.reload();
+  if (action === 'home') openSite('/admin');
+  if (action === 'setup') openSetup();
+  if (action === 'help') openSite('/help');
+  if (action === 'zoom') win?.isMaximized() ? win.unmaximize() : win?.maximize();
+});
 
 // ── IPC (local pages only for the powerful calls) ────────────────────────────
 
@@ -195,8 +275,10 @@ function buildMenu() {
         { label: 'Devices', accelerator: 'Cmd+4', click: () => openSite('/admin/devices') },
         { label: 'Settings', accelerator: 'Cmd+,', click: () => openSite('/admin/settings') },
         { type: 'separator' },
-        { label: 'Back', accelerator: 'Cmd+[', click: () => win?.webContents.navigationHistory.goBack() },
-        { label: 'Reload', accelerator: 'Cmd+R', click: () => win?.webContents.reload() },
+        { label: 'Back', accelerator: 'Cmd+[', click: () => view?.webContents.navigationHistory.goBack() },
+        { label: 'Forward', accelerator: 'Cmd+]', click: () => view?.webContents.navigationHistory.goForward() },
+        { label: 'Home', accelerator: 'Cmd+Shift+H', click: () => openSite('/admin') },
+        { label: 'Reload', accelerator: 'Cmd+R', click: () => view?.webContents.reload() },
       ],
     },
     { role: 'windowMenu' },
@@ -249,7 +331,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     checkForUpdate();
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BaseWindow.getAllWindows().length === 0) createWindow();
     });
   });
 
