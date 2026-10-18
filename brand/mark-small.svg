@@ -1,21 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- FrameTV mark, simplified for 16–48px (favicons, browser tabs):
-       bigger frame, bigger sun, one hill, no glow or LED. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0B3A26"/>
-      <stop offset="1" stop-color="#18A866"/>
+    <linearGradient id="t" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#FFB547"/><stop offset="0.5" stop-color="#F2622E"/><stop offset="1" stop-color="#C92D5C"/>
     </linearGradient>
-    <clipPath id="screen">
-      <rect x="84" y="132" width="344" height="248" rx="14"/>
-    </clipPath>
+    <linearGradient id="s" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3B2A6B"/><stop offset="1" stop-color="#FFB16B"/>
+    </linearGradient>
   </defs>
-
-  <rect width="512" height="512" rx="112" fill="#0E0F0E"/>
-  <rect x="40" y="88" width="432" height="336" rx="44" fill="#F2EDE2"/>
-  <g clip-path="url(#screen)">
-    <rect x="84" y="132" width="344" height="248" fill="url(#sky)"/>
-    <circle cx="330" cy="214" r="46" fill="#FFC96B"/>
-    <path d="M84 318 C 170 262, 270 270, 428 314 L 428 380 L 84 380 Z" fill="#06512F"/>
-  </g>
+  <rect width="64" height="64" rx="14" fill="url(#t)"/>
+  <rect x="16" y="11" width="32" height="34" rx="4" fill="#FFF8EE"/>
+  <rect x="20" y="15" width="24" height="26" rx="2" fill="url(#s)"/>
+  <circle cx="32" cy="30" r="5" fill="#FFE29A"/>
+  <path d="M20 35 C 27 31, 33 36, 44 33 V41 H20 Z" fill="#3A1840"/>
+  <rect x="9" y="47" width="46" height="6" rx="2" fill="#FFF1DC"/>
 </svg>

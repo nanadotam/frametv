@@ -79,7 +79,7 @@ function LoadingSkeleton() {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/brand/mark.svg"
-        alt="FrameTV"
+        alt="Mantel"
         style={{ width: 96, height: 96, opacity: 0.18, animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' }}
       />
     </div>
@@ -117,7 +117,7 @@ function DisplayPinGate({ onUnlock, onUsePairing }: { onUnlock: () => void; onUs
       <form onSubmit={submit} className="w-full max-w-lg space-y-6">
         <div className="text-center space-y-4">
           <div className="mx-auto w-20 h-20 rounded-3xl bg-white/10 flex items-center justify-center text-4xl">📺</div>
-          <h1 className="text-5xl font-bold tracking-tight">FrameTV</h1>
+          <h1 className="text-5xl font-bold tracking-tight">Mantel</h1>
           <p className="text-xl text-white/50">Enter your username and display PIN</p>
         </div>
 

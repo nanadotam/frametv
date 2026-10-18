@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 232" width="360" height="232">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3B2A6B"/><stop offset="0.55" stop-color="#E0588A"/><stop offset="1" stop-color="#FFB16B"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFF6D6"/><stop offset="0.6" stop-color="#FFD27A"/><stop offset="1" stop-color="#FFB547"/>
+    </radialGradient>
+  </defs>
+  <rect width="360" height="232" fill="url(#sky)"/>
+  <circle cx="180" cy="150" r="46" fill="url(#sun)"/>
+  <path d="M0 160 C 70 120, 130 140, 190 156 S 300 126, 360 140 V232 H0 Z" fill="#7A3170"/>
+  <path d="M0 196 C 90 160, 170 194, 240 186 S 330 174, 360 182 V232 H0 Z" fill="#3A1840"/>
+  <text x="330" y="208" text-anchor="end" font-family="-apple-system, Helvetica" font-weight="600" font-size="34" fill="#fff" opacity="0.92">9:41</text>
+</svg>

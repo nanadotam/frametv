@@ -1183,7 +1183,7 @@ function buildPage(): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="format-detection" content="telephone=no">
 <meta name="robots" content="noindex,nofollow">
-<title>FrameTV</title>
+<title>Mantel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@700&family=Oswald:wght@700&family=Bebas+Neue&family=Pacifico&family=Playfair+Display:wght@700&family=Dancing+Script:wght@700&family=Syne:wght@700&family=JetBrains+Mono:wght@700&display=swap">
 <style>${CSS}</style>
@@ -1200,7 +1200,7 @@ function buildPage(): string {
 <div id="ftv-pin-gate" style="display:none">
   <div class="ftv-pin-wrap">
     <div class="ftv-logo">&#128250;</div>
-    <h1 class="ftv-title">FrameTV</h1>
+    <h1 class="ftv-title">Mantel</h1>
     <p class="ftv-subtitle">Enter your display PIN to continue</p>
     <form id="ftv-pin-form" autocomplete="off" novalidate>
       <input
@@ -1235,7 +1235,7 @@ function buildPage(): string {
 <div id="ftv-pair-gate" style="display:none">
   <div class="ftv-pin-wrap">
     <div class="ftv-logo">&#128250;</div>
-    <h1 class="ftv-title">FrameTV</h1>
+    <h1 class="ftv-title">Mantel</h1>
     <p class="ftv-subtitle">On your phone, sign in and enter this code</p>
     <div id="ftv-pair-code" class="ftv-pair-code">&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;</div>
     <p id="ftv-pair-timer" class="ftv-pair-timer"></p>

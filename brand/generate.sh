@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerates every FrameTV brand asset from the sources in this folder.
+# Regenerates every Mantel brand asset from the sources in this folder.
 #
 #   mark.svg        full app icon (≥48px uses)
 #   mark-small.svg  simplified mark for favicons / browser tabs

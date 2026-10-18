@@ -91,7 +91,7 @@ export function useSpotifyPlayer(): SpotifyPlayerState & {
       if (!window.Spotify || !mountedRef.current) return;
 
       const player = new window.Spotify.Player({
-        name: 'FrameTV',
+        name: 'Mantel',
         getOAuthToken: (cb) => {
           fetch('/api/spotify/token')
             .then((r) => (r.ok ? r.json() : null))

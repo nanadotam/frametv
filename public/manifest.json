@@ -1,7 +1,7 @@
 {
-  "name": "FrameTV",
-  "short_name": "FrameTV",
-  "description": "Turn any screen into a living picture frame — photos, video loops, clocks and music.",
+  "name": "Mantel",
+  "short_name": "Mantel",
+  "description": "Your memories, on display — photos, video loops, clocks and music on any screen.",
   "id": "/display",
   "start_url": "/display",
   "scope": "/",

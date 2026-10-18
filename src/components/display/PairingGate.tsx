@@ -105,7 +105,7 @@ export default function PairingGate({ onUnlock, onUsePin }: { onUnlock: () => vo
     <div className="w-screen h-screen bg-black text-white flex items-center justify-center px-8">
       <div className="w-full max-w-2xl flex flex-col items-center text-center gap-6">
         <div className="w-20 h-20 rounded-3xl bg-white/10 flex items-center justify-center text-4xl">📺</div>
-        <h1 className="text-5xl font-bold tracking-tight">FrameTV</h1>
+        <h1 className="text-5xl font-bold tracking-tight">Mantel</h1>
         <p className="text-xl text-white/50">Go to your phone, sign in, and enter this code — or scan the QR code</p>
 
         {state === 'error' ? (
