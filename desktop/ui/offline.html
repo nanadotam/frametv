@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src https: http:">
+<title>You’re offline</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .wrap { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; }
+  .ring { width: 96px; height: 96px; border-radius: 28px; display: grid; place-items: center; background: var(--fill); }
+  .ring svg { width: 52px; height: 52px; color: var(--label-2); }
+  h1 { margin-top: 24px; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+  p { margin-top: 10px; max-width: 440px; font-size: 16px; color: var(--label-2); }
+  .status { margin-top: 18px; font-size: 13px; color: var(--label-3); display: flex; gap: 8px; align-items: center; }
+  .card { margin-top: 28px; padding: 16px 20px; max-width: 460px; text-align: left; font-size: 14px; color: var(--label-2); }
+  .card b { color: var(--label); }
+</style>
+</head>
+<body>
+<div class="drag"></div>
+<div class="wrap rise">
+  <div class="ring">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8.5a15 15 0 0 1 20 0"/><path d="M5.5 12a10 10 0 0 1 13 0"/><path d="M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/><path d="M3 3l18 18"/></svg>
+  </div>
+  <h1>You’re offline</h1>
+  <p>Mantel needs the internet to sign in, sync your photos and change settings. Check your Wi-Fi. This page reconnects by itself.</p>
+  <button class="btn primary" id="retry" style="margin-top:22px">Try again</button>
+  <div class="status"><span class="spinner"></span> Waiting for a connection…</div>
+  <div class="card">
+    <b>Your screensaver still works offline.</b> Photos it has already shown, or downloaded in the background, keep playing until you’re back online.
+  </div>
+</div>
+<script>
+  const back = new URLSearchParams(location.search).get('back') || '/admin';
+  const go = () => window.mantel.openSite(back);
+  async function check() {
+    if (!navigator.onLine) return;
+    try {
+      const site = await window.mantel.site();
+      const res = await fetch(site + '/api/auth/me', { cache: 'no-store' });
+      if (res.ok || res.status === 401) go();
+    } catch { /* still offline */ }
+  }
+  document.getElementById('retry').onclick = check;
+  window.addEventListener('online', check);
+  setInterval(check, 5000);
+</script>
+</body>
+</html>

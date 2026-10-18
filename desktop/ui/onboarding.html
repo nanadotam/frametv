@@ -5,6 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://images.unsplash.com data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src https:">
 <title>Welcome to Mantel</title>
 <link rel="stylesheet" href="style.css">
+<script src="net.js"></script>
 <style>
   .stage { position: relative; height: 100vh; display: flex; flex-direction: column; }
   .slides { position: relative; flex: 1; }
@@ -97,12 +98,12 @@
       <h1 style="margin-top:22px">Let’s set you up.</h1>
       <div class="steps">
         <div class="step card" style="animation-delay:.05s"><div class="n ember">1</div><b>Your account</b><span>Free: name, email, password</span></div>
-        <div class="step card" style="animation-delay:.15s"><div class="n ember">2</div><b>Your photos</b><span>Paste a Google Drive folder</span></div>
+        <div class="step card" style="animation-delay:.15s"><div class="n ember">2</div><b>Your photos</b><span>Upload, Apple Photos or Google</span></div>
         <div class="step card" style="animation-delay:.25s"><div class="n ember">3</div><b>Your screensaver</b><span>We’ll walk you through it</span></div>
       </div>
       <div class="ctas" style="flex-direction:column;width:min(360px,80vw)">
-        <button class="btn primary block" id="signup">Create my account</button>
-        <button class="btn gray block" id="signin">I already have an account</button>
+        <button class="btn primary block" id="signup" data-needs-net>Create my account</button>
+        <button class="btn gray block" id="signin" data-needs-net>I already have an account</button>
       </div>
     </section>
   </div>

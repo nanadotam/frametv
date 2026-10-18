@@ -133,6 +133,15 @@ function createWindow() {
       shell.openExternal(url);
     }
   });
+  // No internet (or the site is unreachable): show a friendly offline page
+  // that reconnects by itself, instead of Chromium's error screen.
+  const NETWORK_ERRORS = new Set([-21, -100, -101, -102, -104, -105, -106, -109, -118, -130, -137, -324]);
+  wc.on('did-fail-load', (_e, code, _desc, url, isMainFrame) => {
+    if (!isMainFrame || !NETWORK_ERRORS.has(code) || !url.startsWith(SITE_ORIGIN)) return;
+    const back = new URL(url).pathname + new URL(url).search;
+    wc.loadFile(local('offline.html'), { query: { back } });
+  });
+
   for (const ev of ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading', 'did-finish-load', 'dom-ready', 'page-title-updated']) {
     wc.on(ev, sendToolbarState);
   }
@@ -357,7 +366,8 @@ if (!app.requestSingleInstanceLock()) {
   if (process.env.MANTEL_SNAPSHOT) {
     app.whenReady().then(async () => {
       const w = new BrowserWindow({ width: 1120, height: 760, show: false, paintWhenInitiallyHidden: true, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
-      await w.loadFile(local(process.env.MANTEL_PAGE || 'onboarding.html'));
+      if (process.env.MANTEL_OFFLINE) w.webContents.session.enableNetworkEmulation({ offline: true });
+      await w.loadFile(local(process.env.MANTEL_PAGE || 'onboarding.html'), process.env.MANTEL_QUERY ? { query: { back: '/admin' } } : undefined);
       if (process.env.MANTEL_JS) await w.webContents.executeJavaScript(process.env.MANTEL_JS);
       await new Promise((r) => setTimeout(r, 3500));
       fs.writeFileSync(process.env.MANTEL_SNAPSHOT, (await w.webContents.capturePage()).toPNG());

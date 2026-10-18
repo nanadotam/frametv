@@ -1,7 +1,7 @@
 {
   "name": "mantel-desktop",
   "productName": "Mantel",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Mantel for Mac — your memories, on display. Sets up the Mantel screensaver and opens your Mantel account.",
   "main": "main.js",
   "author": "Nana Amoako",
