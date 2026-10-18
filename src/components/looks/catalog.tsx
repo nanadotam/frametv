@@ -63,7 +63,7 @@ export function LookArt({ id, className = '' }: { id: string; className?: string
     case 'slideshow-single':
       return (
         <div className={base} style={{ background: sunset }}>
-          <div className="absolute left-1/2 top-[52%] h-[34%] w-[34%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#ffd98a] opacity-90" />
+          <div className="absolute left-1/2 top-[52%] aspect-square h-[34%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#ffd98a] opacity-90" />
           <div className="absolute -bottom-[20%] -left-[10%] h-[50%] w-[120%] rounded-[50%] bg-[#3a1840]" />
         </div>
       );
@@ -77,9 +77,9 @@ export function LookArt({ id, className = '' }: { id: string; className?: string
       return (
         <div className={`${base} flex gap-[3px] bg-[#111] p-[3px]`}>
           {[0, 1, 2].map((c) => (
-            <div key={c} className="flex flex-1 flex-col gap-[3px]" style={{ marginTop: c === 1 ? -14 : c === 2 ? -6 : 0 }}>
-              {[0, 1, 2].map((r) => (
-                <div key={r} className="rounded-[4px]" style={{ background: tiles[(c + r * 2) % 6], height: [38, 26, 32][(c + r) % 3] }} />
+            <div key={c} className="flex flex-1 flex-col gap-[3px]" style={{ marginTop: c === 1 ? '-12%' : c === 2 ? '-5%' : 0 }}>
+              {[0, 1, 2, 3].map((r) => (
+                <div key={r} className="shrink-0 rounded-[4px]" style={{ background: tiles[(c + r * 2) % 6], height: `${[38, 26, 32][(c + r) % 3]}%` }} />
               ))}
             </div>
           ))}
