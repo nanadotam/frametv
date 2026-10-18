@@ -11,6 +11,7 @@ const api = {
   openScreensaverSetup: () => ipcRenderer.invoke('mantel:open-setup'),
   openSite: (pathname) => ipcRenderer.invoke('mantel:open-site', pathname),
   toggleFullscreen: () => ipcRenderer.send('display:fullscreen'),
+  openPhotosApp: () => ipcRenderer.send('mantel:open-photos'),
 };
 
 if (isLocal) {

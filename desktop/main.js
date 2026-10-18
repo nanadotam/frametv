@@ -228,6 +228,11 @@ function openDisplay(url = `${SITE}/display`) {
   dwc.loadURL(url);
 }
 
+// Apple Photos guide: "Open the Photos app" so people can drag photos across.
+ipcMain.on('mantel:open-photos', () => {
+  shell.openPath('/System/Applications/Photos.app');
+});
+
 ipcMain.on('display:fullscreen', (event) => {
   if (displayWin && event.sender === displayWin.webContents) displayWin.setFullScreen(!displayWin.isFullScreen());
 });

@@ -13,6 +13,7 @@ import { Sheet } from '@/components/m/Sheet';
 import { toast } from '@/components/m/Toast';
 import { CoverImage } from '@/components/m/CoverImage';
 import { cn } from '@/lib/utils';
+import { startGooglePhotos } from '@/lib/googlePhotos/start';
 import type { Album } from '@/types/db';
 
 function mb(bytes: number) {
@@ -218,7 +219,7 @@ export default function LibraryPage() {
           { key: 'upload', tone: 'ember' as const, icon: <UploadSimple size={28} weight="bold" />, title: 'From this computer', body: 'Photos and videos, compressed on your device. Uses your Mantel storage.', badge: null, onClick: () => { setUploadFrom('upload'); setSheet('video'); } },
           { key: 'apple', tone: 'gray' as const, icon: <AppleLogo size={28} weight="fill" />, title: 'From Apple Photos', body: 'Pick photos or whole albums from the Photos app on this Mac.', badge: null, onClick: () => { setUploadFrom('apple-photos'); setName('From Photos'); setSheet('video'); } },
           { key: 'drive', tone: 'blue' as const, icon: <GoogleDriveLogo size={28} weight="fill" />, title: 'Google Drive folder', body: 'Best for big libraries. Doesn’t use your Mantel storage, and new photos appear automatically.', badge: 'Most space', onClick: () => setSheet('drive') },
-          { key: 'gphotos', tone: 'green' as const, icon: <Images size={28} weight="fill" />, title: 'Google Photos', body: 'Choose photos from your Google Photos library.', badge: null, onClick: () => { window.location.href = '/api/google-photos/start'; } },
+          { key: 'gphotos', tone: 'green' as const, icon: <Images size={28} weight="fill" />, title: 'Google Photos', body: 'Choose photos from your Google Photos library.', badge: null, onClick: () => { setSheet(null); startGooglePhotos((h) => router.push(h)); } },
         ].map((o) => (
           <button key={o.key} type="button" onClick={o.onClick} className="pressable flex w-full items-center gap-4 rounded-[18px] bg-cell p-4 text-left shadow-cell">
             <IconTile tone={o.tone} size={52}>{o.icon}</IconTile>

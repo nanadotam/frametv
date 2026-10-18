@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { UploadSimple, AppleLogo, ArrowsClockwise, GoogleDriveLogo } from '@phosphor-icons/react';
 import { Button as MButton } from '@/components/m/Controls';
-import { toast } from '@/components/m/Toast';
+import { ApplePhotosGuide } from '@/components/m/ApplePhotosGuide';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { RefreshCw, Star, Trash2, RotateCw, Info, X, Play, Copy } from 'lucide-react';
@@ -188,6 +188,7 @@ export default function AlbumPhotosPage() {
   const [infoPhoto, setInfoPhoto] = useState<Photo | null>(null);
   const [rotatingId, setRotatingId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [appleGuide, setAppleGuide] = useState(false);
   const videoInput = useRef<HTMLInputElement>(null);
   const uploads = useVideoUploads({
     albumId: id,
@@ -221,9 +222,7 @@ export default function AlbumPhotosPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('from') === 'apple') {
-      toast('Click “From Apple Photos”, then choose Photos in the sidebar of the window that opens');
-    }
+    if (new URLSearchParams(window.location.search).get('from') === 'apple') setAppleGuide(true);
   }, []);
 
   const toggleFavorite = async (photo: Photo) => {
@@ -343,10 +342,7 @@ export default function AlbumPhotosPage() {
             size="md"
             variant="gray"
             icon={<AppleLogo size={18} weight="fill" />}
-            onClick={() => {
-              toast('Choose “Photos” in the sidebar, then pick photos or a whole album');
-              setTimeout(() => videoInput.current?.click(), 600);
-            }}
+            onClick={() => setAppleGuide(true)}
           >
             From Apple Photos
           </MButton>
@@ -493,6 +489,15 @@ export default function AlbumPhotosPage() {
         onRetry={uploads.retry}
         onCancel={uploads.cancelQueued}
         onClose={uploads.clearFinished}
+      />
+
+      <ApplePhotosGuide
+        open={appleGuide}
+        onOpenChange={setAppleGuide}
+        onChoose={() => {
+          setAppleGuide(false);
+          videoInput.current?.click();
+        }}
       />
 
       {/* Info modal */}

@@ -12,13 +12,9 @@ import { LOOKS } from '@/components/looks/catalog';
 import { LivePreview } from '@/components/looks/LivePreview';
 import { MAC_DOWNLOAD_URL } from '@/lib/links';
 import { cn } from '@/lib/utils';
+import { startGooglePhotos } from '@/lib/googlePhotos/start';
+import { ApplePhotosGuide } from '@/components/m/ApplePhotosGuide';
 
-declare global {
-  interface Window {
-    /** Exposed by the Mantel desktop app's preload script. */
-    mantel?: { isApp: true; openScreensaverSetup: () => void };
-  }
-}
 
 const STEPS = ['photos', 'look', 'screen'] as const;
 type Step = (typeof STEPS)[number];
@@ -34,6 +30,7 @@ export default function WelcomePage() {
   const [source, setSource] = useState<null | 'upload' | 'apple' | 'drive' | 'gphotos'>(null);
   const [albumId, setAlbumId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [appleGuide, setAppleGuide] = useState(false);
   const [quotaLabel, setQuotaLabel] = useState('500 MB');
   const fileInput = useRef<HTMLInputElement>(null);
   const uploads = useVideoUploads({ albumId: albumId ?? '', onAdded: () => {}, onReplaced: () => {}, source: source === 'apple' ? 'apple-photos' : 'upload' });
@@ -41,10 +38,11 @@ export default function WelcomePage() {
   // Uploads go into one "My Photos" album that's put straight on display.
   const chooseSource = async (s: 'upload' | 'apple' | 'drive' | 'gphotos') => {
     if (s === 'gphotos') {
-      window.location.assign('/api/google-photos/start');
+      startGooglePhotos((h) => window.location.assign(h));
       return;
     }
     setSource(s);
+    if (s === 'apple') setAppleGuide(true);
     if ((s === 'upload' || s === 'apple') && !albumId) {
       const res = await fetch('/api/albums', {
         method: 'POST',
@@ -178,14 +176,14 @@ export default function WelcomePage() {
                     />
                     <button
                       type="button"
-                      onClick={() => fileInput.current?.click()}
+                      onClick={() => (source === 'apple' ? setAppleGuide(true) : fileInput.current?.click())}
                       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                       onDragLeave={() => setDragging(false)}
                       onDrop={(e) => { e.preventDefault(); setDragging(false); uploads.enqueue(Array.from(e.dataTransfer.files)); }}
                       className={cn('flex w-full flex-col items-center rounded-[22px] border-2 border-dashed px-6 py-12 text-center transition-colors', dragging ? 'border-tint bg-tint/10' : 'border-separator bg-cell')}
                     >
                       {source === 'apple' ? <AppleLogo size={40} weight="fill" className="text-label" /> : <UploadSimple size={40} className="text-tint" />}
-                      <p className="mt-3 text-[18px] font-semibold">{source === 'apple' ? 'Click, then choose “Photos” in the sidebar' : 'Drop photos and videos here'}</p>
+                      <p className="mt-3 text-[18px] font-semibold">{source === 'apple' ? 'Click to see how to find your Apple Photos' : 'Drop photos and videos here'}</p>
                       <p className="mt-1 text-[14px] text-label-2">
                         {source === 'apple' ? 'Or drag photos straight out of the Photos app onto this box.' : 'or click to choose them'}
                       </p>
@@ -295,6 +293,14 @@ export default function WelcomePage() {
           </motion.div>
         </AnimatePresence>
       </div>
+      <ApplePhotosGuide
+        open={appleGuide}
+        onOpenChange={setAppleGuide}
+        onChoose={() => {
+          setAppleGuide(false);
+          fileInput.current?.click();
+        }}
+      />
       <Toaster />
     </main>
   );
