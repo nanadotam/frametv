@@ -334,8 +334,31 @@ NSNotificationName const WVSSPreviewStopped = @"webviewscreensaver.preview.stopp
   // Don't open new windows.
   if (navigationAction.targetFrame == nil) {
     decisionHandler(WKNavigationActionPolicyCancel);
+    return;
   }
   decisionHandler(WKNavigationActionPolicyAllow);
+}
+
+// Offline: the per-device link (/s/<token>) needs the network to sign in,
+// but the display itself is cached by Mantel's service worker. Fall back
+// to it, and retry the live link every 30 s until the network is back.
+- (void)webView:(WKWebView *)webView
+    didFailProvisionalNavigation:(WKNavigation *)navigation
+                       withError:(NSError *)error {
+  NSURL *failed = error.userInfo[NSURLErrorFailingURLErrorKey];
+  if (!failed || ![failed.path hasPrefix:@"/s/"]) return;
+
+  NSURLComponents *display = [NSURLComponents componentsWithURL:failed resolvingAgainstBaseURL:NO];
+  display.path = @"/display";
+  display.query = @"kiosk=1&offline=1";
+  [webView loadRequest:[NSURLRequest requestWithURL:display.URL]];
+
+  __weak typeof(self) weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(30 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    typeof(self) strongSelf = weakSelf;
+    if (!strongSelf || strongSelf->_webView != webView || !strongSelf.isAnimating) return;
+    [webView loadRequest:[NSURLRequest requestWithURL:failed]];
+  });
 }
 
 #pragma mark - System Screensaver Notifications
