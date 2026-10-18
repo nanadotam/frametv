@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getRealtimeClient } from '@/lib/supabase/realtime';
+import { subscribeUserTable } from '@/lib/supabase/userChannel';
 import type { Reminder, ReminderPriority, FlipboardMessage } from '@/types/db';
 
 export interface FlipMessage {
@@ -62,12 +62,7 @@ export function useFlipboardMessages({ sources, secondsPerMessage }: UseFlipboar
         }
     };
     fetchReminders();
-    const supabase = getRealtimeClient();
-    const channel = supabase
-      .channel('flipboard_reminders_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, fetchReminders)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return subscribeUserTable('reminders', fetchReminders);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceKey]);
 
@@ -94,14 +89,10 @@ export function useFlipboardMessages({ sources, secondsPerMessage }: UseFlipboar
     };
     fetchMessages();
     const id = setInterval(fetchMessages, 5_000);
-    const supabase = getRealtimeClient();
-    const channel = supabase
-      .channel('flipboard_messages_changes_client')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'flipboard_messages' }, fetchMessages)
-      .subscribe();
+    const unsubscribe = subscribeUserTable('flipboard_messages', fetchMessages);
     return () => {
       clearInterval(id);
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceKey]);

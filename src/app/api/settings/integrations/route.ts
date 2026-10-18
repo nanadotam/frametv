@@ -41,7 +41,6 @@ export async function GET(request: NextRequest) {
     spotify_profile: spotifyProfile,
     google_connected: !!googleApiKey,
     unsplash_key_set: !!process.env.UNSPLASH_ACCESS_KEY,
-    display_token: process.env.DISPLAY_TOKEN ?? '',
     google_api_key: googleApiKey ?? '',
   });
 }

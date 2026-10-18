@@ -2,6 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { normalizePairingCode, recordAuthEvent, requireAdminUser } from '@/lib/auth';
 
+// GET /api/auth/pair/approve?code=XXXXXX — preview which device is asking
+// before approving, so a code read out by a stranger can't be approved blind.
+export async function GET(request: NextRequest) {
+  const auth = await requireAdminUser(request);
+  if (auth.response) return auth.response;
+
+  const code = normalizePairingCode(request.nextUrl.searchParams.get('code') ?? '');
+  const { data } = await createServiceClient()
+    .from('tv_pairing_codes')
+    .select('device_name, device_type, browser, os, city, country, created_at')
+    .eq('code', code)
+    .eq('status', 'pending')
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle();
+
+  if (!data) return NextResponse.json({ error: 'That code is invalid or has expired.' }, { status: 404 });
+  return NextResponse.json({ device: data });
+}
+
 // POST /api/auth/pair/approve — called from the phone/dashboard once the
 // user confirms "yes, this is my TV". Requires an authenticated admin
 // session; the TV itself never calls this route.

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getRealtimeClient } from '@/lib/supabase/realtime';
+import { subscribeUserTable } from '@/lib/supabase/userChannel';
 import type { ClockOverlayConfig } from '@/components/display/ClockOverlay';
 
 const DEFAULT: ClockOverlayConfig = {
@@ -14,8 +14,6 @@ export function useClockOverlayConfig(): ClockOverlayConfig {
   const [config, setConfig] = useState<ClockOverlayConfig>(DEFAULT);
 
   useEffect(() => {
-    const supabase = getRealtimeClient();
-
     const fetchConfig = async () => {
       const res = await fetch('/api/settings?key=clock_overlay');
       if (!res.ok) return;
@@ -26,18 +24,11 @@ export function useClockOverlayConfig(): ClockOverlayConfig {
     fetchConfig();
     const interval = setInterval(fetchConfig, 60_000);
 
-    const channel = supabase
-      .channel('clock_overlay_setting')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'settings' },
-        () => fetchConfig()
-      )
-      .subscribe();
+    const unsubscribe = subscribeUserTable('settings', () => fetchConfig());
 
     return () => {
       clearInterval(interval);
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   }, []);
 

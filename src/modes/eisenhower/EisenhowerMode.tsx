@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { getRealtimeClient } from '@/lib/supabase/realtime';
+import { subscribeUserTable } from '@/lib/supabase/userChannel';
 import Tile from '@/modes/flipboard/Tile';
 import type { ModeProps } from '@/modes/types';
 import type { Reminder, ReminderPriority } from '@/types/db';
@@ -158,12 +158,7 @@ export default function EisenhowerMode({ brightness, onReady }: ModeProps) {
         onReady?.();
     };
     fetchReminders();
-    const supabase = getRealtimeClient();
-    const channel = supabase
-      .channel('eisenhower_reminders_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, fetchReminders)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return subscribeUserTable('reminders', fetchReminders);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

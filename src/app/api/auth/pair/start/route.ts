@@ -12,6 +12,24 @@ export async function POST(request: NextRequest) {
   const device = getDeviceInfo(request);
   const expires = new Date(Date.now() + CODE_TTL_MS);
 
+  // An open, unpaired screen asks for a new code every 5 minutes; anything
+  // much faster than that from one IP is a bot.
+  if (device.ip) {
+    const { count } = await supabase
+      .from('tv_pairing_codes')
+      .select('id', { count: 'exact', head: true })
+      .eq('ip', device.ip)
+      .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
+    if ((count ?? 0) >= 60) {
+      return NextResponse.json({ error: 'Too many pairing codes. Try again later.' }, { status: 429 });
+    }
+  }
+
+  // Housekeeping: codes are useless a day after they expire.
+  if (Math.random() < 0.05) {
+    await supabase.from('tv_pairing_codes').delete().lt('expires_at', new Date(Date.now() - 86_400_000).toISOString());
+  }
+
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const code = createPairingCode();
     const { error } = await supabase.from('tv_pairing_codes').insert({

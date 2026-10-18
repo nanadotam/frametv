@@ -198,6 +198,8 @@ export function clearSessionCookies(response: NextResponse) {
 }
 
 async function getSessionUserByToken(token: string | undefined, kind?: 'admin' | 'display') {
+  // A display cookie may also carry a per-device screensaver token (see /s/[token]).
+  const kinds = kind === 'display' ? ['display', 'screensaver'] : kind ? [kind] : null;
   if (!token) return null;
 
   const supabase = createServiceClient();
@@ -209,7 +211,7 @@ async function getSessionUserByToken(token: string | undefined, kind?: 'admin' |
     .is('revoked_at', null)
     .gt('expires_at', now);
 
-  if (kind) query = query.eq('kind', kind);
+  if (kinds) query = query.in('kind', kinds);
   const { data } = await query.maybeSingle();
   if (!data?.app_users) return null;
 
@@ -300,7 +302,7 @@ export async function requireDisplayUser(request: NextRequest) {
 
 export async function recordAuthEvent(
   request: NextRequest,
-  event_type: 'signup' | 'login' | 'pin_unlock' | 'logout' | 'failed_login' | 'failed_pin' | 'tv_pair_approved' | 'tv_pair_consumed' | 'account_deleted',
+  event_type: 'signup' | 'login' | 'pin_unlock' | 'logout' | 'failed_login' | 'failed_pin' | 'failed_recovery' | 'recovery_used' | 'password_changed' | 'tv_pair_approved' | 'tv_pair_consumed' | 'account_deleted',
   values: { user_id?: string | null; email?: string | null; device_name?: string | null } = {}
 ) {
   const supabase = createServiceClient();
@@ -311,4 +313,109 @@ export async function recordAuthEvent(
     email: values.email ?? null,
     ...device,
   });
+}
+
+type FailureEvent = 'failed_login' | 'failed_pin' | 'failed_recovery' | 'signup';
+
+/**
+ * Brute-force guard built on auth_events (no extra infra): too many recent
+ * failures from this IP, or against this account, blocks further attempts
+ * for the rest of the window.
+ */
+export async function isRateLimited(
+  request: NextRequest,
+  event: FailureEvent,
+  email: string | null,
+  { windowMinutes = 15, maxPerIp = 20, maxPerAccount = 8 } = {}
+) {
+  const supabase = createServiceClient();
+  const since = new Date(Date.now() - windowMinutes * 60_000).toISOString();
+  const ip = getDeviceInfo(request).ip;
+
+  const count = async (column: 'ip' | 'email', value: string) => {
+    const { count } = await supabase
+      .from('auth_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_type', event)
+      .eq(column, value)
+      .gte('created_at', since);
+    return count ?? 0;
+  };
+
+  const [byIp, byAccount] = await Promise.all([
+    ip ? count('ip', ip) : Promise.resolve(0),
+    email ? count('email', email) : Promise.resolve(0),
+  ]);
+  return byIp >= maxPerIp || byAccount >= maxPerAccount;
+}
+
+export function tooManyAttempts() {
+  return NextResponse.json(
+    { error: 'Too many attempts. Wait 15 minutes and try again.' },
+    { status: 429 }
+  );
+}
+
+// ── Recovery key ─────────────────────────────────────────────────────────────
+// No email resets: at signup each account gets a one-time-shown recovery key
+// (≈100 bits, same unambiguous alphabet as pairing codes) that can reset the
+// password. Only a pbkdf2 hash is stored.
+
+const RECOVERY_GROUPS = 5;
+const RECOVERY_GROUP_LEN = 4;
+
+export function createRecoveryKey() {
+  const groups: string[] = [];
+  for (let g = 0; g < RECOVERY_GROUPS; g++) {
+    const bytes = randomBytes(RECOVERY_GROUP_LEN);
+    groups.push(Array.from(bytes, (b) => PAIRING_CODE_CHARS[b % PAIRING_CODE_CHARS.length]).join(''));
+  }
+  return `MNTL-${groups.join('-')}`;
+}
+
+export function normalizeRecoveryKey(key: string) {
+  return key.trim().toUpperCase().replace(/^MNTL/, '').replace(/[^A-Z0-9]/g, '');
+}
+
+export function hashRecoveryKey(key: string) {
+  return hashSecret(normalizeRecoveryKey(key), PASSWORD_ITERATIONS);
+}
+
+export function verifyRecoveryKey(key: string, hash: string | null) {
+  if (!hash) return false;
+  return verifySecret(normalizeRecoveryKey(key), hash);
+}
+
+export const MIN_PASSWORD_LENGTH = 8;
+
+export function passwordProblem(password: string): string | null {
+  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+  if (/^(.)\1+$/.test(password) || /^(?:12345678|password|qwerty)/i.test(password)) return 'That password is too easy to guess.';
+  return null;
+}
+
+/** Revokes every session for a user, optionally keeping one (by token). */
+export async function revokeSessions(userId: string, keepToken?: string | null) {
+  const supabase = createServiceClient();
+  let query = supabase
+    .from('app_sessions')
+    .update({ revoked_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .is('revoked_at', null);
+  if (keepToken) query = query.neq('session_hash', hashSessionToken(keepToken));
+  await query;
+}
+
+/** Mints an admin session and sets its cookie on the response. */
+export async function startAdminSession(request: NextRequest, response: NextResponse, userId: string, deviceName?: string | null) {
+  const token = createSessionToken();
+  const expires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+  await createServiceClient().from('app_sessions').insert({
+    user_id: userId,
+    session_hash: hashSessionToken(token),
+    kind: 'admin',
+    expires_at: expires.toISOString(),
+    ...getDeviceInfo(request, deviceName),
+  });
+  setSessionCookie(response, 'admin', token, expires);
 }

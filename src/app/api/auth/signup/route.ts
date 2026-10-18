@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import {
+  createRecoveryKey,
   createSessionToken,
+  hashRecoveryKey,
+  isRateLimited,
+  passwordProblem,
+  tooManyAttempts,
   getDeviceInfo,
   hashPassword,
   hashPin,
@@ -36,13 +41,19 @@ export async function POST(request: NextRequest) {
     if (!name) {
       return NextResponse.json({ error: 'Name is required.' }, { status: 400 });
     }
-    if (password.length < 4) {
-      return NextResponse.json({ error: 'Password must be at least 4 characters.' }, { status: 400 });
+    const problem = passwordProblem(password);
+    if (problem) {
+      return NextResponse.json({ error: problem }, { status: 400 });
     }
     if (pin && !/^\d{6}$/.test(pin)) {
       return NextResponse.json({ error: 'PIN must be exactly 6 digits.' }, { status: 400 });
     }
 
+    if (await isRateLimited(request, 'signup', null, { windowMinutes: 60, maxPerIp: 5 })) {
+      return tooManyAttempts();
+    }
+
+    const recoveryKey = createRecoveryKey();
     const supabase = createServiceClient();
     const { data: user, error } = await supabase
       .from('app_users')
@@ -52,6 +63,8 @@ export async function POST(request: NextRequest) {
         name,
         password_hash: hashPassword(password),
         pin_hash: pin ? hashPin(pin) : null,
+        recovery_key_hash: hashRecoveryKey(recoveryKey),
+        recovery_key_created_at: new Date().toISOString(),
       })
       .select('id, email, username, name, created_at')
       .single();
@@ -87,7 +100,8 @@ export async function POST(request: NextRequest) {
     });
     await recordAuthEvent(request, 'signup', { user_id: user.id, email, device_name: deviceName });
 
-    const response = NextResponse.json({ user });
+    // The recovery key is shown exactly once, right after signup.
+    const response = NextResponse.json({ user, recoveryKey });
     setSessionCookie(response, 'admin', token, expires);
     return response;
   } catch (err: unknown) {

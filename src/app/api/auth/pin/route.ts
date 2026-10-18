@@ -7,6 +7,8 @@ import {
   normalizeEmail,
   recordAuthEvent,
   setSessionCookie,
+  isRateLimited,
+  tooManyAttempts,
   verifyPin,
 } from '@/lib/auth';
 import { ensureUserDefaults } from '@/lib/userData';
@@ -22,8 +24,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Enter your email/username and six-digit PIN.' }, { status: 400 });
     }
 
-    const supabase = createServiceClient();
     const normalizedEmail = normalizeEmail(emailOrUsername);
+    if (await isRateLimited(request, 'failed_pin', normalizedEmail)) return tooManyAttempts();
+
+    const supabase = createServiceClient();
     const normalizedUsername = emailOrUsername.toLowerCase();
     let userQuery = supabase
       .from('app_users')

@@ -10,6 +10,26 @@ export async function GET(
 ) {
   const { token } = await params;
 
+  // Per-device screensaver link: the token *is* that Mac's screensaver
+  // session, so it's reused as the display cookie (no new session row per
+  // launch) and revoking the device from Devices kills the link.
+  if (/^[A-Za-z0-9_-]{40,}$/.test(token)) {
+    const supabase = createServiceClient();
+    const { data: session } = await supabase
+      .from('app_sessions')
+      .select('id, expires_at')
+      .eq('session_hash', hashSessionToken(token))
+      .eq('kind', 'screensaver')
+      .is('revoked_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+    if (!session) return NextResponse.redirect(new URL('/display', request.url));
+
+    const response = NextResponse.redirect(new URL('/display?kiosk=1', request.url));
+    setSessionCookie(response, 'display', token, new Date(session.expires_at));
+    return response;
+  }
+
   if (!/^[a-zA-Z0-9]{8}$/.test(token)) {
     return NextResponse.redirect(new URL('/display', request.url));
   }

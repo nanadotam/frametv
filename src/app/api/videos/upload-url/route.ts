@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { createServiceClient } from '@/lib/supabase/server';
 import { requireAdminUser } from '@/lib/auth';
+import { getVideoUsage } from '@/lib/video/quota';
 
 // Videos are too large for a function request body (4.5 MB), so the browser
 // uploads the transcoded MP4 and its poster JPEG straight to Supabase Storage
@@ -27,6 +28,14 @@ export async function POST(request: NextRequest) {
 
     if (albumErr || !album) {
       return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+    }
+
+    const usage = await getVideoUsage(auth.user.id);
+    if (usage.used >= usage.quota) {
+      return NextResponse.json(
+        { error: 'Your video storage is full. Delete some videos to upload more, or keep photos in Google Drive.' },
+        { status: 413 }
+      );
     }
 
     const uuid = randomUUID();

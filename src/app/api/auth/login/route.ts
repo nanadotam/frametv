@@ -7,6 +7,8 @@ import {
   normalizeEmail,
   recordAuthEvent,
   setSessionCookie,
+  isRateLimited,
+  tooManyAttempts,
   verifyPassword,
 } from '@/lib/auth';
 import { ensureUserDefaults } from '@/lib/userData';
@@ -17,6 +19,8 @@ export async function POST(request: NextRequest) {
     const email = normalizeEmail(String(body.email ?? ''));
     const password = String(body.password ?? '');
     const deviceName = String(body.device_name ?? '').trim() || null;
+
+    if (await isRateLimited(request, 'failed_login', email)) return tooManyAttempts();
 
     const supabase = createServiceClient();
     const { data: user } = await supabase

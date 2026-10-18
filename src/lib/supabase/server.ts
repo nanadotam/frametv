@@ -28,18 +28,16 @@ export async function createClient() {
 }
 
 /**
- * Service-role client for use in API routes.
- * Falls back to anon/publishable key when SUPABASE_SERVICE_ROLE_KEY is not set
- * (development or single-user deployments with permissive RLS).
+ * Service-role client for API routes. Every table has RLS on with no
+ * policies (migration 018), so this is the only key that can touch data —
+ * fail loudly rather than silently falling back to the public key.
  */
 export function createServiceClient() {
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE ||
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    '';
-  return createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key);
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE;
+  if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set');
+  return createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 // Named alias used by some modules

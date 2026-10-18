@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
-import { getRealtimeClient } from '@/lib/supabase/realtime';
+import { subscribeUserTable } from '@/lib/supabase/userChannel';
 import type { Schedule } from '@/types/db';
 
 async function fetchSchedules(): Promise<Schedule[]> {
@@ -23,14 +23,9 @@ export function useSchedules(): Schedule[] {
   });
 
   useEffect(() => {
-    const supabase = getRealtimeClient();
-    const channel = supabase
-      .channel('schedules_changes_client')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['schedules'] });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return subscribeUserTable('schedules', () => {
+      queryClient.invalidateQueries({ queryKey: ['schedules'] });
+    });
   }, [queryClient]);
 
   return data ?? [];
