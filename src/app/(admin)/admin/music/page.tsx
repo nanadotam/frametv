@@ -19,7 +19,6 @@ import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { cn } from '@/lib/utils';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
 import type { SpotifyDevice } from '@/app/api/spotify/devices/route';
-import PageGuide from '@/components/admin/PageGuide';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -433,26 +432,13 @@ export default function MusicPage() {
   const commitVolume = (v: number) => { setVolume(v); playerAction('volume', { volume: v, ...deviceParam }); };
 
   return (
-    <div className="px-4 pt-4 pb-28 md:p-8 max-w-3xl mx-auto space-y-5">
+    <div className="legacy-page px-4 pt-4 pb-28 md:p-8 max-w-3xl mx-auto space-y-5">
 
-      <PageGuide
-        pageKey="music"
-        icon={<Music2 size={18} className="text-primary" />}
-        title="Music"
-        about="Search Spotify and play music directly on your TV browser. The TV tab becomes a Spotify device called Mantel — requires Spotify Premium for in-browser playback."
-        steps={[
-          'Connect Spotify in Settings first.',
-          'Open the display tab on your TV and leave it running — it registers as a Spotify device.',
-          'Use Audio Output to route sound to the Mantel browser or any other Spotify device.',
-          'Type a song, artist, or album in the search box.',
-          'Click a result to play it on the active device.',
-        ]}
-      />
 
       {/* Header */}
       <div className="pt-2">
+        <Link href="/admin/settings" className="mb-1 inline-block text-[17px] text-tint">‹ Settings</Link>
         <div className="flex items-center justify-between gap-3">
-          <Link href="/admin/settings" className="mb-1 inline-block text-[17px] text-tint">‹ Settings</Link>
           <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em]">Music</h1>
           {/* SDK status pill */}
           {isPremiumRequired ? (

@@ -1,34 +1,24 @@
 'use client';
 
-import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Pencil, Trash2, CalendarDays, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/looks/ChoiceChips';
-import { Slider } from '@/components/ui/slider';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { useCallback, useEffect, useState } from 'react';
+import { CalendarBlank, Plus, SunHorizon, MoonStars, Coffee, Trash } from '@phosphor-icons/react';
+import { Page } from '@/components/m/Page';
+import { Section, Row, Toggle, IconTile } from '@/components/m/List';
+import { Button, Chip, Empty, Field, TextInput } from '@/components/m/Controls';
+import { Sheet } from '@/components/m/Sheet';
+import { toast } from '@/components/m/Toast';
+import { LOOKS, lookName } from '@/components/looks/catalog';
+import { LivePreview } from '@/components/looks/LivePreview';
 import { cn } from '@/lib/utils';
 import type { Schedule, Album } from '@/types/db';
 
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+const WEEKDAYS = [1, 2, 3, 4, 5];
+const WEEKENDS = [0, 6];
 
-const MODES_LIST = [
-  { id: 'slideshow-single', label: 'Slideshow' },
-  { id: 'slideshow-grid', label: 'Grid' },
-  { id: 'pinterest', label: 'Pinterest' },
-  { id: 'clock-text', label: 'Clock' },
-  { id: 'flipboard', label: 'FlipBoard' },
-  { id: 'coverflow', label: 'Cover Flow' },
-  { id: 'unsplash-mood', label: 'Mood' },
-  { id: 'easel', label: 'Easel' },
-];
-
-type FormState = {
+type Form = {
   name: string;
   days_of_week: number[];
   start_time: string;
@@ -38,366 +28,230 @@ type FormState = {
   priority: number;
 };
 
-const defaultForm: FormState = {
-  name: '',
-  days_of_week: [],
-  start_time: '08:00',
-  end_time: '22:00',
-  mode_id: 'slideshow-single',
-  album_ids: [],
-  priority: 5,
-};
+const BLANK: Form = { name: '', days_of_week: EVERY_DAY, start_time: '08:00', end_time: '22:00', mode_id: 'slideshow-single', album_ids: [], priority: 5 };
 
-export default function SchedulePage() {
-  const [schedules, setSchedules]     = useState<Schedule[]>([]);
-  const [albums, setAlbums]           = useState<Album[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [modalOpen, setModalOpen]     = useState(false);
-  const [editingId, setEditingId]     = useState<string | null>(null);
-  const [form, setForm]               = useState<FormState>(defaultForm);
-  const [saving, setSaving]           = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+const PRESETS: { icon: React.ReactNode; tone: 'orange' | 'indigo' | 'teal'; form: Form; blurb: string }[] = [
+  { icon: <Coffee size={20} weight="fill" />, tone: 'orange', blurb: 'Weekdays 6–9 am · Slideshow', form: { ...BLANK, name: 'Mornings', days_of_week: WEEKDAYS, start_time: '06:00', end_time: '09:00', mode_id: 'slideshow-single' } },
+  { icon: <SunHorizon size={20} weight="fill" />, tone: 'teal', blurb: 'Every day 6–10 pm · Gallery Wall', form: { ...BLANK, name: 'Evenings', start_time: '18:00', end_time: '22:00', mode_id: 'slideshow-grid' } },
+  { icon: <MoonStars size={20} weight="fill" />, tone: 'indigo', blurb: 'Every day 10 pm–6 am · Clock', form: { ...BLANK, name: 'Night clock', start_time: '22:00', end_time: '06:00', mode_id: 'clock-text' } },
+];
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [schRes, albRes] = await Promise.all([
-        fetch('/api/schedules'),
-        fetch('/api/albums'),
-      ]);
-      if (schRes.ok) {
-        const json = await schRes.json();
-        setSchedules(Array.isArray(json) ? json : (json.schedules ?? []));
-      }
-      if (albRes.ok) {
-        const json = await albRes.json();
-        const list: Album[] = Array.isArray(json) ? json : (json.albums ?? []);
-        setAlbums(list.filter((a) => !a.is_archived));
-      }
-    } finally {
-      setLoading(false);
-    }
+function daysLabel(days: number[]) {
+  const d = [...days].sort();
+  if (d.length === 7) return 'Every day';
+  if (d.join() === WEEKDAYS.join()) return 'Weekdays';
+  if (d.join() === WEEKENDS.join()) return 'Weekends';
+  return d.map((i) => DAY_NAMES[i]).join(', ');
+}
+
+function time12(t: string) {
+  const [h, m] = t.slice(0, 5).split(':').map(Number);
+  const d = new Date(2000, 0, 1, h, m);
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: m ? '2-digit' : undefined });
+}
+
+export default function SchedulesPage() {
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [editing, setEditing] = useState<{ id: string | null; form: Form } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const [sc, al] = await Promise.all([
+      fetch('/api/schedules').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/albums').then((r) => (r.ok ? r.json() : [])),
+    ]);
+    setSchedules(Array.isArray(sc) ? sc : (sc.schedules ?? []));
+    setAlbums((Array.isArray(al) ? al : (al.albums ?? [])).filter((a: Album) => !a.is_archived));
+    setLoaded(true);
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const openAdd = () => {
-    setEditingId(null);
-    setForm(defaultForm);
-    setModalOpen(true);
-  };
+  const set = (patch: Partial<Form>) => setEditing((e) => (e ? { ...e, form: { ...e.form, ...patch } } : e));
 
-  const openEdit = (s: Schedule) => {
-    setEditingId(s.id);
-    setForm({
-      name: s.name,
-      days_of_week: s.days_of_week,
-      start_time: s.start_time,
-      end_time: s.end_time,
-      mode_id: s.mode_id,
-      album_ids: s.album_ids,
-      priority: s.priority,
-    });
-    setModalOpen(true);
-  };
-
-  const saveSchedule = async () => {
+  const save = async () => {
+    if (!editing) return;
+    const f = editing.form;
+    if (!f.name.trim()) return toast.error('Give the schedule a name.');
+    if (!f.days_of_week.length) return toast.error('Pick at least one day.');
     setSaving(true);
-    try {
-      if (editingId) {
-        await fetch(`/api/schedules/${editingId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
-        });
-      } else {
-        await fetch('/api/schedules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
-        });
-      }
-      setModalOpen(false);
-      await fetchData();
-    } finally {
-      setSaving(false);
-    }
+    const res = await fetch(editing.id ? `/api/schedules/${editing.id}` : '/api/schedules', {
+      method: editing.id ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...f, name: f.name.trim() }),
+    }).catch(() => null);
+    setSaving(false);
+    if (!res?.ok) return toast.error('Couldn’t save the schedule.');
+    toast(editing.id ? 'Schedule updated' : 'Schedule added');
+    setEditing(null);
+    load();
   };
 
-  const handleDeleteClick = (id: string) => {
-    if (confirmDelete === id) {
-      fetch(`/api/schedules/${id}`, { method: 'DELETE' });
-      setSchedules((prev) => prev.filter((s) => s.id !== id));
-      setConfirmDelete(null);
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    } else {
-      setConfirmDelete(id);
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-      confirmTimer.current = setTimeout(() => setConfirmDelete(null), 3000);
-    }
+  const remove = async () => {
+    if (!editing?.id) return;
+    const res = await fetch(`/api/schedules/${editing.id}`, { method: 'DELETE' }).catch(() => null);
+    if (!res?.ok) return toast.error('Couldn’t delete the schedule.');
+    setSchedules((p) => p.filter((s) => s.id !== editing.id));
+    setEditing(null);
+    toast('Schedule deleted');
   };
 
-  const toggleEnabled = async (s: Schedule) => {
-    const next = !s.is_enabled;
-    setSchedules((prev) => prev.map((x) => x.id === s.id ? { ...x, is_enabled: next } : x));
-    await fetch(`/api/schedules/${s.id}`, {
+  const toggle = async (s: Schedule, enabled: boolean) => {
+    setSchedules((p) => p.map((x) => (x.id === s.id ? { ...x, is_enabled: enabled } : x)));
+    const res = await fetch(`/api/schedules/${s.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_enabled: next }),
-    });
+      body: JSON.stringify({ is_enabled: enabled }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      setSchedules((p) => p.map((x) => (x.id === s.id ? { ...x, is_enabled: !enabled } : x)));
+      toast.error('Couldn’t update that schedule.');
+    }
   };
 
-  const toggleDay = (day: number) => {
-    setForm((prev) => ({
-      ...prev,
-      days_of_week: prev.days_of_week.includes(day)
-        ? prev.days_of_week.filter((d) => d !== day)
-        : [...prev.days_of_week, day].sort(),
-    }));
-  };
-
-  const toggleAlbum = (albumId: string) => {
-    setForm((prev) => ({
-      ...prev,
-      album_ids: prev.album_ids.includes(albumId)
-        ? prev.album_ids.filter((id) => id !== albumId)
-        : [...prev.album_ids, albumId],
-    }));
-  };
-
-  const modeLabel = (modeId: string) =>
-    MODES_LIST.find((m) => m.id === modeId)?.label ?? modeId;
+  const f = editing?.form;
 
   return (
-    <div className="px-4 pt-4 pb-28 md:p-8 max-w-3xl mx-auto space-y-6">
-      <div className="flex items-start justify-between pt-2">
-        <div>
-          <Link href="/admin/settings" className="mb-1 inline-block text-[17px] text-tint">‹ Settings</Link>
-          <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em]">Schedule</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Auto-switch modes at specific times · {schedules.filter(s => s.is_enabled).length} active
-          </p>
-        </div>
-        <Button size="sm" onClick={openAdd} className="gap-1.5">
-          <Plus size={14} /> Add schedule
-        </Button>
-      </div>
-
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2].map((i) => (
-            <div key={i} className="rounded-xl border border-border bg-card animate-pulse h-24" />
-          ))}
-        </div>
-      ) : schedules.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <CalendarDays size={40} className="mx-auto mb-3 opacity-40" />
-          <p className="font-medium">No schedules yet</p>
-          <p className="text-sm mt-1">Add one to auto-switch modes at specific times</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {schedules.map((s) => (
-            <Card key={s.id}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-sm">{s.name}</h3>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-xs',
-                          s.is_enabled
-                            ? 'border-ok/40 text-ok bg-ok/15'
-                            : 'border-border text-muted-foreground'
-                        )}
-                      >
-                        {s.is_enabled ? 'Enabled' : 'Disabled'}
-                      </Badge>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1">
-                      {DAY_LABELS.map((d, i) => (
-                        <span
-                          key={i}
-                          className={cn(
-                            'text-xs px-2 py-0.5 rounded-full font-medium',
-                            s.days_of_week.includes(i)
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted text-muted-foreground'
-                          )}
-                        >
-                          {d}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Clock size={11} />
-                      <span>{s.start_time} – {s.end_time}</span>
-                      <span className="text-border">·</span>
-                      <span>{modeLabel(s.mode_id)}</span>
-                      <span className="text-border">·</span>
-                      <span>Priority {s.priority}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Switch
-                      checked={s.is_enabled}
-                      onCheckedChange={() => toggleEnabled(s)}
-                    />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-10 w-10 p-0"
-                      onClick={() => openEdit(s)}
-                    >
-                      <Pencil size={15} />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className={cn(
-                        'h-10 p-0 transition-all',
-                        confirmDelete === s.id
-                          ? 'w-16 text-[10px] font-bold text-destructive bg-destructive/10 hover:bg-destructive/20 px-2'
-                          : 'w-10 hover:text-destructive'
-                      )}
-                      onClick={() => handleDeleteClick(s.id)}
-                    >
-                      {confirmDelete === s.id ? 'Sure?' : <Trash2 size={15} />}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+    <Page
+      title="Schedules"
+      subtitle="Change the look automatically through the day."
+      back={{ href: '/admin/settings', label: 'Settings' }}
+      actions={<Button size="sm" icon={<Plus size={14} weight="bold" />} onClick={() => setEditing({ id: null, form: BLANK })}>New</Button>}
+    >
+      {loaded && schedules.length === 0 && (
+        <Empty
+          art={<IconTile tone="indigo" size={72}><CalendarBlank size={38} weight="fill" /></IconTile>}
+          title="No schedules yet"
+          body="For example: a calm slideshow in the morning, a gallery wall in the evening, and a clock overnight."
+        />
       )}
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit schedule' : 'Add schedule'}</DialogTitle>
-            <DialogDescription>Configure when and what to show on the TV.</DialogDescription>
-          </DialogHeader>
+      {schedules.length > 0 && (
+        <Section header="Your schedules" footer="When schedules overlap, the higher priority wins. Turn one off to pause it.">
+          {schedules.map((s) => (
+            <Row
+              key={s.id}
+              icon={<IconTile tone="indigo"><CalendarBlank size={18} weight="bold" /></IconTile>}
+              title={s.name}
+              subtitle={`${daysLabel(s.days_of_week)} · ${time12(s.start_time)}–${time12(s.end_time)} · ${lookName(s.mode_id)}`}
+              onClick={() =>
+                setEditing({
+                  id: s.id,
+                  form: { name: s.name, days_of_week: s.days_of_week, start_time: s.start_time.slice(0, 5), end_time: s.end_time.slice(0, 5), mode_id: s.mode_id, album_ids: s.album_ids ?? [], priority: s.priority },
+                })
+              }
+              trailing={
+                <span onClick={(e) => e.stopPropagation()}>
+                  <Toggle checked={s.is_enabled} onChange={(v) => toggle(s, v)} label={`Turn ${s.name} on or off`} />
+                </span>
+              }
+            />
+          ))}
+        </Section>
+      )}
 
-          <div className="space-y-5 py-2">
-            <div className="space-y-1.5">
-              <Label>Name</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Morning routine"
-              />
-            </div>
+      <Section header="Quick start" footer="Tap one to set it up, then adjust anything you like.">
+        {PRESETS.map((p) => (
+          <Row
+            key={p.form.name}
+            icon={<IconTile tone={p.tone}>{p.icon}</IconTile>}
+            title={p.form.name}
+            subtitle={p.blurb}
+            onClick={() => setEditing({ id: null, form: p.form })}
+            chevron
+          />
+        ))}
+      </Section>
 
-            <div className="space-y-2">
-              <Label>Days</Label>
-              <div className="flex gap-1.5 flex-wrap">
-                {DAY_LABELS.map((d, i) => (
+      <Sheet
+        open={!!editing}
+        onOpenChange={(o) => !o && setEditing(null)}
+        title={editing?.id ? 'Edit schedule' : 'New schedule'}
+        size="lg"
+        footer={
+          <div className="flex gap-2">
+            {editing?.id && (
+              <Button variant="destructive" icon={<Trash size={18} weight="bold" />} onClick={remove}>Delete</Button>
+            )}
+            <Button className="flex-1" onClick={save} loading={saving}>{editing?.id ? 'Save changes' : 'Add schedule'}</Button>
+          </div>
+        }
+      >
+        {f && (
+          <>
+            <TextInput value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="Name, e.g. Mornings" />
+
+            <Section header="Which days">
+              <div className="space-y-3 p-4">
+                <div className="flex flex-wrap gap-2">
+                  <Chip selected={f.days_of_week.length === 7} onClick={() => set({ days_of_week: EVERY_DAY })}>Every day</Chip>
+                  <Chip selected={f.days_of_week.join() === WEEKDAYS.join()} onClick={() => set({ days_of_week: WEEKDAYS })}>Weekdays</Chip>
+                  <Chip selected={f.days_of_week.join() === WEEKENDS.join()} onClick={() => set({ days_of_week: WEEKENDS })}>Weekends</Chip>
+                </div>
+                <div className="flex justify-between gap-1.5">
+                  {DAYS.map((d, i) => {
+                    const on = f.days_of_week.includes(i);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        aria-pressed={on}
+                        aria-label={DAY_NAMES[i]}
+                        onClick={() => set({ days_of_week: on ? f.days_of_week.filter((x) => x !== i) : [...f.days_of_week, i].sort() })}
+                        className={cn('pressable h-11 w-11 rounded-full text-[15px] font-semibold', on ? 'bg-tint text-white' : 'bg-fill text-label')}
+                      >
+                        {d}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </Section>
+
+            <Section header="When" footer={f.end_time < f.start_time ? 'Runs overnight, into the next morning.' : undefined}>
+              <Field label="Starts" type="time" value={f.start_time} onChange={(e) => set({ start_time: e.target.value })} />
+              <Field label="Ends" type="time" value={f.end_time} onChange={(e) => set({ end_time: e.target.value })} />
+            </Section>
+
+            <div>
+              <h3 className="mb-2 px-4 text-[13px] font-medium uppercase tracking-wide text-label-2">Show this look</h3>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {LOOKS.map((l) => (
                   <button
-                    key={i}
+                    key={l.id}
                     type="button"
-                    onClick={() => toggleDay(i)}
-                    className={cn(
-                      'px-3 py-1.5 rounded-full text-sm font-medium transition-all border',
-                      form.days_of_week.includes(i)
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-card border-border text-muted-foreground hover:border-primary/50'
-                    )}
+                    onClick={() => set({ mode_id: l.id })}
+                    className={cn('pressable overflow-hidden rounded-[12px] bg-cell text-left shadow-cell ring-2', f.mode_id === l.id ? 'ring-tint' : 'ring-transparent')}
                   >
-                    {d}
+                    <LivePreview id={l.id} className="aspect-[4/3] w-full" />
+                    <p className="truncate px-2 py-1.5 text-[13px] font-semibold">{l.name}</p>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Start time</Label>
-                <Input
-                  type="time"
-                  value={form.start_time}
-                  onChange={(e) => setForm({ ...form, start_time: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>End time</Label>
-                <Input
-                  type="time"
-                  value={form.end_time}
-                  onChange={(e) => setForm({ ...form, end_time: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Mode</Label>
-              <Select value={form.mode_id ?? ''} onValueChange={(v) => setForm({ ...form, mode_id: v ?? '' })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MODES_LIST.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             {albums.length > 0 && (
-              <div className="space-y-2">
-                <Label>Albums</Label>
-                <div className="flex flex-wrap gap-1.5">
+              <Section header="From these albums" footer="Leave all unselected to use whatever is on display.">
+                <div className="flex flex-wrap gap-2 p-4">
                   {albums.map((a) => (
-                    <button
+                    <Chip
                       key={a.id}
-                      type="button"
-                      onClick={() => toggleAlbum(a.id)}
-                      className={cn(
-                        'px-3 py-1.5 rounded-full text-sm font-medium transition-all border',
-                        form.album_ids.includes(a.id)
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-card border-border text-muted-foreground hover:border-primary/50'
-                      )}
+                      selected={f.album_ids.includes(a.id)}
+                      onClick={() => set({ album_ids: f.album_ids.includes(a.id) ? f.album_ids.filter((x) => x !== a.id) : [...f.album_ids, a.id] })}
                     >
                       {a.name}
-                    </button>
+                    </Chip>
                   ))}
                 </div>
-              </div>
+              </Section>
             )}
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Priority</Label>
-                <span className="text-sm font-semibold text-primary">{form.priority}</span>
-              </div>
-              <Slider
-                min={1}
-                max={10}
-                step={1}
-                value={[form.priority]}
-                onValueChange={(vals) => setForm({ ...form, priority: Number(Array.isArray(vals) ? vals[0] : vals) })}
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Low (1)</span>
-                <span>High (10)</span>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={saveSchedule} disabled={saving}>
-              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add schedule'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          </>
+        )}
+      </Sheet>
+    </Page>
   );
 }

@@ -14,9 +14,9 @@ import { Toaster } from '@/components/m/Toast';
 const TABS: { href: string; label: string; icon: Icon; match: string[] }[] = [
   { href: '/admin', label: 'Now', icon: PlayCircle, match: [] },
   { href: '/admin/albums', label: 'Library', icon: Images, match: ['/admin/albums'] },
-  { href: '/admin/modes', label: 'Looks', icon: SquaresFour, match: ['/admin/modes', '/admin/music', '/admin/flipboard', '/admin/reminders'] },
+  { href: '/admin/modes', label: 'Looks', icon: SquaresFour, match: ['/admin/modes'] },
   { href: '/admin/devices', label: 'Devices', icon: Devices, match: ['/admin/devices', '/admin/screensaver'] },
-  { href: '/admin/settings', label: 'Settings', icon: GearSix, match: ['/admin/settings', '/admin/schedule', '/admin/help'] },
+  { href: '/admin/settings', label: 'Settings', icon: GearSix, match: ['/admin/settings', '/admin/schedule', '/admin/music', '/admin/flipboard', '/admin/reminders'] },
 ];
 
 function isActive(pathname: string, tab: (typeof TABS)[number]) {

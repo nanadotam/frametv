@@ -242,14 +242,14 @@ export default function BoardPage() {
   const charWarning = charCount > 80;
 
   return (
-    <div className="px-4 pt-4 pb-28 md:p-8 max-w-5xl mx-auto space-y-8">
+    <div className="legacy-page px-4 pt-4 pb-28 md:p-8 max-w-5xl mx-auto space-y-8">
 
       {/* ── Header ── */}
       <div className="pt-2">
         <Link href="/admin/settings" className="mb-1 inline-block text-[17px] text-tint">‹ Settings</Link>
         <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] flex items-center gap-2">
           <Radio size={20} className="text-primary" />
-          FlipBoard
+          Flip Board
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           {active.length} active reminders · {messages.filter((m) => m.is_active).length} live messages
@@ -263,7 +263,7 @@ export default function BoardPage() {
             <SlidersHorizontal size={14} className="text-primary" />
             Content Sources
           </CardTitle>
-          <CardDescription>Choose what rotates on the FlipBoard display</CardDescription>
+          <CardDescription>Choose what rotates on the Flip Board display</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {sourcesLoading ? (
@@ -395,7 +395,7 @@ export default function BoardPage() {
               Post a Message
             </CardTitle>
             <CardDescription>
-              Messages appear in the FlipBoard rotation alongside reminders and quotes
+              Messages appear in the Flip Board rotation alongside reminders and quotes
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
