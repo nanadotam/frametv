@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Search, Play, Pause, SkipForward, SkipBack, Volume2,
@@ -77,7 +78,7 @@ function NowPlayingCard({
               </div>
             )}
             {isPlaying && (
-              <span className="absolute bottom-2 right-2 w-3 h-3 rounded-full bg-green-400 shadow-lg shadow-green-400/50 animate-pulse" />
+              <span className="absolute bottom-2 right-2 w-3 h-3 rounded-full bg-ok shadow-lg shadow-green-400/50 animate-pulse" />
             )}
           </div>
 
@@ -131,7 +132,7 @@ function NowPlayingCard({
                   className={cn(
                     'text-[10px] gap-1 border rounded-full',
                     isPlaying
-                      ? 'border-green-500/30 text-green-400 bg-green-500/10'
+                      ? 'border-ok/40 text-ok bg-ok/15'
                       : 'border-border text-muted-foreground'
                   )}
                 >
@@ -282,21 +283,21 @@ function DeviceSelector() {
           <div className={cn(
             'flex items-center justify-between p-3 rounded-xl border',
             frameTvEntry?.is_active
-              ? 'bg-green-500/10 border-green-500/30'
+              ? 'bg-ok/15 border-ok/40'
               : 'bg-primary/8 border-primary/20'
           )}>
             <div className="flex items-center gap-2.5 min-w-0">
               <span className={cn(
                 'flex size-8 items-center justify-center rounded-lg border',
                 frameTvEntry?.is_active
-                  ? 'bg-green-500/15 border-green-500/30 text-green-400'
+                  ? 'bg-ok/15 border-ok/40 text-ok'
                   : 'bg-primary/15 border-primary/25 text-primary'
               )}>
                 <Tv size={14} />
               </span>
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">
-                  {frameTvEntry?.name ?? 'FrameTV Browser'}
+                  {frameTvEntry?.name ?? 'Mantel Browser'}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {frameTvEntry?.is_active ? 'Currently playing here' : 'Registered TV device'}
@@ -307,7 +308,7 @@ function DeviceSelector() {
             <Button
               size="sm"
               variant={frameTvEntry?.is_active ? 'secondary' : 'default'}
-              className={cn('shrink-0 gap-1.5', frameTvEntry?.is_active && 'bg-green-500/20 text-green-300 border-green-500/30 hover:bg-green-500/30')}
+              className={cn('shrink-0 gap-1.5', frameTvEntry?.is_active && 'bg-ok/15 text-ok border-ok/40 hover:bg-green-500/30')}
               onClick={() => transfer()}
               disabled={transferring !== null || frameTvEntry?.is_active}
             >
@@ -363,7 +364,7 @@ function DeviceSelector() {
                   </Button>
                 )}
                 {device.is_active && (
-                  <Badge variant="outline" className="text-[10px] border-green-500/30 text-green-400 bg-green-500/10 gap-1">
+                  <Badge variant="outline" className="text-[10px] border-ok/40 text-ok bg-ok/15 gap-1">
                     <Radio size={8} className="animate-pulse" /> Playing
                   </Badge>
                 )}
@@ -432,17 +433,17 @@ export default function MusicPage() {
   const commitVolume = (v: number) => { setVolume(v); playerAction('volume', { volume: v, ...deviceParam }); };
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-5">
+    <div className="px-4 pt-4 pb-28 md:p-8 max-w-3xl mx-auto space-y-5">
 
       <PageGuide
         pageKey="music"
         icon={<Music2 size={18} className="text-primary" />}
         title="Music"
-        about="Search Spotify and play music directly on your TV browser. The TV tab becomes a Spotify device called FrameTV — requires Spotify Premium for in-browser playback."
+        about="Search Spotify and play music directly on your TV browser. The TV tab becomes a Spotify device called Mantel — requires Spotify Premium for in-browser playback."
         steps={[
           'Connect Spotify in Settings first.',
           'Open the display tab on your TV and leave it running — it registers as a Spotify device.',
-          'Use Audio Output to route sound to the FrameTV browser or any other Spotify device.',
+          'Use Audio Output to route sound to the Mantel browser or any other Spotify device.',
           'Type a song, artist, or album in the search box.',
           'Click a result to play it on the active device.',
         ]}
@@ -451,7 +452,8 @@ export default function MusicPage() {
       {/* Header */}
       <div className="pt-2">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl font-bold tracking-tight">Music</h1>
+          <Link href="/admin/settings" className="mb-1 inline-block text-[17px] text-tint">‹ Settings</Link>
+          <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em]">Music</h1>
           {/* SDK status pill */}
           {isPremiumRequired ? (
             <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
@@ -462,8 +464,8 @@ export default function MusicPage() {
               SDK error
             </span>
           ) : isReady ? (
-            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/30 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-ok/15 text-ok border border-ok/40 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-ok animate-pulse" />
               Ready to play
             </span>
           ) : isConnecting ? (

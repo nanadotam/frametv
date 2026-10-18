@@ -1,92 +1,63 @@
 'use client';
 
-import { FormEvent, Suspense, useEffect, useState } from 'react';
+import { FormEvent, Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import AuthShell from '@/components/auth/AuthShell';
-import { Input } from '@/components/ui/input';
-import { PasswordInput } from '@/components/ui/password-input';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
+import AuthShell, { PasswordField } from '@/components/auth/AuthShell';
+import { Button, TextInput } from '@/components/m/Controls';
+import { toast } from '@/components/m/Toast';
 import { guessDeviceName } from '@/lib/deviceName';
 
 function LoginForm() {
   const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/';
-  const isScreensaverFlow = next.startsWith('/screensaver');
+  const next = searchParams.get('next') || '/admin';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [deviceName, setDeviceName] = useState('');
-
-  useEffect(() => {
-    setDeviceName(guessDeviceName());
-  }, []);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    setError('');
     setLoading(true);
-
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, device_name: deviceName }),
+        body: JSON.stringify({ email, password, device_name: guessDeviceName() }),
       });
-
-      const json = await res.json();
-
-      if (!res.ok) throw new Error(json.error ?? 'Unable to sign in.');
-
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? 'Couldn’t sign you in.');
       window.location.href = next;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to sign in.');
-    } finally {
+      toast.error(err instanceof Error ? err.message : 'Couldn’t sign you in.');
       setLoading(false);
     }
   };
 
+  const signupHref = `/signup${next !== '/admin' ? `?next=${encodeURIComponent(next)}` : ''}`;
+
   return (
     <AuthShell
-      title="Sign in"
-      description="Use your FrameTV account to control this display from any device."
+      title="Welcome back"
+      description="Sign in to Mantel."
       footer={
         <>
-          New here?{' '}
-          <Link className="text-primary font-medium" href={isScreensaverFlow ? `/screensaver/signup?next=${encodeURIComponent(next)}` : '/signup'}>
+          New to Mantel?{' '}
+          <Link className="font-semibold text-tint" href={signupHref}>
             Create an account
           </Link>
         </>
       }
     >
-      <form onSubmit={submit} className="space-y-4">
-        <div className="space-y-1.5">
-          <Label>Email</Label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      <form onSubmit={submit} className="space-y-3">
+        <TextInput type="email" placeholder="Email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+        <PasswordField placeholder="Password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <div className="flex justify-end px-1">
+          <Link href={`/recover${email ? `?email=${encodeURIComponent(email)}` : ''}`} className="text-[15px] font-medium text-tint">
+            Forgot password?
+          </Link>
         </div>
-
-        <div className="space-y-1.5">
-          <Label>Password</Label>
-          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Device name <span className="text-muted-foreground font-normal">(optional)</span></Label>
-          <Input
-            value={deviceName}
-            onChange={(e) => setDeviceName(e.target.value)}
-            placeholder="MacBook, iPhone, Living room TV…"
-          />
-        </div>
-
-        {error && <p className="text-sm text-destructive">{error}</p>}
-
-        <Button className="w-full" type="submit" disabled={loading}>
-          {loading ? 'Signing in…' : 'Sign in'}
-        </Button>
+        <Button type="submit" block size="xl" loading={loading}>Sign in</Button>
       </form>
     </AuthShell>
   );

@@ -2,133 +2,96 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Tv, Images, LayoutGrid, Settings, Home, Radio, LogOut, Music2 } from 'lucide-react';
+import type { Icon } from '@phosphor-icons/react';
+import { PlayCircle, Images, SquaresFour, Devices, GearSix, ArrowSquareOut } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { Separator } from '@/components/ui/separator';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import BrandMark from '@/components/BrandMark';
+import { Toaster } from '@/components/m/Toast';
 
-const NAV = [
-  { href: '/admin',           label: 'Remote',    icon: Home },
-  { href: '/admin/albums',    label: 'Albums',    icon: Images },
-  { href: '/admin/music',     label: 'Music',     icon: Music2 },
-  { href: '/admin/modes',     label: 'Modes',     icon: LayoutGrid },
-  { href: '/admin/settings',  label: 'Settings',  icon: Settings },
+// Five tabs, Apple-style: everything else (music, flipboard, schedule,
+// reminders) lives inside Looks or Settings rather than crowding the bar.
+const TABS: { href: string; label: string; icon: Icon; match: string[] }[] = [
+  { href: '/admin', label: 'Now', icon: PlayCircle, match: [] },
+  { href: '/admin/albums', label: 'Library', icon: Images, match: ['/admin/albums'] },
+  { href: '/admin/modes', label: 'Looks', icon: SquaresFour, match: ['/admin/modes', '/admin/music', '/admin/flipboard', '/admin/reminders'] },
+  { href: '/admin/devices', label: 'Devices', icon: Devices, match: ['/admin/devices'] },
+  { href: '/admin/settings', label: 'Settings', icon: GearSix, match: ['/admin/settings', '/admin/schedule', '/admin/help'] },
 ];
 
-const SECONDARY_NAV = [
-  { href: '/admin/flipboard', label: 'FlipBoard', icon: Radio },
-  { href: '/admin/schedule',  label: 'Schedule',  icon: Settings },
-];
+function isActive(pathname: string, tab: (typeof TABS)[number]) {
+  if (tab.href === '/admin') return pathname === '/admin';
+  return tab.match.some((m) => pathname.startsWith(m));
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  const logout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    window.location.href = '/login';
-  };
-
   return (
     <TooltipProvider>
-      <div className="flex h-screen bg-background text-foreground overflow-hidden">
-        {/* Sidebar — desktop */}
-        <aside className="hidden md:flex flex-col w-56 border-r border-border bg-card shrink-0">
-          <div className="flex items-center gap-2.5 px-4 py-4 border-b border-border">
-            <BrandMark size={32} className="shrink-0" />
-            <div>
-              <p className="text-sm font-semibold leading-none tracking-tight">FrameTV</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Admin Panel</p>
-            </div>
+      <div className="flex h-dvh overflow-hidden bg-grouped text-label">
+        {/* Sidebar — iPad / Mac */}
+        <aside className="hidden w-[260px] shrink-0 flex-col border-r border-separator bg-cell/60 backdrop-blur-xl md:flex">
+          <div className="flex items-center gap-3 px-5 pb-4 pt-6">
+            <BrandMark size={36} className="rounded-[9px] shadow-md" />
+            <p className="text-[20px] font-bold tracking-tight">Mantel</p>
           </div>
-
-          <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-            {NAV.map(({ href, label, icon: Icon }) => {
-              const active = href === '/admin' ? pathname === href : pathname.startsWith(href);
+          <nav className="flex-1 space-y-0.5 px-3">
+            {TABS.map((tab) => {
+              const active = isActive(pathname, tab);
+              const Icon = tab.icon;
               return (
                 <Link
-                  key={href}
-                  href={href}
+                  key={tab.href}
+                  href={tab.href}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                    active
-                      ? 'bg-gradient-to-r from-emerald-500/22 to-sky-500/14 text-emerald-50 ring-1 ring-emerald-400/25 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                    'flex items-center gap-3 rounded-[10px] px-3 py-2 text-[15px] font-medium transition-colors',
+                    active ? 'bg-tint text-white' : 'text-label hover:bg-fill'
                   )}
                 >
-                  <Icon size={16} />
-                  {label}
+                  <Icon size={22} weight={active ? 'fill' : 'regular'} className={active ? '' : 'text-tint'} />
+                  {tab.label}
                 </Link>
               );
             })}
-
-            <div className="pt-3 mt-3 border-t border-border/70">
-              <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                More
-              </p>
-              {SECONDARY_NAV.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                    pathname.startsWith(href)
-                      ? 'bg-gradient-to-r from-emerald-500/22 to-sky-500/14 text-emerald-50 ring-1 ring-emerald-400/25 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                  )}
-                >
-                  <Icon size={16} className="opacity-75" />
-                  {label}
-                </Link>
-              ))}
-            </div>
           </nav>
-
-          <Separator />
           <div className="p-3">
             <Link
               href="/display"
               target="_blank"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-dashed border-border"
+              className="flex items-center justify-between rounded-[12px] bg-fill px-3 py-2.5 text-[15px] font-medium hover:bg-fill-2"
             >
-              <Tv size={13} />
-              Open Display ↗
+              Open display
+              <ArrowSquareOut size={18} className="text-label-2" />
             </Link>
-            <button
-              type="button"
-              onClick={logout}
-              className="mt-2 w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <LogOut size={13} />
-              Log out
-            </button>
           </div>
         </aside>
 
-        {/* Main content */}
-        <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
-          {children}
-        </main>
+        <main className="relative flex-1 overflow-y-auto overscroll-contain">{children}</main>
 
-        {/* Bottom nav — mobile (5 items, icon + label) */}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-card/95 backdrop-blur border-t border-border flex">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const active = href === '/admin' ? pathname === href : pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  'flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition-colors',
-                  active ? 'text-emerald-300' : 'text-muted-foreground'
-                )}
-              >
-                <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
-                {label}
-              </Link>
-            );
-          })}
+        {/* Tab bar — phones */}
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-separator bg-glass backdrop-blur-xl backdrop-saturate-150 safe-bottom md:hidden">
+          <div className="flex">
+            {TABS.map((tab) => {
+              const active = isActive(pathname, tab);
+              const Icon = tab.icon;
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={cn(
+                    'flex flex-1 flex-col items-center gap-[2px] pb-1 pt-[7px] text-[10px] font-medium',
+                    active ? 'text-tint' : 'text-label-2'
+                  )}
+                >
+                  <Icon size={27} weight={active ? 'fill' : 'regular'} />
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </div>
         </nav>
+        <Toaster />
       </div>
     </TooltipProvider>
   );

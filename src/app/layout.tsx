@@ -4,6 +4,7 @@ import { Providers } from '@/components/providers';
 import './globals.css';
 import { cn } from "@/lib/utils";
 import { SITE_URL } from "@/lib/siteUrl";
+import { THEME_SCRIPT } from "@/lib/theme";
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans', preload: false });
 
@@ -44,8 +45,8 @@ const poppins = Poppins({
 });
 
 const DESCRIPTION =
-  'Turn any TV, monitor or Mac into a living picture frame — your photo albums, ' +
-  'video loops, clocks, scripture and Spotify, scheduled around your day.';
+  'Mantel turns your Mac screensaver, TV or any spare screen into a living ' +
+  'picture frame — your photos, video loops, clocks and music, on display.';
 
 // Icons (favicon.ico, icon.svg, apple-icon.png) and social images
 // (opengraph-image.jpg, twitter-image.jpg) are file conventions in src/app,
@@ -53,16 +54,16 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'FrameTV — your screen, as a living picture frame',
-    template: '%s · FrameTV',
+    default: 'Mantel — your memories, on display',
+    template: '%s · Mantel',
   },
   description: DESCRIPTION,
-  applicationName: 'FrameTV',
+  applicationName: 'Mantel',
   keywords: [
     'digital picture frame',
     'ambient display',
     'TV photo slideshow',
-    'Samsung Frame alternative',
+    'Mac screensaver',
     'Google Drive slideshow',
     'screensaver',
     'smart TV',
@@ -71,28 +72,31 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   openGraph: {
     type: 'website',
-    siteName: 'FrameTV',
-    title: 'FrameTV — your screen, as a living picture frame',
+    siteName: 'Mantel',
+    title: 'Mantel — your memories, on display',
     description: DESCRIPTION,
     url: '/',
     locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'FrameTV — your screen, as a living picture frame',
+    title: 'Mantel — your memories, on display',
     description: DESCRIPTION,
   },
   appleWebApp: {
     capable: true,
-    title: 'FrameTV',
-    statusBarStyle: 'black-translucent',
+    title: 'Mantel',
+    statusBarStyle: 'default',
   },
   formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0B0C0B',
-  colorScheme: 'dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f2f2f7' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+  ],
+  colorScheme: 'light dark',
 };
 
 export default function RootLayout({
@@ -101,9 +105,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn("h-full", "antialiased", "dark", dmSans.variable, syne.variable, jetbrainsMono.variable, playfair.variable, poppins.variable, "font-sans", geist.variable)}
+      suppressHydrationWarning
+      className={cn("h-full", "antialiased", dmSans.variable, syne.variable, jetbrainsMono.variable, playfair.variable, poppins.variable, "font-sans", geist.variable)}
     >
-      <body className="min-h-full bg-bg text-fg font-sans">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
+      <body className="min-h-full bg-grouped text-label font-sans">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -1,367 +1,256 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { HardDrive, ImageIcon, Trash2, Star, RefreshCw, Plus, FolderOpen, Film } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import {
+  GoogleDriveLogo, FilmStrip, Plus, ArrowsClockwise, Trash, CheckCircle, Images, ShieldCheck, CaretRight,
+} from '@phosphor-icons/react';
+import { Page } from '@/components/m/Page';
+import { Section, Row, IconTile } from '@/components/m/List';
+import { Button, Empty, IconButton, TextInput } from '@/components/m/Controls';
+import { Sheet } from '@/components/m/Sheet';
+import { toast } from '@/components/m/Toast';
 import { cn } from '@/lib/utils';
 import type { Album } from '@/types/db';
-import PageGuide from '@/components/admin/PageGuide';
 
-export default function AlbumsPage() {
-  const [albums, setAlbums]               = useState<Album[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [driveModalOpen, setDriveModalOpen] = useState(false);
-  const [driveUrl, setDriveUrl]           = useState('');
-  const [driveLoading, setDriveLoading]   = useState(false);
-  const [driveError, setDriveError]       = useState('');
-  const [activeAlbumIds, setActiveAlbumIds] = useState<string[]>([]);
-  const [syncing, setSyncing]             = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [newModalOpen, setNewModalOpen]   = useState(false);
-  const [newName, setNewName]             = useState('');
-  const [newLoading, setNewLoading]       = useState(false);
-  const [newError, setNewError]           = useState('');
+function mb(bytes: number) {
+  return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
+export default function LibraryPage() {
   const router = useRouter();
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [activeIds, setActiveIds] = useState<string[]>([]);
+  const [usage, setUsage] = useState<{ used: number; quota: number; count: number } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [sheet, setSheet] = useState<null | 'add' | 'drive' | 'video'>(null);
+  const [manage, setManage] = useState<Album | null>(null);
+  const [driveUrl, setDriveUrl] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const fetchAlbums = useCallback(async () => {
-    try {
-      const [albumsRes, dsRes] = await Promise.all([fetch('/api/albums'), fetch('/api/display-state')]);
-      if (albumsRes.ok) {
-        const json = await albumsRes.json();
-        setAlbums(Array.isArray(json) ? json : (json.albums ?? []));
-      }
-      if (dsRes.ok) {
-        const json = await dsRes.json();
-        const ds = json.state ?? json;
-        setActiveAlbumIds(ds.active_album_ids ?? []);
-      }
-    } finally {
-      setLoading(false);
-    }
+  const load = useCallback(async () => {
+    const [al, ds, us] = await Promise.all([
+      fetch('/api/albums').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/display-state').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/videos/usage').then((r) => (r.ok ? r.json() : null)),
+    ]);
+    setAlbums(Array.isArray(al) ? al : (al.albums ?? []));
+    setActiveIds((ds?.state ?? ds)?.active_album_ids ?? []);
+    setUsage(us);
+    setLoaded(true);
   }, []);
 
-  useEffect(() => { fetchAlbums(); }, [fetchAlbums]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const handleAddDrive = async () => {
-    if (!driveUrl.trim()) return;
-    setDriveLoading(true);
-    setDriveError('');
+  const addDrive = async () => {
+    setBusy(true);
     try {
       const res = await fetch('/api/drive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folderUrl: driveUrl }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        setDriveError(err.error ?? 'Failed to import folder');
-        return;
-      }
-      const json = await res.json();
-      await fetchAlbums();
-      if (json.warning) {
-        setDriveError(`Album created but no photos synced: ${json.warning}`);
-      } else {
-        setDriveUrl('');
-        setDriveModalOpen(false);
-      }
-    } catch {
-      setDriveError('Network error');
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? 'Couldn’t add that folder.');
+      if (j.warning) toast.error(`Album added, but no photos came through: ${j.warning}`);
+      else toast(`Added ${j.synced ?? ''} photos`.replace('  ', ' '));
+      setDriveUrl('');
+      setSheet(null);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Couldn’t add that folder.');
     } finally {
-      setDriveLoading(false);
+      setBusy(false);
     }
   };
 
-  // Upload albums hold videos (and, later, uploaded photos) rather than
-  // mirroring a Drive folder.
-  const handleCreateAlbum = async () => {
-    if (!newName.trim()) return;
-    setNewLoading(true);
-    setNewError('');
-    try {
-      const res = await fetch('/api/albums', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), source_type: 'upload', display_order: albums.length }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setNewError(json.error ?? 'Failed to create album');
-        return;
-      }
-      router.push(`/admin/albums/${json.album.id}`);
-    } catch {
-      setNewError('Network error');
-    } finally {
-      setNewLoading(false);
-    }
+  const createVideoAlbum = async () => {
+    setBusy(true);
+    const res = await fetch('/api/albums', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim(), source_type: 'upload', display_order: albums.length }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) return toast.error(j.error ?? 'Couldn’t create the album.');
+    router.push(`/admin/albums/${j.album.id}`);
   };
 
-  const syncAlbum = async (albumId: string) => {
-    setSyncing(albumId);
-    await fetch(`/api/albums/${albumId}/sync`, { method: 'POST' });
-    setSyncing(null);
-    await fetchAlbums();
-  };
-
-  const handleDeleteClick = (id: string) => {
-    if (confirmDelete === id) {
-      fetch(`/api/albums/${id}`, { method: 'DELETE' });
-      setAlbums((prev) => prev.filter((a) => a.id !== id));
-      setConfirmDelete(null);
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    } else {
-      setConfirmDelete(id);
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-      confirmTimer.current = setTimeout(() => setConfirmDelete(null), 3000);
-    }
-  };
-
-  const toggleActive = async (id: string) => {
-    const next = activeAlbumIds.includes(id)
-      ? activeAlbumIds.filter((x) => x !== id)
-      : [...activeAlbumIds, id];
-    await fetch('/api/display-state', {
+  const toggleOnDisplay = async (id: string) => {
+    const next = activeIds.includes(id) ? activeIds.filter((x) => x !== id) : [...activeIds, id];
+    setActiveIds(next);
+    const res = await fetch('/api/display-state', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active_album_ids: next }),
-    });
-    setActiveAlbumIds(next);
+    }).catch(() => null);
+    if (!res?.ok) {
+      setActiveIds(activeIds);
+      toast.error('Couldn’t update your screens.');
+    }
+  };
+
+  const sync = async (a: Album) => {
+    setBusy(true);
+    const res = await fetch(`/api/albums/${a.id}/sync`, { method: 'POST' }).catch(() => null);
+    setBusy(false);
+    if (!res?.ok) return toast.error('Sync failed. Is the folder still shared?');
+    toast('Album synced');
+    load();
+  };
+
+  const remove = async (a: Album) => {
+    const res = await fetch(`/api/albums/${a.id}`, { method: 'DELETE' }).catch(() => null);
+    if (!res?.ok) return toast.error('Couldn’t delete the album.');
+    setAlbums((p) => p.filter((x) => x.id !== a.id));
+    setManage(null);
+    toast('Album deleted');
   };
 
   const visible = albums.filter((a) => !a.is_archived);
+  const pct = usage ? Math.min(100, (usage.used / usage.quota) * 100) : 0;
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6">
-
-      <PageGuide
-        pageKey="albums"
-        icon={<HardDrive size={18} className="text-primary" />}
-        title="Albums"
-        about="Albums are collections of photos from your Google Drive folders. Add a folder and toggle it active — the photos inside will start playing on your TV display automatically."
-        steps={[
-          'Open Google Drive and find a folder with your photos.',
-          'Right-click the folder → Share → change to "Anyone with the link" can view.',
-          'Copy the share link.',
-          'Click "Add Drive folder" and paste the link — your photos will sync.',
-          'Toggle an album active to start showing it on TV.',
-        ]}
-      />
-
-      {/* Header */}
-      <div className="flex items-start justify-between pt-2">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Albums</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {visible.length} album{visible.length !== 1 ? 's' : ''} · {activeAlbumIds.length} active on TV
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setNewModalOpen(true)} className="gap-1.5">
-            <Film size={14} /> New video album
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setDriveModalOpen(true)} className="gap-1.5">
-            <HardDrive size={14} /> Add Drive folder
-          </Button>
-        </div>
-      </div>
-
-      {/* Active albums callout */}
-      {activeAlbumIds.length > 0 && (
-        <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-xl p-3 text-sm">
-          <Star size={15} className="text-primary shrink-0" fill="currentColor" />
-          <span className="font-medium text-primary">
-            {activeAlbumIds.length} album{activeAlbumIds.length !== 1 ? 's' : ''} currently showing on TV
-          </span>
-        </div>
-      )}
-
-      {/* Album grid */}
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-xl border border-border bg-card animate-pulse h-52" />
-          ))}
-        </div>
-      ) : visible.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <FolderOpen size={40} className="mx-auto mb-3 opacity-40" />
-          <p className="font-medium">No albums yet</p>
-          <p className="text-sm mt-1">Add a Google Drive folder to get started</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-4 gap-1.5"
-            onClick={() => setDriveModalOpen(true)}
-          >
-            <HardDrive size={14} /> Add Drive folder
-          </Button>
-        </div>
+    <Page
+      title="Library"
+      subtitle={loaded ? `${visible.length} album${visible.length === 1 ? '' : 's'} · ${activeIds.length || 'all'} on display` : ' '}
+      wide
+      actions={
+        <IconButton label="Add album" size={34} variant="tinted" onClick={() => setSheet('add')}>
+          <Plus size={18} weight="bold" />
+        </IconButton>
+      }
+    >
+      {loaded && visible.length === 0 ? (
+        <Empty
+          art={
+            <div className="relative h-24 w-28">
+              <div className="absolute left-0 top-3 h-20 w-16 -rotate-6 rounded-[10px] bg-ember shadow-lg" />
+              <div className="absolute right-0 top-0 h-20 w-16 rotate-6 rounded-[10px] bg-[#5856d6] shadow-lg" />
+              <div className="absolute left-1/2 top-2 flex h-20 w-16 -translate-x-1/2 items-center justify-center rounded-[10px] bg-cell shadow-xl">
+                <Images size={30} className="text-tint" weight="duotone" />
+              </div>
+            </div>
+          }
+          title="Add your first album"
+          body="Point Mantel at a Google Drive folder of photos. Your photos stay in your Drive. We only show them."
+          action={<Button block size="xl" onClick={() => setSheet('add')}>Add an album</Button>}
+        />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visible.sort((a, b) => a.display_order - b.display_order).map((album) => {
-            const isActive   = activeAlbumIds.includes(album.id);
-            const isSyncing  = syncing === album.id;
-            const isArming   = confirmDelete === album.id;
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {visible.map((a) => {
+            const on = activeIds.includes(a.id);
             return (
-              <Card
-                key={album.id}
-                className={cn('overflow-hidden transition-all', isActive && 'ring-2 ring-primary border-primary')}
-              >
-                <div className="aspect-video bg-muted relative flex items-center justify-center">
-                  {album.cover_photo_id ? (
+              <div key={a.id} className="overflow-hidden rounded-[18px] bg-cell shadow-cell">
+                <Link href={`/admin/albums/${a.id}`} className="pressable relative block aspect-square bg-fill">
+                  {a.cover_photo_id ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`/api/photos/${album.cover_photo_id}/thumbnail`}
-                      alt={album.name}
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={`/api/photos/${a.cover_photo_id}/thumbnail`} alt="" className="h-full w-full object-cover" loading="lazy" />
                   ) : (
-                    <ImageIcon size={28} className="text-muted-foreground/40" />
+                    <div className="flex h-full items-center justify-center text-label-3">
+                      {a.source_type === 'upload' ? <FilmStrip size={36} /> : <Images size={36} />}
+                    </div>
                   )}
-                  <div className="absolute top-2 left-2 flex gap-1">
-                    {isActive && (
-                      <Badge className="bg-primary text-primary-foreground text-xs gap-1 shadow">
-                        <Star size={9} fill="currentColor" /> Active
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="absolute top-2 right-2">
-                    <Badge variant="secondary" className="text-xs capitalize">{album.source_type}</Badge>
-                  </div>
+                  <span className="absolute left-2 top-2 rounded-full bg-black/45 p-1.5 text-white backdrop-blur">
+                    {a.source_type === 'upload' ? <FilmStrip size={14} weight="fill" /> : <GoogleDriveLogo size={14} weight="fill" />}
+                  </span>
+                </Link>
+                <div className="flex items-center gap-2 px-3 py-2.5">
+                  <button type="button" onClick={() => setManage(a)} className="min-w-0 flex-1 text-left">
+                    <p className="truncate text-[15px] font-semibold">{a.name}</p>
+                    <p className="text-[12px] text-label-2">{a.source_type === 'upload' ? 'Videos' : 'Google Drive'}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleOnDisplay(a.id)}
+                    aria-pressed={on}
+                    aria-label={on ? 'Remove from display' : 'Show on display'}
+                    className={cn('pressable flex h-8 w-8 shrink-0 items-center justify-center rounded-full', on ? 'bg-tint text-white' : 'bg-fill text-label-3')}
+                  >
+                    <CheckCircle size={20} weight={on ? 'fill' : 'regular'} />
+                  </button>
                 </div>
-
-                <CardContent className="p-3 space-y-3">
-                  <h3 className="font-semibold text-sm truncate">{album.name}</h3>
-                  <div className="flex gap-1.5 flex-wrap">
-                    <Button
-                      size="sm"
-                      variant={isActive ? 'default' : 'outline'}
-                      className={cn('flex-1 h-10 text-xs gap-1', isActive && 'bg-primary')}
-                      onClick={() => toggleActive(album.id)}
-                    >
-                      <Star size={11} fill={isActive ? 'currentColor' : 'none'} />
-                      {isActive ? 'Active' : 'Set active'}
-                    </Button>
-                    <Link href={`/admin/albums/${album.id}`}>
-                      <Button size="sm" variant="outline" className="h-10 text-xs">View</Button>
-                    </Link>
-                    {album.source_type === 'drive' && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-10 w-10 p-0"
-                        onClick={() => syncAlbum(album.id)}
-                        disabled={isSyncing}
-                        title="Sync from Drive"
-                      >
-                        <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className={cn(
-                        'h-10 p-0 transition-all',
-                        isArming
-                          ? 'w-16 text-[10px] font-bold text-destructive bg-destructive/10 hover:bg-destructive/20 px-2'
-                          : 'w-10 hover:text-destructive'
-                      )}
-                      onClick={() => handleDeleteClick(album.id)}
-                      title={isArming ? 'Tap again to confirm' : 'Delete album'}
-                    >
-                      {isArming ? 'Sure?' : <Trash2 size={14} />}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              </div>
             );
           })}
         </div>
       )}
 
-      {/* New upload album modal */}
-      <Dialog open={newModalOpen} onOpenChange={setNewModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New video album</DialogTitle>
-            <DialogDescription>
-              Create an album, then add videos to it. Videos are compressed in your browser before upload.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label htmlFor="album-name">Album name</Label>
-              <Input
-                id="album-name"
-                placeholder="Graduation"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateAlbum(); }}
-                className="mt-1.5"
-              />
+      {usage && (
+        <Section header="Video storage" footer="Photos don’t count: they stay in your Google Drive. Uploaded videos are compressed on your device before they’re stored.">
+          <div className="px-4 py-3.5">
+            <div className="flex justify-between text-[15px]">
+              <span>{mb(usage.used)} of {mb(usage.quota)}</span>
+              <span className="text-label-2">{usage.count} video{usage.count === 1 ? '' : 's'}</span>
             </div>
-            {newError && <p className="text-sm text-destructive">{newError}</p>}
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-fill-2">
+              <div className={cn('h-full rounded-full', pct > 90 ? 'bg-bad' : 'bg-ember')} style={{ width: `${pct}%` }} />
+            </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNewModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateAlbum} disabled={newLoading || !newName.trim()} className="gap-1.5">
-              <Plus size={14} />
-              {newLoading ? 'Creating…' : 'Create album'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </Section>
+      )}
 
-      {/* Add from Drive modal */}
-      <Dialog open={driveModalOpen} onOpenChange={setDriveModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add album from Google Drive</DialogTitle>
-            <DialogDescription>
-              Paste a public Drive folder URL. The folder must be shared as &quot;Anyone with the link can view.&quot;
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label htmlFor="drive-url">Folder URL</Label>
-              <Input
-                id="drive-url"
-                placeholder="https://drive.google.com/drive/folders/..."
-                value={driveUrl}
-                onChange={(e) => setDriveUrl(e.target.value)}
-                className="mt-1.5"
-              />
-            </div>
-            <div className="rounded-lg bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
-              <p className="font-medium text-foreground">How to get the link:</p>
-              <ol className="list-decimal list-inside space-y-0.5">
-                <li>Right-click the folder in Google Drive</li>
-                <li>Click <strong>Share</strong> → <strong>Anyone with the link</strong></li>
-                <li>Set permission to <strong>Viewer</strong></li>
-                <li>Click <strong>Copy link</strong> and paste it above</li>
-              </ol>
-            </div>
-            {driveError && <p className="text-sm text-destructive">{driveError}</p>}
+      {/* ── Add ── */}
+      <Sheet open={sheet === 'add'} onOpenChange={(o) => !o && setSheet(null)} title="Add an album">
+        <button type="button" onClick={() => setSheet('drive')} className="pressable flex w-full items-center gap-4 rounded-[18px] bg-cell p-4 text-left shadow-cell">
+          <IconTile tone="blue" size={52}><GoogleDriveLogo size={30} weight="fill" /></IconTile>
+          <div className="flex-1">
+            <p className="flex items-center gap-2 text-[17px] font-semibold">
+              Photos from Google Drive <span className="rounded-full bg-ok/15 px-2 py-0.5 text-[11px] font-bold uppercase text-ok">Best</span>
+            </p>
+            <p className="text-[13px] leading-snug text-label-2">Your photos stay in your own Drive. Add new ones there and Mantel picks them up.</p>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDriveModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddDrive} disabled={driveLoading || !driveUrl.trim()} className="gap-1.5">
-              <Plus size={14} />
-              {driveLoading ? 'Importing…' : 'Import folder'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          <CaretRight size={16} weight="bold" className="text-label-3" />
+        </button>
+        <button type="button" onClick={() => setSheet('video')} className="pressable flex w-full items-center gap-4 rounded-[18px] bg-cell p-4 text-left shadow-cell">
+          <IconTile tone="purple" size={52}><FilmStrip size={30} weight="fill" /></IconTile>
+          <div className="flex-1">
+            <p className="text-[17px] font-semibold">Upload videos</p>
+            <p className="text-[13px] leading-snug text-label-2">Short clips that loop silently. They’re compressed on your device first.</p>
+          </div>
+          <CaretRight size={16} weight="bold" className="text-label-3" />
+        </button>
+      </Sheet>
+
+      <Sheet open={sheet === 'drive'} onOpenChange={(o) => !o && setSheet(null)} title="Google Drive folder">
+        <ol className="space-y-3 rounded-[14px] bg-cell p-4 text-[15px] leading-snug shadow-cell">
+          <li className="flex gap-3"><span className="bg-ember flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white">1</span>Open Google Drive and find a folder of photos.</li>
+          <li className="flex gap-3"><span className="bg-ember flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white">2</span><span>Tap <b>Share</b> → General access → <b>Anyone with the link</b> (Viewer).</span></li>
+          <li className="flex gap-3"><span className="bg-ember flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white">3</span>Copy the link and paste it below.</li>
+        </ol>
+        <TextInput value={driveUrl} onChange={(e) => setDriveUrl(e.target.value)} placeholder="https://drive.google.com/drive/folders/…" inputMode="url" autoFocus />
+        <p className="flex gap-2 px-1 text-[13px] leading-snug text-label-2">
+          <ShieldCheck size={18} className="shrink-0 text-ok" weight="fill" />
+          The folder isn’t listed or searchable anywhere. Only people you give the link to can open it, and Mantel never copies your photos.
+        </p>
+        <Button block size="xl" onClick={addDrive} loading={busy} disabled={!driveUrl.includes('drive.google.com')}>Add folder</Button>
+      </Sheet>
+
+      <Sheet open={sheet === 'video'} onOpenChange={(o) => !o && setSheet(null)} title="New video album">
+        <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Graduation" autoFocus />
+        <Button block size="xl" onClick={createVideoAlbum} loading={busy} disabled={!name.trim()}>Create and add videos</Button>
+      </Sheet>
+
+      {/* ── Manage album ── */}
+      <Sheet open={!!manage} onOpenChange={(o) => !o && setManage(null)} title={manage?.name ?? ''}>
+        {manage && (
+          <Section>
+            <Row icon={<IconTile tone="ember"><Images size={18} weight="bold" /></IconTile>} title="Open album" href={`/admin/albums/${manage.id}`} />
+            {manage.source_type === 'drive' && (
+              <Row icon={<IconTile tone="blue"><ArrowsClockwise size={18} weight="bold" /></IconTile>} title="Sync from Drive now" onClick={() => sync(manage)} loading={busy} />
+            )}
+            <Row icon={<IconTile tone="red"><Trash size={18} weight="bold" /></IconTile>} title="Delete album" destructive onClick={() => remove(manage)} />
+          </Section>
+        )}
+        {manage?.source_type === 'drive' && (
+          <p className="px-1 text-[13px] text-label-2">Deleting removes it from Mantel only. Your Drive folder isn’t touched.</p>
+        )}
+      </Sheet>
+    </Page>
   );
 }

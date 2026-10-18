@@ -59,14 +59,14 @@ function statusText(it: UploadItem): string {
 
 function StatusIcon({ it }: { it: UploadItem }) {
   if (ACTIVE_STATUSES.includes(it.status)) {
-    return <Loader2 size={18} className="animate-spin text-emerald-400" />;
+    return <Loader2 size={18} className="animate-spin text-ok" />;
   }
   switch (it.status) {
     case 'queued': return <Clock size={18} className="text-fg-dim" />;
     case 'done':
-    case 'replaced': return <CheckCircle2 size={18} className="text-emerald-400" />;
-    case 'copied': return <Copy size={17} className="text-emerald-400" />;
-    case 'failed': return <AlertCircle size={18} className="text-red-400" />;
+    case 'replaced': return <CheckCircle2 size={18} className="text-ok" />;
+    case 'copied': return <Copy size={17} className="text-ok" />;
+    case 'failed': return <AlertCircle size={18} className="text-bad" />;
     default: return <MinusCircle size={18} className="text-fg-dim" />;
   }
 }
@@ -104,7 +104,7 @@ export function UploadPanel({ items, busy, onRetry, onCancel, onClose }: UploadP
       {/* Header */}
       <div className="flex items-center gap-2 pl-4 pr-2 py-3 bg-fg/5">
         <div className="flex-1 min-w-0">
-          <p className={cn('text-sm font-semibold truncate', !busy && failed ? 'text-red-400' : 'text-fg')}>
+          <p className={cn('text-sm font-semibold truncate', !busy && failed ? 'text-bad' : 'text-fg')}>
             {title}
           </p>
           <p className="text-[11px] text-fg-muted">
@@ -143,7 +143,7 @@ export function UploadPanel({ items, busy, onRetry, onCancel, onClose }: UploadP
       {/* Overall progress */}
       <div className="h-1 bg-fg/10">
         <div
-          className={cn('h-full transition-[width] duration-300', !busy && failed ? 'bg-red-400' : 'bg-emerald-400')}
+          className={cn('h-full transition-[width] duration-300', !busy && failed ? 'bg-bad' : 'bg-ok')}
           style={{ width: pct(overall) }}
         />
       </div>
@@ -171,7 +171,7 @@ export function UploadPanel({ items, busy, onRetry, onCancel, onClose }: UploadP
               </div>
               <button
                 onClick={() => onRetry()}
-                className="flex items-center gap-1 font-medium text-emerald-400 hover:underline"
+                className="flex items-center gap-1 font-medium text-ok hover:underline"
               >
                 <RotateCcw size={12} /> Retry failed
               </button>
@@ -190,7 +190,7 @@ export function UploadPanel({ items, busy, onRetry, onCancel, onClose }: UploadP
                     <p
                       className={cn(
                         'text-xs',
-                        it.status === 'failed' ? 'text-red-400 break-words' : 'text-fg-muted truncate'
+                        it.status === 'failed' ? 'text-bad break-words' : 'text-fg-muted truncate'
                       )}
                     >
                       {statusText(it)}
@@ -205,7 +205,7 @@ export function UploadPanel({ items, busy, onRetry, onCancel, onClose }: UploadP
                     {showBar && (
                       <div className="mt-1.5 h-1 rounded-full bg-fg/10 overflow-hidden">
                         <div
-                          className="h-full bg-emerald-400 transition-[width] duration-300"
+                          className="h-full bg-ok transition-[width] duration-300"
                           style={{ width: pct(it.progress) }}
                         />
                       </div>

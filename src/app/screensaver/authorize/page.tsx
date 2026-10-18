@@ -2,16 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import AuthShell from '@/components/auth/AuthShell';
-import { Button } from '@/components/ui/button';
-import { Laptop2, Copy, Check } from 'lucide-react';
+import { Button } from '@/components/m/Controls';
+import { toast } from '@/components/m/Toast';
+import { AppleLogo, Copy } from '@phosphor-icons/react';
 
-const APP_SCHEME = 'frametvscreensaver';
+// The screensaver's Options panel intercepts `frametvscreensaver://`; the
+// Mantel desktop app registers `mantel://` and opens this page with
+// ?client=app.
+function appScheme() {
+  if (typeof window === 'undefined') return 'frametvscreensaver';
+  return new URLSearchParams(window.location.search).get('client') === 'app' ? 'mantel' : 'frametvscreensaver';
+}
 
 export default function ScreensaverAuthorizePage() {
   const [status, setStatus] = useState<'checking' | 'ready' | 'error'>('checking');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [deepLink, setDeepLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,7 +27,7 @@ export default function ScreensaverAuthorizePage() {
       if (cancelled) return;
 
       if (me?.kind !== 'admin') {
-        window.location.href = `/login?next=${encodeURIComponent('/screensaver/authorize')}`;
+        window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
         return;
       }
 
@@ -36,7 +42,7 @@ export default function ScreensaverAuthorizePage() {
       const origin = window.location.origin;
       setShareUrl(`${origin}/s/${token}`);
       setDeepLink(
-        `${APP_SCHEME}://connect?token=${encodeURIComponent(token)}` +
+        `${appScheme()}://connect?token=${encodeURIComponent(token)}` +
         `&origin=${encodeURIComponent(origin)}` +
         `&deviceToken=${encodeURIComponent(deviceToken)}`
       );
@@ -50,8 +56,7 @@ export default function ScreensaverAuthorizePage() {
     if (!shareUrl) return;
     try {
       await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      toast('Link copied');
     } catch {
       // Clipboard API unavailable — the URL is already visible to select manually.
     }
@@ -59,44 +64,33 @@ export default function ScreensaverAuthorizePage() {
 
   return (
     <AuthShell
-      title="Connect Mac Screensaver"
-      description="Hand your FrameTV display off to the FrameTVScreenSaver app on this Mac."
-      footer={<span>Don&apos;t have the app yet? Build it from the <code>macos-screensaver</code> folder first.</span>}
+      title="Connect this Mac"
+      description="Link your Mantel account to the screensaver on this Mac."
     >
-      {status === 'checking' && (
-        <p className="text-sm text-muted-foreground text-center py-4">Checking your session…</p>
-      )}
+      {status === 'checking' && <p className="py-6 text-center text-[15px] text-label-2">Checking your account…</p>}
 
       {status === 'error' && (
-        <p className="text-sm text-destructive text-center py-4">
-          Couldn&apos;t generate a share link. Try refreshing the page.
-        </p>
+        <p className="py-6 text-center text-[15px] text-bad">Something went wrong. Refresh the page to try again.</p>
       )}
 
       {status === 'ready' && deepLink && shareUrl && (
-        <div className="space-y-4">
+        <>
           <a href={deepLink} className="block">
-            <Button className="w-full h-12 text-base gap-2" type="button">
-              <Laptop2 size={18} />
-              Open in FrameTVScreenSaver
-            </Button>
+            <Button block size="xl" icon={<AppleLogo size={22} weight="fill" />}>Connect Mantel</Button>
           </a>
-          <p className="text-xs text-muted-foreground text-center">
-            This opens the FrameTVScreenSaver settings app installed on this Mac and configures it automatically.
+          <p className="px-2 text-center text-[13px] text-label-2">
+            If your Mac asks whether to open Mantel, choose Open.
           </p>
-
-          <div className="pt-2 border-t">
-            <p className="text-xs font-medium text-muted-foreground mb-2">
-              App not installed, or nothing happened? Paste this link manually into the screensaver&apos;s Options:
-            </p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 min-w-0 truncate rounded-md bg-muted px-3 py-2 text-xs">{shareUrl}</code>
-              <Button variant="outline" size="icon" type="button" onClick={copyShareUrl} title="Copy">
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-              </Button>
+          <div className="mt-4 rounded-[14px] bg-cell p-4 shadow-cell">
+            <p className="text-[13px] font-medium text-label-2">Nothing happened? Paste this into the screensaver’s Options instead:</p>
+            <div className="mt-2 flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-[10px] bg-fill px-3 py-2 text-[13px]">{shareUrl}</code>
+              <button type="button" onClick={copyShareUrl} className="pressable rounded-full bg-fill p-2" aria-label="Copy link">
+                <Copy size={18} />
+              </button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </AuthShell>
   );

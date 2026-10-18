@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Send, Trash2, Clock, Type, CheckCircle2, Radio,
@@ -41,10 +42,10 @@ const EXPIRY_OPTIONS = [
 ];
 
 const QUADRANTS: { priority: Priority; label: string; sub: string; color: string; border: string; badge: string }[] = [
-  { priority: 'urgent_important',         label: 'Do First',  sub: 'Urgent + Important',     color: 'bg-red-500/10',    border: 'border-red-500/40',    badge: 'bg-red-500 text-white' },
+  { priority: 'urgent_important',         label: 'Do First',  sub: 'Urgent + Important',     color: 'bg-bad/10',    border: 'border-bad/40',    badge: 'bg-bad text-white' },
   { priority: 'not_urgent_important',     label: 'Schedule',  sub: 'Not Urgent + Important', color: 'bg-yellow-500/10', border: 'border-yellow-500/40', badge: 'bg-yellow-500 text-black' },
   { priority: 'urgent_not_important',     label: 'Delegate',  sub: 'Urgent + Not Important', color: 'bg-blue-500/10',   border: 'border-blue-500/40',   badge: 'bg-blue-500 text-white' },
-  { priority: 'not_urgent_not_important', label: 'Eliminate', sub: 'Not Urgent + Not Important', color: 'bg-green-500/10', border: 'border-green-500/40', badge: 'bg-green-500 text-white' },
+  { priority: 'not_urgent_not_important', label: 'Eliminate', sub: 'Not Urgent + Not Important', color: 'bg-ok/15', border: 'border-ok/40', badge: 'bg-ok text-white' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -241,11 +242,12 @@ export default function BoardPage() {
   const charWarning = charCount > 80;
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8">
+    <div className="px-4 pt-4 pb-28 md:p-8 max-w-5xl mx-auto space-y-8">
 
       {/* ── Header ── */}
       <div className="pt-2">
-        <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+        <Link href="/admin/settings" className="mb-1 inline-block text-[17px] text-tint">‹ Settings</Link>
+        <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] flex items-center gap-2">
           <Radio size={20} className="text-primary" />
           FlipBoard
         </h1>
@@ -364,7 +366,7 @@ export default function BoardPage() {
             <div className="space-y-1">
               {done.map((r) => (
                 <div key={r.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 text-muted-foreground">
-                  <CheckCircle2 size={13} className="text-green-500/60 shrink-0" />
+                  <CheckCircle2 size={13} className="text-ok shrink-0" />
                   <span className="text-sm line-through flex-1">{r.text}</span>
                   <button onClick={() => deleteReminder(r.id)} className="hover:text-destructive transition-colors">
                     <Trash2 size={12} />
@@ -440,7 +442,7 @@ export default function BoardPage() {
             </div>
 
             <Button
-              className={cn('w-full gap-2', sent && 'bg-green-600 hover:bg-green-500')}
+              className={cn('w-full gap-2', sent && 'bg-ok hover:bg-ok')}
               onClick={sendMessage}
               disabled={!text.trim() || sending}
             >
@@ -479,7 +481,7 @@ export default function BoardPage() {
                         )}
                         <span className="text-xs text-muted-foreground">{timeAgo(msg.created_at)}</span>
                         {msg.expires_at && (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-amber-500/40 text-amber-400">
+                          <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-warn/40 text-warn">
                             {timeUntil(msg.expires_at)}
                           </Badge>
                         )}

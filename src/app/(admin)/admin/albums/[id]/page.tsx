@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, RefreshCw, Star, Trash2, RotateCw, Info, X, Film, Play, Copy } from 'lucide-react';
@@ -69,15 +70,15 @@ function InfoModal({ photo, onClose }: { photo: Photo; onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="bg-bg-card border border-border rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+        className="bg-cell border border-border rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <p className="text-sm font-semibold text-fg">{photo.media_type === 'video' ? 'Video Info' : 'Photo Info'}</p>
+          <p className="text-sm font-semibold text-label">{photo.media_type === 'video' ? 'Video Info' : 'Photo Info'}</p>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-fg-muted hover:text-fg hover:bg-fg/10 transition-colors"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-label-2 hover:text-label hover:bg-fg/10 transition-colors"
           >
             <X size={15} />
           </button>
@@ -98,8 +99,8 @@ function InfoModal({ photo, onClose }: { photo: Photo; onClose: () => void }) {
         <div className="px-5 py-4 space-y-2.5 max-h-64 overflow-y-auto">
           {rows.map(({ label, value }) => (
             <div key={label} className="flex items-start justify-between gap-4 text-xs">
-              <span className="text-fg-muted shrink-0">{label}</span>
-              <span className="text-fg font-medium text-right break-all">{value}</span>
+              <span className="text-label-2 shrink-0">{label}</span>
+              <span className="text-label font-medium text-right break-all">{value}</span>
             </div>
           ))}
         </div>
@@ -129,10 +130,10 @@ function DuplicateDialog({
       title={here ? 'Video already in this album' : 'Video exists in another album'}
       description={prompt.file.name}
     >
-      <p className="text-sm text-fg-muted mb-5">
+      <p className="text-sm text-label-2 mb-5">
         {here
           ? 'This video has already been uploaded here. Replace the existing copy with a fresh upload, or skip it?'
-          : <>This video is already in <span className="text-fg font-medium">{albums.join(', ')}</span>. Copy it from there instantly, or upload and compress it again?</>}
+          : <>This video is already in <span className="text-label font-medium">{albums.join(', ')}</span>. Copy it from there instantly, or upload and compress it again?</>}
       </p>
 
       <div className="flex flex-col gap-2">
@@ -159,7 +160,7 @@ function DuplicateDialog({
       </div>
 
       {prompt.remaining > 0 && (
-        <label className="mt-4 flex items-center gap-2 text-xs text-fg-muted cursor-pointer select-none">
+        <label className="mt-4 flex items-center gap-2 text-xs text-label-2 cursor-pointer select-none">
           <input
             type="checkbox"
             checked={applyToAll}
@@ -272,20 +273,21 @@ export default function AlbumPhotosPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="px-4 pt-4 pb-28 md:p-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-5 pt-2">
         <button
           onClick={() => router.back()}
-          className="w-10 h-10 rounded-xl bg-fg/10 flex items-center justify-center text-fg-muted hover:text-fg hover:bg-fg/15 transition-colors"
+          className="w-10 h-10 rounded-xl bg-fg/10 flex items-center justify-center text-label-2 hover:text-label hover:bg-fg/15 transition-colors"
         >
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold font-display text-fg truncate">
+          <Link href="/admin/albums" className="mb-1 inline-block text-[17px] text-tint">‹ Library</Link>
+          <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-label truncate">
             {loading ? 'Loading…' : (album?.name ?? 'Album')}
           </h1>
-          <p className="text-xs text-fg-muted">
+          <p className="text-xs text-label-2">
             {photos.length - videoCount} photos{videoCount > 0 && ` · ${videoCount} video${videoCount !== 1 ? 's' : ''}`}
           </p>
         </div>
@@ -313,9 +315,9 @@ export default function AlbumPhotosPage() {
 
       {/* Photo grid */}
       {loading ? (
-        <div className="text-fg-muted text-sm text-center py-12">Loading photos…</div>
+        <div className="text-label-2 text-sm text-center py-12">Loading photos…</div>
       ) : photos.length === 0 ? (
-        <div className="text-fg-muted text-sm text-center py-12">Nothing in this album yet.</div>
+        <div className="text-label-2 text-sm text-center py-12">Nothing in this album yet.</div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {photos.map((photo) => {
@@ -323,7 +325,7 @@ export default function AlbumPhotosPage() {
             const rotation = isVideo ? 0 : getRotation(photo);
             const isRotating = rotatingId === photo.id;
             return (
-              <div key={photo.id} className="relative group rounded-xl overflow-hidden bg-bg-card aspect-square">
+              <div key={photo.id} className="relative group rounded-xl overflow-hidden bg-cell aspect-square">
                 {/* Thumbnail */}
                 {photo.thumbnail_path || photo.storage_path ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -335,7 +337,7 @@ export default function AlbumPhotosPage() {
                     loading="lazy"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-fg-dim text-sm">
+                  <div className="w-full h-full flex items-center justify-center text-label-3 text-sm">
                     No preview
                   </div>
                 )}
@@ -384,7 +386,7 @@ export default function AlbumPhotosPage() {
                   {/* Right: delete */}
                   <button
                     onClick={(e) => { e.stopPropagation(); deletePhoto(photo.id); }}
-                    className="w-9 h-9 rounded-lg flex items-center justify-center bg-black/55 text-white hover:bg-red-500/80 transition-colors backdrop-blur-sm"
+                    className="w-9 h-9 rounded-lg flex items-center justify-center bg-black/55 text-white hover:bg-bad/80 transition-colors backdrop-blur-sm"
                     title="Delete"
                   >
                     <Trash2 size={15} />

@@ -1,37 +1,22 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { ExternalLink, KeyRound, CheckCircle2, MapPin, Moon, Zap, Tv, Clock, CalendarDays, ChevronRight, LockKeyhole, RefreshCw, Music2, UserCircle2, LogOut, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
-import { PasswordInput } from '@/components/ui/password-input';
-import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
-import PageGuide from '@/components/admin/PageGuide';
-import PairTvForm from '@/components/admin/PairTvForm';
+  Moon, Clock, MapPin, SunHorizon, Password, Key, LockKey, MusicNotes, Megaphone, ListChecks,
+  CalendarBlank, SpotifyLogo, Question, Sparkle, SignOut, Trash, Wrench, Crosshair,
+} from '@phosphor-icons/react';
+import { Page } from '@/components/m/Page';
+import { Section, Row, ToggleRow, IconTile } from '@/components/m/List';
+import { Button, Field, Segmented, TextInput } from '@/components/m/Controls';
+import { Sheet } from '@/components/m/Sheet';
+import { toast } from '@/components/m/Toast';
+import { RecoveryKeyCard } from '@/components/m/RecoveryKeyCard';
+import { useTheme, type ThemePref } from '@/lib/theme';
+import { helpPrompt } from '@/lib/helpPrompt';
 
-interface AccountUser {
-  id: string;
-  email: string;
-  username: string;
-  name: string;
-}
+interface Account { id: string; email: string; username: string; name: string }
 
-interface Settings {
+interface AppSettings {
   latitude: number;
   longitude: number;
   auto_theme: boolean;
@@ -41,49 +26,11 @@ interface Settings {
 }
 
 type ClockPosition = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
-type ClockFont = 'Poppins' | 'Oswald' | 'JetBrains Mono' | 'Pacifico' | 'Playfair Display' | 'Dancing Script' | 'Bebas Neue' | 'Syne';
+interface ClockOverlay { enabled: boolean; position: ClockPosition; font: string }
 
-interface ClockOverlayConfig {
-  enabled: boolean;
-  position: ClockPosition;
-  font: ClockFont;
-}
+const CLOCK_FONTS = ['Poppins', 'Oswald', 'JetBrains Mono', 'Pacifico', 'Playfair Display', 'Dancing Script', 'Bebas Neue', 'Syne'];
 
-const CLOCK_POSITIONS: { value: ClockPosition; label: string }[] = [
-  { value: 'bottom-right', label: 'Bottom Right' },
-  { value: 'bottom-left',  label: 'Bottom Left' },
-  { value: 'top-right',    label: 'Top Right' },
-  { value: 'top-left',     label: 'Top Left' },
-];
-
-const CLOCK_FONTS: { value: ClockFont; label: string }[] = [
-  { value: 'Poppins',          label: 'Poppins — clean & modern' },
-  { value: 'Oswald',           label: 'Oswald — bold condensed' },
-  { value: 'JetBrains Mono',   label: 'JetBrains Mono — techy' },
-  { value: 'Pacifico',         label: 'Pacifico — playful retro' },
-  { value: 'Playfair Display', label: 'Playfair Display — elegant serif' },
-  { value: 'Dancing Script',   label: 'Dancing Script — handwritten' },
-  { value: 'Bebas Neue',       label: 'Bebas Neue — big & bold' },
-  { value: 'Syne',             label: 'Syne — geometric' },
-];
-
-interface SpotifyProfile {
-  display_name: string | null;
-  email: string | null;
-  image_url: string | null;
-  spotify_id: string | null;
-}
-
-interface Integrations {
-  spotify_connected: boolean;
-  spotify_profile: SpotifyProfile | null;
-  google_connected: boolean;
-  unsplash_key_set: boolean;
-  display_token: string;
-  google_api_key?: string;
-}
-
-const defaultSettings: Settings = {
+const DEFAULT_SETTINGS: AppSettings = {
   latitude: 5.6037,
   longitude: -0.187,
   auto_theme: false,
@@ -92,798 +39,359 @@ const defaultSettings: Settings = {
   night_dim_end: '07:00',
 };
 
-const defaultIntegrations: Integrations = {
-  spotify_connected: false,
-  spotify_profile: null,
-  google_connected: false,
-  unsplash_key_set: false,
-  display_token: '',
-  google_api_key: '',
-};
+async function saveSetting(key: string, value: unknown) {
+  const res = await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value }),
+  }).catch(() => null);
+  if (!res?.ok) toast.error('Couldn’t save that change.');
+  return !!res?.ok;
+}
 
-function maskToken(token: string) {
-  if (!token) return '—';
-  return token.slice(0, 6) + '••••••••' + token.slice(-4);
+async function postJson(url: string, body: unknown) {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error ?? 'Something went wrong.');
+  return json;
 }
 
 export default function SettingsPage() {
-  const [settings, setSettings]             = useState<Settings>(defaultSettings);
-  const [integrations, setIntegrations]     = useState<Integrations>(defaultIntegrations);
-  const [loading, setLoading]               = useState(true);
-  const [savingLocation, setSavingLocation] = useState(false);
-  const [locationSaved, setLocationSaved]   = useState(false);
-  const [googleApiKey, setGoogleApiKey]     = useState('');
-  const [savingApiKey, setSavingApiKey]     = useState(false);
-  const [apiKeySaved, setApiKeySaved]       = useState(false);
-  const [clock, setClock]                   = useState<ClockOverlayConfig>({ enabled: false, position: 'bottom-right', font: 'Poppins' });
-  const [spotifyBanner, setSpotifyBanner]   = useState<'connected' | 'error' | null>(null);
+  const { pref, setPref } = useTheme();
+  const [account, setAccount] = useState<Account | null>(null);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [clock, setClock] = useState<ClockOverlay>({ enabled: false, position: 'bottom-right', font: 'Poppins' });
+  const [spotify, setSpotify] = useState<{ connected: boolean; name: string | null }>({ connected: false, name: null });
+  const [recovery, setRecovery] = useState<{ hasKey: boolean; createdAt: string | null } | null>(null);
+  const [hasPin, setHasPin] = useState<boolean | null>(null);
+  const [apiKey, setApiKey] = useState('');
 
-  // PIN update state
-  const [pinMode, setPinMode]               = useState<'pin' | 'password'>('pin');
-  const [pinOldValue, setPinOldValue]       = useState('');
-  const [pinNewValue, setPinNewValue]       = useState('');
-  const [pinConfirm, setPinConfirm]         = useState('');
-  const [pinSaving, setPinSaving]           = useState(false);
-  const [pinResult, setPinResult]           = useState<{ ok: boolean; msg: string } | null>(null);
-  const [hasPin, setHasPin]                 = useState<boolean | null>(null);
+  const [sheet, setSheet] = useState<null | 'password' | 'recovery' | 'pin' | 'clock' | 'night' | 'location' | 'delete' | 'advanced'>(null);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [newKey, setNewKey] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch('/api/auth/pin-manage')
-      .then((r) => r.json())
-      .then((json) => {
-        const exists = Boolean(json.pin);
-        setHasPin(exists);
-        // Accounts with no PIN yet (e.g. created via /screensaver/signup)
-        // can't authenticate the "current PIN" field — default to setting
-        // one via password instead.
-        if (!exists) setPinMode('password');
-      })
-      .catch(() => setHasPin(null));
+  const field = (k: string) => ({
+    value: form[k] ?? '',
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value })),
+  });
+
+  const load = useCallback(async () => {
+    const [me, app, ck, integ, rk, pin, gk] = await Promise.all([
+      fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/settings?key=app_settings').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/settings?key=clock_overlay').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/settings/integrations').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/auth/recovery-key').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/auth/pin-manage').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/settings?key=google_api_key').then((r) => (r.ok ? r.json() : null)),
+    ]);
+    if (me?.user) setAccount(me.user);
+    if (app?.setting?.value) setSettings((p) => ({ ...p, ...app.setting.value }));
+    if (ck?.setting?.value) setClock((p) => ({ ...p, ...ck.setting.value }));
+    if (integ) setSpotify({ connected: !!integ.spotify_connected, name: integ.spotify_profile?.display_name ?? null });
+    if (rk) setRecovery(rk);
+    setHasPin(pin ? Boolean(pin.pin) : null);
+    if (gk?.setting?.value) setApiKey(gk.setting.value);
   }, []);
 
-  // Account state
-  const [account, setAccount]               = useState<AccountUser | null>(null);
-  const [signingOut, setSigningOut]         = useState(false);
-  const [deleteOpen, setDeleteOpen]         = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [deleting, setDeleting]             = useState(false);
-  const [deleteError, setDeleteError]       = useState('');
-
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const params = new URLSearchParams((globalThis as any).location?.search ?? '');
-    const status = params.get('spotify');
-    if (status === 'connected' || status === 'error') {
-      setSpotifyBanner(status);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).history?.replaceState({}, '', '/admin/settings');
-      if (status === 'connected') setTimeout(() => setSpotifyBanner(null), 4000);
-    }
-  }, []);
+    load();
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get('spotify');
+    if (s === 'connected') toast('Spotify connected');
+    if (s === 'error') toast.error('Spotify didn’t connect. Try again.');
+    if (s) window.history.replaceState({}, '', '/admin/settings');
+  }, [load]);
 
-  const fetchSettings = useCallback(async () => {
+  const closeSheet = () => {
+    setSheet(null);
+    setForm({});
+    setNewKey(null);
+  };
+
+  const updateSettings = (patch: Partial<AppSettings>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    saveSetting('app_settings', next);
+  };
+
+  const updateClock = (patch: Partial<ClockOverlay>) => {
+    const next = { ...clock, ...patch };
+    setClock(next);
+    saveSetting('clock_overlay', next);
+  };
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
     try {
-      const [sRes, iRes, apiKeyRes, clockRes] = await Promise.all([
-        fetch('/api/settings?key=app_settings'),
-        fetch('/api/settings/integrations'),
-        fetch('/api/settings?key=google_api_key'),
-        fetch('/api/settings?key=clock_overlay'),
-      ]);
-      if (sRes.ok) {
-        const json = await sRes.json();
-        if (json.setting?.value) setSettings((p) => ({ ...p, ...json.setting.value }));
-      }
-      if (iRes.ok) setIntegrations(await iRes.json());
-      if (apiKeyRes.ok) {
-        const json = await apiKeyRes.json();
-        if (json.setting?.value) setGoogleApiKey(json.setting.value);
-      }
-      if (clockRes.ok) {
-        const json = await clockRes.json();
-        if (json.setting?.value) setClock((p) => ({ ...p, ...json.setting.value }));
-      }
+      await fn();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  }, []);
+  };
 
-  useEffect(() => { fetchSettings(); }, [fetchSettings]);
+  const changePassword = () =>
+    run(async () => {
+      if (form.next !== form.confirm) throw new Error('The new passwords don’t match.');
+      await postJson('/api/auth/password', { currentPassword: form.current, newPassword: form.next, keepScreens: true });
+      toast('Password changed. Other devices were signed out.');
+      closeSheet();
+    });
 
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (json?.kind === 'admin' && json.user) setAccount(json.user);
-      })
-      .catch(() => {});
-  }, []);
+  const makeRecoveryKey = () =>
+    run(async () => {
+      const j = await postJson('/api/auth/recovery-key', { password: form.password });
+      setNewKey(j.recoveryKey);
+      setRecovery({ hasKey: true, createdAt: new Date().toISOString() });
+    });
+
+  const updatePin = () =>
+    run(async () => {
+      if (!/^\d{6}$/.test(form.pin ?? '')) throw new Error('The PIN must be 6 digits.');
+      await postJson('/api/auth/pin-update', { mode: 'password', password: form.password, new_pin: form.pin });
+      setHasPin(true);
+      toast('Display PIN saved');
+      closeSheet();
+    });
+
+  const deleteAccount = () =>
+    run(async () => {
+      const res = await fetch('/api/auth/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: form.password }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? 'Couldn’t delete your account.');
+      window.location.href = '/';
+    });
 
   const signOut = async () => {
-    setSigningOut(true);
     await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/login';
   };
 
-  const deleteAccount = async () => {
-    setDeleting(true);
-    setDeleteError('');
-    try {
-      const res = await fetch('/api/auth/account', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: deletePassword }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Failed to delete account.');
-      window.location.href = '/login';
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Failed to delete account.');
-      setDeleting(false);
-    }
-  };
-
-  // ── Auto-save helpers ──────────────────────────────────────────────────────
-
-  const saveAppSettings = useCallback(async (s: Settings) => {
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'app_settings', value: s }),
-    });
-  }, []);
-
-  const saveClockSettings = useCallback(async (c: ClockOverlayConfig) => {
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'clock_overlay', value: c }),
-    });
-  }, []);
-
-  const handleAutoTheme = (v: boolean) => {
-    const next = { ...settings, auto_theme: v };
-    setSettings(next);
-    saveAppSettings(next);
-  };
-
-  const handleNightDim = (v: boolean) => {
-    const next = { ...settings, night_dim_enabled: v };
-    setSettings(next);
-    saveAppSettings(next);
-  };
-
-  const handleClockEnabled = (v: boolean) => {
-    const next = { ...clock, enabled: v };
-    setClock(next);
-    saveClockSettings(next);
-  };
-
-  const handleClockPosition = (position: ClockPosition) => {
-    const next = { ...clock, position };
-    setClock(next);
-    saveClockSettings(next);
-  };
-
-  const handleClockFont = (font: ClockFont) => {
-    const next = { ...clock, font };
-    setClock(next);
-    saveClockSettings(next);
-  };
-
-  const saveLocation = async () => {
-    setSavingLocation(true);
-    try {
-      await saveAppSettings(settings);
-      setLocationSaved(true);
-      setTimeout(() => setLocationSaved(false), 2000);
-    } finally {
-      setSavingLocation(false);
-    }
-  };
-
-  const saveGoogleApiKey = async () => {
-    if (!googleApiKey.trim()) return;
-    setSavingApiKey(true);
-    try {
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'google_api_key', value: googleApiKey.trim() }),
-      });
-      setApiKeySaved(true);
-      setTimeout(() => setApiKeySaved(false), 2000);
-    } finally {
-      setSavingApiKey(false);
-    }
-  };
-
-  const updatePin = async () => {
-    if (!/^\d{6}$/.test(pinNewValue)) {
-      setPinResult({ ok: false, msg: 'New PIN must be exactly 6 digits.' });
-      return;
-    }
-    if (pinNewValue !== pinConfirm) {
-      setPinResult({ ok: false, msg: 'PINs do not match.' });
-      return;
-    }
-    setPinSaving(true);
-    setPinResult(null);
-    try {
-      const body =
-        pinMode === 'pin'
-          ? { mode: 'pin', old_pin: pinOldValue, new_pin: pinNewValue }
-          : { mode: 'password', password: pinOldValue, new_pin: pinNewValue };
-      const res = await fetch('/api/auth/pin-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (res.ok) {
-        setPinResult({ ok: true, msg: 'PIN updated successfully.' });
-        setPinOldValue('');
-        setPinNewValue('');
-        setPinConfirm('');
-        setTimeout(() => setPinResult(null), 3000);
-      } else {
-        setPinResult({ ok: false, msg: json.error ?? 'Failed to update PIN.' });
-      }
-    } finally {
-      setPinSaving(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="rounded-xl border border-border bg-card animate-pulse h-32" />
-        ))}
-      </div>
+  const useMyLocation = () => {
+    navigator.geolocation?.getCurrentPosition(
+      (pos) => {
+        updateSettings({ latitude: +pos.coords.latitude.toFixed(4), longitude: +pos.coords.longitude.toFixed(4) });
+        toast('Location updated');
+      },
+      () => toast.error('Location permission was denied.')
     );
-  }
+  };
+
+  const copyHelpPrompt = async () => {
+    await navigator.clipboard.writeText(helpPrompt(window.location.origin));
+    toast('Copied. Paste it into ChatGPT, Claude or Gemini.');
+  };
+
+  const initials = (account?.name ?? '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
   return (
-    <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6">
-
-      <PageGuide
-        pageKey="settings"
-        icon={<Tv size={18} className="text-primary" />}
-        title="Settings"
-        about="Configure your display, connect integrations, and personalise FrameTV. Changes save automatically."
-        steps={[
-          'Clock Overlay — enable it to show the time on top of your photos.',
-          'Auto Theme — dims the display at sunrise/sunset based on your location.',
-          'Spotify — connect your account to show album art and control music.',
-          'Display PIN — change the 6-digit PIN used to unlock the TV display.',
-          'Google Drive — connect your account to sync photos from Drive folders.',
-        ]}
-      />
-
-      <div className="pt-2">
-        <h1 className="text-xl font-bold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Display behaviour, clock, and integrations</p>
+    <Page title="Settings">
+      {/* ── Profile ── */}
+      <div className="flex items-center gap-4 rounded-[20px] bg-cell p-4 shadow-cell">
+        <span className="bg-ember flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full text-[22px] font-bold text-white">
+          {initials}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-[20px] font-semibold">{account?.name ?? ' '}</p>
+          <p className="truncate text-[15px] text-label-2">{account?.email ?? ''}</p>
+        </div>
       </div>
 
-      {spotifyBanner === 'connected' && (
-        <div className="rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-400 flex items-center gap-2">
-          <CheckCircle2 size={16} /> Spotify connected! Now playing will appear on the display.
+      <Section header="Appearance">
+        <div className="px-4 py-3">
+          <Segmented<ThemePref>
+            value={pref}
+            onChange={setPref}
+            options={[
+              { value: 'system', label: 'Automatic' },
+              { value: 'light', label: 'Light' },
+              { value: 'dark', label: 'Dark' },
+            ]}
+          />
         </div>
-      )}
-      {spotifyBanner === 'error' && (
-        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-          Spotify connection failed. Make sure{' '}
-          <code className="font-mono text-xs">http://localhost:3000/api/auth/spotify/callback</code>{' '}
-          is added as a Redirect URI in your{' '}
-          <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="underline">
-            Spotify Dashboard
-          </a>.
-        </div>
-      )}
+      </Section>
 
-      {/* ── Account ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <UserCircle2 size={15} className="text-primary" /> Account
-          </CardTitle>
-          {account && <CardDescription>{account.name} · {account.email}</CardDescription>}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Button size="sm" variant="outline" className="w-full" onClick={signOut} disabled={signingOut}>
-            <LogOut size={14} /> {signingOut ? 'Signing out…' : 'Sign out'}
-          </Button>
-
-          <Dialog open={deleteOpen} onOpenChange={(open) => {
-            setDeleteOpen(open);
-            if (!open) { setDeletePassword(''); setDeleteError(''); }
-          }}>
-            <DialogTrigger render={
-              <Button size="sm" variant="outline" className="w-full border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-400">
-                <Trash2 size={14} /> Delete account
-              </Button>
-            } />
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Delete your account?</DialogTitle>
-                <DialogDescription>
-                  This permanently deletes your account and everything in it — photos, albums, modes,
-                  schedules, and settings. This can&apos;t be undone.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-1.5">
-                <Label>Confirm your password</Label>
-                <PasswordInput
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="Your account password"
-                />
-              </div>
-
-              {deleteError && <p className="text-sm text-red-400">{deleteError}</p>}
-
-              <DialogFooter>
-                <Button
-                  variant="destructive"
-                  onClick={deleteAccount}
-                  disabled={deleting || !deletePassword}
-                >
-                  {deleting ? 'Deleting…' : 'Permanently delete account'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </CardContent>
-      </Card>
-
-      {/* ── Schedule shortcut ── */}
-      <Link
-        href="/admin/schedule"
-        className="flex items-center justify-between p-4 rounded-xl border border-border bg-card hover:bg-accent transition-colors"
+      <Section
+        header="Security"
+        footer={
+          recovery && !recovery.hasKey
+            ? 'You don’t have a recovery key yet. Without one, a forgotten password means a lost account.'
+            : undefined
+        }
       >
-        <div className="flex items-center gap-3">
-          <CalendarDays size={16} className="text-primary" />
-          <div>
-            <p className="text-sm font-semibold">Schedule</p>
-            <p className="text-xs text-muted-foreground">Auto-switch modes at specific times</p>
-          </div>
-        </div>
-        <ChevronRight size={16} className="text-muted-foreground" />
-      </Link>
+        <Row icon={<IconTile tone="gray"><Password size={18} weight="bold" /></IconTile>} title="Change password" onClick={() => setSheet('password')} chevron />
+        <Row
+          icon={<IconTile tone={recovery?.hasKey ? 'green' : 'orange'}><Key size={18} weight="bold" /></IconTile>}
+          title="Recovery key"
+          detail={recovery ? (recovery.hasKey ? 'On' : 'Set up') : undefined}
+          onClick={() => setSheet('recovery')}
+          chevron
+        />
+        <Row
+          icon={<IconTile tone="blue"><LockKey size={18} weight="bold" /></IconTile>}
+          title="Display PIN"
+          subtitle="Unlock a TV with a code instead of a password"
+          detail={hasPin === null ? undefined : hasPin ? 'On' : 'Off'}
+          onClick={() => setSheet('pin')}
+          chevron
+        />
+      </Section>
 
-      {/* ── Auto Theme ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap size={15} className="text-primary" /> Auto Theme
-          </CardTitle>
-          <CardDescription>Switch light/dark at sunrise/sunset</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="auto-theme">Enable auto theme switching</Label>
-            <Switch id="auto-theme" checked={settings.auto_theme} onCheckedChange={handleAutoTheme} />
-          </div>
-        </CardContent>
-      </Card>
+      <Section header="On your screens">
+        <Row icon={<IconTile tone="gray"><Clock size={18} weight="bold" /></IconTile>} title="Clock overlay" detail={clock.enabled ? 'On' : 'Off'} onClick={() => setSheet('clock')} chevron />
+        <Row icon={<IconTile tone="indigo"><Moon size={18} weight="fill" /></IconTile>} title="Dim at night" detail={settings.night_dim_enabled ? `${settings.night_dim_start}–${settings.night_dim_end}` : 'Off'} onClick={() => setSheet('night')} chevron />
+        <ToggleRow
+          icon={<IconTile tone="orange"><SunHorizon size={18} weight="bold" /></IconTile>}
+          title="Match sunrise & sunset"
+          subtitle="Clocks and text switch light/dark with the sun"
+          checked={settings.auto_theme}
+          onChange={(v) => updateSettings({ auto_theme: v })}
+        />
+        <Row icon={<IconTile tone="teal"><MapPin size={18} weight="fill" /></IconTile>} title="Location" detail={`${settings.latitude.toFixed(2)}, ${settings.longitude.toFixed(2)}`} onClick={() => setSheet('location')} chevron />
+      </Section>
 
-      {/* ── Night Dim ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Moon size={15} className="text-primary" /> Night Dim
-          </CardTitle>
-          <CardDescription>Automatically dim the display at night</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="night-dim">Dim display at night</Label>
-            <Switch id="night-dim" checked={settings.night_dim_enabled} onCheckedChange={handleNightDim} />
-          </div>
-          {settings.night_dim_enabled && (
-            <div className="grid grid-cols-2 gap-4 pt-1">
-              <div className="space-y-1.5">
-                <Label>Dim start</Label>
-                <Input
-                  type="time"
-                  value={settings.night_dim_start}
-                  onChange={(e) => setSettings({ ...settings, night_dim_start: e.target.value })}
-                  onBlur={() => saveAppSettings({ ...settings })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Dim end</Label>
-                <Input
-                  type="time"
-                  value={settings.night_dim_end}
-                  onChange={(e) => setSettings({ ...settings, night_dim_end: e.target.value })}
-                  onBlur={() => saveAppSettings({ ...settings })}
-                />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <Section header="Features">
+        <Row icon={<IconTile tone="green"><MusicNotes size={18} weight="fill" /></IconTile>} title="Music" href="/admin/music" />
+        <Row icon={<IconTile tone="yellow"><Megaphone size={18} weight="fill" /></IconTile>} title="Flip Board messages" href="/admin/flipboard" />
+        <Row icon={<IconTile tone="blue"><ListChecks size={18} weight="bold" /></IconTile>} title="Reminders" href="/admin/reminders" />
+        <Row icon={<IconTile tone="indigo"><CalendarBlank size={18} weight="bold" /></IconTile>} title="Schedules" href="/admin/schedule" />
+      </Section>
 
-      {/* ── Clock Overlay ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Clock size={15} className="text-primary" /> Clock Overlay
-          </CardTitle>
-          <CardDescription>Show time and date on the display</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="clock-enabled">Show clock on display</Label>
-            <Switch id="clock-enabled" checked={clock.enabled} onCheckedChange={handleClockEnabled} />
-          </div>
+      <Section header="Connections">
+        <Row
+          icon={<IconTile tone="green"><SpotifyLogo size={18} weight="fill" /></IconTile>}
+          title="Spotify"
+          subtitle={spotify.connected ? `Connected${spotify.name ? ` as ${spotify.name}` : ''}` : 'For the Vinyl and Cover Flow looks'}
+          detail={spotify.connected ? 'Reconnect' : 'Connect'}
+          onClick={() => { window.location.href = '/api/auth/spotify'; }}
+          chevron={false}
+        />
+      </Section>
 
-          {clock.enabled && (
-            <>
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Position</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {CLOCK_POSITIONS.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => handleClockPosition(value)}
-                      className={cn(
-                        'px-3 py-2.5 rounded-lg border text-sm transition-all text-left',
-                        clock.position === value
-                          ? 'border-primary bg-primary/10 text-primary font-medium'
-                          : 'border-border text-muted-foreground hover:border-primary/50'
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+      <Section header="Help">
+        <Row icon={<IconTile tone="ember"><Question size={18} weight="bold" /></IconTile>} title="Setup guide" href="/help" />
+        <Row
+          icon={<IconTile tone="purple"><Sparkle size={18} weight="fill" /></IconTile>}
+          title="Ask an AI for help"
+          subtitle="Copies a prompt for ChatGPT, Claude or Gemini"
+          onClick={copyHelpPrompt}
+        />
+        <Row icon={<IconTile tone="gray"><Wrench size={18} weight="bold" /></IconTile>} title="Advanced" onClick={() => setSheet('advanced')} chevron />
+      </Section>
 
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Font</Label>
-                <div className="space-y-1.5">
-                  {CLOCK_FONTS.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => handleClockFont(value)}
-                      className={cn(
-                        'w-full px-3 py-2.5 rounded-lg border text-sm transition-all text-left flex items-center justify-between',
-                        clock.font === value ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
-                      )}
-                    >
-                      <span className={clock.font === value ? 'text-primary font-medium' : 'text-muted-foreground'}>
-                        {label}
-                      </span>
-                      <span className="text-base" style={{ fontFamily: `'${value}', sans-serif` }}>
-                        12:00
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <Section>
+        <Row icon={<IconTile tone="gray"><SignOut size={18} weight="bold" /></IconTile>} title="Sign out" onClick={signOut} />
+        <Row icon={<IconTile tone="red"><Trash size={18} weight="bold" /></IconTile>} title="Delete account" destructive onClick={() => setSheet('delete')} />
+      </Section>
 
-      {/* ── Location ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <MapPin size={15} className="text-primary" /> Location
-          </CardTitle>
-          <CardDescription>Used for sunrise/sunset auto-theme</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Latitude</Label>
-              <Input
-                type="number"
-                step="0.0001"
-                value={settings.latitude}
-                onChange={(e) => setSettings({ ...settings, latitude: Number(e.target.value) })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Longitude</Label>
-              <Input
-                type="number"
-                step="0.0001"
-                value={settings.longitude}
-                onChange={(e) => setSettings({ ...settings, longitude: Number(e.target.value) })}
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">Default: Accra, Ghana (5.6037, −0.1870)</p>
-          <Button
-            size="sm"
-            className={cn('w-full', locationSaved && 'bg-green-600 hover:bg-green-500')}
-            onClick={saveLocation}
-            disabled={savingLocation}
-          >
-            {locationSaved
-              ? <><CheckCircle2 size={14} /> Saved</>
-              : savingLocation ? 'Saving…' : 'Save Location'}
-          </Button>
-        </CardContent>
-      </Card>
+      <p className="pb-4 text-center text-[13px] text-label-3">Mantel</p>
 
-      <Separator />
+      {/* ── Sheets ── */}
+      <Sheet open={sheet === 'password'} onOpenChange={(o) => !o && closeSheet()} title="Change password" description="Other devices will be signed out. Your screens stay connected.">
+        <Section>
+          <Field label="Current" type="password" autoComplete="current-password" {...field('current')} />
+          <Field label="New" type="password" autoComplete="new-password" placeholder="8+ characters" {...field('next')} />
+          <Field label="Confirm" type="password" autoComplete="new-password" {...field('confirm')} />
+        </Section>
+        <Button block onClick={changePassword} loading={busy} disabled={!form.current || !form.next}>Change password</Button>
+      </Sheet>
 
-      {/* ── Integrations ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Integrations</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-start justify-between gap-3 min-h-[48px]">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              {integrations.spotify_connected && integrations.spotify_profile?.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={integrations.spotify_profile.image_url}
-                  alt="Spotify profile"
-                  className="w-9 h-9 rounded-full object-cover shrink-0 border border-green-500/30"
-                />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center shrink-0">
-                  <Music2 size={15} className="text-emerald-400" />
-                </div>
-              )}
-              <div className="min-w-0">
-                <p className="text-sm font-medium">Spotify</p>
-                {integrations.spotify_connected && integrations.spotify_profile ? (
-                  <p className="text-xs text-green-400 truncate">
-                    {integrations.spotify_profile.display_name ?? integrations.spotify_profile.email ?? 'Connected'}
-                    {integrations.spotify_profile.email && integrations.spotify_profile.display_name && (
-                      <span className="text-muted-foreground ml-1">· {integrations.spotify_profile.email}</span>
-                    )}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Show currently playing song</p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {integrations.spotify_connected ? (
-                <>
-                  <Badge variant="outline" className="border-green-500/40 text-green-400 bg-green-500/10">
-                    <CheckCircle2 size={10} className="mr-1" /> Connected
-                  </Badge>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => {
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      (globalThis as any).location.href = '/api/auth/spotify';
-                    }}
-                    title="Reconnect Spotify"
-                  >
-                    <RefreshCw size={12} />
-                  </Button>
-                </>
-              ) : (
-                <Button size="sm" variant="outline" onClick={() => {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (globalThis as any).location.href = '/api/auth/spotify';
-                }}>
-                  Connect
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">Google Drive</p>
-                <p className="text-xs text-muted-foreground">Import public photo folders via API key</p>
-              </div>
-              <Badge
-                variant="outline"
-                className={cn(
-                  'text-xs shrink-0',
-                  googleApiKey
-                    ? 'border-green-500/40 text-green-400 bg-green-500/10'
-                    : 'border-yellow-500/40 text-yellow-400 bg-yellow-500/10'
-                )}
-              >
-                {googleApiKey ? 'Key set' : 'Key missing'}
-              </Badge>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">
-                Google API Key{' '}
-                <a
-                  href="https://console.cloud.google.com/apis/credentials"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  (get one ↗)
-                </a>
-              </Label>
-              <div className="flex gap-2">
-                <PasswordInput
-                  placeholder="AIza…"
-                  value={googleApiKey}
-                  onChange={(e) => setGoogleApiKey(e.target.value)}
-                  className="font-mono text-xs"
-                />
-                <Button
-                  size="sm"
-                  variant={apiKeySaved ? 'default' : 'outline'}
-                  className={cn('shrink-0', apiKeySaved && 'bg-green-600 hover:bg-green-500 text-white')}
-                  onClick={saveGoogleApiKey}
-                  disabled={savingApiKey || !googleApiKey.trim()}
-                >
-                  {apiKeySaved ? <CheckCircle2 size={14} /> : 'Save'}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground/60">
-                Enable Drive API v3 in Google Cloud Console, then create an API key.
-              </p>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between gap-3 min-h-[48px]">
-            <div>
-              <p className="text-sm font-medium">Unsplash</p>
-              <p className="text-xs text-muted-foreground">
-                Access key: <span className="font-mono">{integrations.unsplash_key_set ? '••••••••••••••••' : 'Not set'}</span>
-              </p>
-            </div>
-            <Badge
-              variant="outline"
-              className={cn(
-                'text-xs',
-                integrations.unsplash_key_set
-                  ? 'border-green-500/40 text-green-400 bg-green-500/10'
-                  : 'border-border text-muted-foreground'
-              )}
-            >
-              {integrations.unsplash_key_set ? 'Key set' : 'No key'}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── Update PIN ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <LockKeyhole size={15} className="text-primary" /> {hasPin === false ? 'Set Display PIN' : 'Update Display PIN'}
-          </CardTitle>
-          <CardDescription>
-            {hasPin === false
-              ? "You don't have a display PIN yet — pairing your TV via QR code doesn't need one, but you can set one here if you'd rather unlock it that way."
-              : 'Change the 6-digit PIN used to unlock your display'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Mode toggle */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setPinMode('pin'); setPinOldValue(''); setPinResult(null); }}
-              disabled={hasPin === false}
-              title={hasPin === false ? "You don't have a PIN set yet" : undefined}
-              className={cn(
-                'flex-1 py-2 px-3 rounded-lg border text-sm transition-all',
-                hasPin === false && 'opacity-40 cursor-not-allowed',
-                pinMode === 'pin'
-                  ? 'border-primary bg-primary/10 text-primary font-medium'
-                  : 'border-border text-muted-foreground hover:border-primary/50'
-              )}
-            >
-              Use current PIN
-            </button>
-            <button
-              onClick={() => { setPinMode('password'); setPinOldValue(''); setPinResult(null); }}
-              className={cn(
-                'flex-1 py-2 px-3 rounded-lg border text-sm transition-all',
-                pinMode === 'password'
-                  ? 'border-primary bg-primary/10 text-primary font-medium'
-                  : 'border-border text-muted-foreground hover:border-primary/50'
-              )}
-            >
-              Use password
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>{pinMode === 'pin' ? 'Current PIN' : 'Account password'}</Label>
-            <PasswordInput
-              inputMode={pinMode === 'pin' ? 'numeric' : undefined}
-              maxLength={pinMode === 'pin' ? 6 : undefined}
-              placeholder={pinMode === 'pin' ? '••••••' : 'Your account password'}
-              value={pinOldValue}
-              onChange={(e) => setPinOldValue(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>New PIN</Label>
-              <PasswordInput
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="••••••"
-                value={pinNewValue}
-                onChange={(e) => setPinNewValue(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Confirm PIN</Label>
-              <PasswordInput
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="••••••"
-                value={pinConfirm}
-                onChange={(e) => setPinConfirm(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {pinResult && (
-            <p className={cn('text-sm', pinResult.ok ? 'text-green-400' : 'text-red-400')}>
-              {pinResult.ok && <CheckCircle2 size={13} className="inline mr-1" />}
-              {pinResult.msg}
+      <Sheet open={sheet === 'recovery'} onOpenChange={(o) => !o && closeSheet()} title="Recovery key">
+        {newKey ? (
+          <>
+            <RecoveryKeyCard recoveryKey={newKey} email={account?.email} />
+            <Button block onClick={closeSheet}>I’ve saved it</Button>
+          </>
+        ) : (
+          <>
+            <p className="px-1 text-[15px] leading-relaxed text-label-2">
+              A recovery key lets you reset your password if you forget it. There’s no email reset, so keep it somewhere safe,
+              like your Photos, a password manager or printed out.
+              {recovery?.hasKey && ' Making a new key turns the old one off.'}
             </p>
-          )}
+            {recovery?.hasKey && (
+              <Section>
+                <Field label="Password" type="password" autoComplete="current-password" {...field('password')} />
+              </Section>
+            )}
+            <Button block onClick={makeRecoveryKey} loading={busy} disabled={recovery?.hasKey && !form.password}>
+              {recovery?.hasKey ? 'Make a new recovery key' : 'Create my recovery key'}
+            </Button>
+          </>
+        )}
+      </Sheet>
 
-          <Button
-            size="sm"
-            className={cn('w-full', pinResult?.ok && 'bg-green-600 hover:bg-green-500')}
-            onClick={updatePin}
-            disabled={pinSaving || !pinOldValue || !pinNewValue || !pinConfirm}
-          >
-            {pinSaving ? 'Updating…' : pinResult?.ok ? <><CheckCircle2 size={14} /> Updated</> : 'Update PIN'}
-          </Button>
-        </CardContent>
-      </Card>
+      <Sheet open={sheet === 'pin'} onOpenChange={(o) => !o && closeSheet()} title="Display PIN" description="A 6-digit code you can type on a TV instead of your password.">
+        <Section>
+          <Field label="Password" type="password" autoComplete="current-password" {...field('password')} />
+          <Field label="New PIN" inputMode="numeric" maxLength={6} placeholder="6 digits" {...field('pin')} />
+        </Section>
+        <Button block onClick={updatePin} loading={busy} disabled={!form.password || (form.pin ?? '').length !== 6}>Save PIN</Button>
+      </Sheet>
 
-      {/* ── Display token ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Tv size={15} className="text-primary" /> Display
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Display token</p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 px-3 py-2.5 rounded-lg bg-muted border border-border text-sm font-mono truncate">
-                {integrations.display_token ? maskToken(integrations.display_token) : '—'}
-              </code>
-              <KeyRound size={15} className="text-muted-foreground shrink-0" />
-            </div>
+      <Sheet open={sheet === 'clock'} onOpenChange={(o) => !o && closeSheet()} title="Clock overlay" description="A small clock on top of any look.">
+        <Section>
+          <ToggleRow title="Show clock" checked={clock.enabled} onChange={(v) => updateClock({ enabled: v })} />
+        </Section>
+        <Section header="Position">
+          <div className="grid grid-cols-2 gap-2 p-3">
+            {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as ClockPosition[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => updateClock({ position: p })}
+                className={`pressable relative h-16 rounded-[10px] ${clock.position === p ? 'bg-tint/15 ring-2 ring-tint' : 'bg-fill'}`}
+                aria-label={p}
+              >
+                <span className={`absolute h-2 w-8 rounded-full ${clock.position === p ? 'bg-tint' : 'bg-label-3'} ${p.includes('top') ? 'top-3' : 'bottom-3'} ${p.includes('left') ? 'left-3' : 'right-3'}`} />
+              </button>
+            ))}
           </div>
-          <Link
-            href="/display"
-            target="_blank"
-            className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
-          >
-            Open display <ExternalLink size={13} />
-          </Link>
+        </Section>
+        <Section header="Font">
+          {CLOCK_FONTS.map((f) => (
+            <Row key={f} title={<span style={{ fontFamily: f }}>{f}</span>} onClick={() => updateClock({ font: f })} trailing={clock.font === f ? <span className="text-tint">✓</span> : null} />
+          ))}
+        </Section>
+      </Sheet>
 
-          <Separator />
+      <Sheet open={sheet === 'night'} onOpenChange={(o) => !o && closeSheet()} title="Dim at night">
+        <Section>
+          <ToggleRow title="Dim automatically" checked={settings.night_dim_enabled} onChange={(v) => updateSettings({ night_dim_enabled: v })} />
+          <Field label="From" type="time" value={settings.night_dim_start} onChange={(e) => updateSettings({ night_dim_start: e.target.value })} />
+          <Field label="Until" type="time" value={settings.night_dim_end} onChange={(e) => updateSettings({ night_dim_end: e.target.value })} />
+        </Section>
+      </Sheet>
 
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Pair a TV</p>
-            <PairTvForm />
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      <Sheet open={sheet === 'location'} onOpenChange={(o) => !o && closeSheet()} title="Location" description="Used only to work out sunrise and sunset.">
+        <Button block variant="tinted" icon={<Crosshair size={20} weight="bold" />} onClick={useMyLocation}>Use my current location</Button>
+        <Section>
+          <Field label="Latitude" inputMode="decimal" value={String(settings.latitude)} onChange={(e) => setSettings((s) => ({ ...s, latitude: Number(e.target.value) || 0 }))} onBlur={() => saveSetting('app_settings', settings)} />
+          <Field label="Longitude" inputMode="decimal" value={String(settings.longitude)} onChange={(e) => setSettings((s) => ({ ...s, longitude: Number(e.target.value) || 0 }))} onBlur={() => saveSetting('app_settings', settings)} />
+        </Section>
+      </Sheet>
+
+      <Sheet open={sheet === 'advanced'} onOpenChange={(o) => !o && closeSheet()} title="Advanced">
+        <Section
+          header="Google API key"
+          footer="Optional. Mantel already has a key; add your own only if Drive albums stop syncing because of quota limits."
+        >
+          <Field placeholder="AIza…" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+        </Section>
+        <Button block variant="tinted" onClick={async () => { if (await saveSetting('google_api_key', apiKey.trim())) toast('Saved'); }}>Save key</Button>
+      </Sheet>
+
+      <Sheet open={sheet === 'delete'} onOpenChange={(o) => !o && closeSheet()} title="Delete account" description="This permanently deletes your albums, uploaded videos, looks and settings. Google Drive files are not touched.">
+        <TextInput type="password" placeholder="Your password" autoComplete="current-password" {...field('password')} />
+        <Button block variant="destructive" onClick={deleteAccount} loading={busy} disabled={!form.password}>Delete everything</Button>
+      </Sheet>
+    </Page>
   );
 }

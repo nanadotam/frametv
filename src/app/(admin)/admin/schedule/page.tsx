@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Pencil, Trash2, CalendarDays, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -168,10 +169,11 @@ export default function SchedulePage() {
     MODES_LIST.find((m) => m.id === modeId)?.label ?? modeId;
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6">
+    <div className="px-4 pt-4 pb-28 md:p-8 max-w-3xl mx-auto space-y-6">
       <div className="flex items-start justify-between pt-2">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Schedule</h1>
+          <Link href="/admin/settings" className="mb-1 inline-block text-[17px] text-tint">‹ Settings</Link>
+          <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em]">Schedule</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Auto-switch modes at specific times · {schedules.filter(s => s.is_enabled).length} active
           </p>
@@ -207,7 +209,7 @@ export default function SchedulePage() {
                         className={cn(
                           'text-xs',
                           s.is_enabled
-                            ? 'border-green-500/40 text-green-400 bg-green-500/10'
+                            ? 'border-ok/40 text-ok bg-ok/15'
                             : 'border-border text-muted-foreground'
                         )}
                       >
