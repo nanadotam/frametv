@@ -11,6 +11,7 @@ import { Section, Row, IconTile } from '@/components/m/List';
 import { Button, Empty, IconButton, TextInput } from '@/components/m/Controls';
 import { Sheet } from '@/components/m/Sheet';
 import { toast } from '@/components/m/Toast';
+import { CoverImage } from '@/components/m/CoverImage';
 import { cn } from '@/lib/utils';
 import type { Album } from '@/types/db';
 
@@ -149,8 +150,7 @@ export default function LibraryPage() {
               <div key={a.id} className="overflow-hidden rounded-[18px] bg-cell shadow-cell">
                 <Link href={`/admin/albums/${a.id}`} className="pressable relative block aspect-square bg-fill">
                   {a.cover_photo_id ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={`/api/photos/${a.cover_photo_id}/thumbnail`} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    <CoverImage src={`/api/photos/${a.cover_photo_id}/thumbnail`} rotation={a.cover_rotation} />
                   ) : (
                     <div className="flex h-full items-center justify-center text-label-3">
                       {a.source_type === 'upload' ? <FilmStrip size={36} /> : <Images size={36} />}

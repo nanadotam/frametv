@@ -22,6 +22,8 @@ export interface Album {
   cover_photo_id: string | null;
   is_archived: boolean;
   display_order: number;
+  /** Cover photo rotation in degrees (from /api/albums). */
+  cover_rotation?: number;
   created_at: string;
   updated_at: string;
 }

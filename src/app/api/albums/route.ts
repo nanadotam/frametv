@@ -19,7 +19,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ albums: albums ?? [] });
+    // Attach each cover's rotation so thumbnails can be shown upright.
+    const coverIds = (albums ?? []).map((a) => a.cover_photo_id).filter(Boolean);
+    const rotations = new Map<string, number>();
+    if (coverIds.length) {
+      const { data: covers } = await supabase.from('photos').select('id, metadata').in('id', coverIds);
+      for (const c of covers ?? []) {
+        const r = (c.metadata as Record<string, unknown> | null)?.rotation;
+        if (typeof r === 'number') rotations.set(c.id, ((r % 360) + 360) % 360);
+      }
+    }
+
+    return NextResponse.json({
+      albums: (albums ?? []).map((a) => ({ ...a, cover_rotation: rotations.get(a.cover_photo_id) ?? 0 })),
+    });
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },

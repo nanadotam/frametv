@@ -11,6 +11,7 @@ import { Section, Row, ToggleRow, IconTile } from '@/components/m/List';
 import { Button, Chip, Empty, IconButton } from '@/components/m/Controls';
 import { Sheet } from '@/components/m/Sheet';
 import { toast } from '@/components/m/Toast';
+import { CoverImage } from '@/components/m/CoverImage';
 import { LOOK_BY_ID, LOOKS, LookArt, ALBUM_LOOKS, lookName } from '@/components/looks/catalog';
 import { QuickSettingsContent, MODES_WITH_SETTINGS, type Cfg } from '@/components/looks/QuickSettings';
 import { invalidateModes } from '@/hooks/useModes';
@@ -240,8 +241,7 @@ export default function NowPage() {
         <button type="button" onClick={() => setPickerOpen(true)} className="pressable block w-full text-left">
           <div className="relative aspect-[16/10] w-full">
             {coverAlbum && activeId && ALBUM_LOOKS.has(activeId) ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={`/api/photos/${coverAlbum.cover_photo_id}/thumbnail`} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              <CoverImage src={`/api/photos/${coverAlbum.cover_photo_id}/thumbnail`} rotation={coverAlbum.cover_rotation} />
             ) : (
               <LookArt id={activeId ?? 'slideshow-single'} className="absolute inset-0 h-full w-full" />
             )}
