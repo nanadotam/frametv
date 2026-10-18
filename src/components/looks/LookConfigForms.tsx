@@ -6,7 +6,7 @@
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/looks/ChoiceChips';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -38,7 +38,7 @@ function SlideshowConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <Label>Photo interval</Label>
+        <Label>Change photo every</Label>
         <Select
           value={String(closestOption.value)}
           onValueChange={(v) => onChange({ ...cfg, intervalSeconds: Number(v), interval: undefined })}
@@ -52,7 +52,7 @@ function SlideshowConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
         </Select>
       </div>
       <div className="space-y-1.5">
-        <Label>Transition</Label>
+        <Label>How photos change</Label>
         <Select
           value={(cfg.transition as string) ?? 'fade'}
           onValueChange={(v) => onChange({ ...cfg, transition: v })}
@@ -99,7 +99,7 @@ function GridConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange:
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <Label>Cell interval</Label>
+        <Label>Change one tile every</Label>
         <Select
           value={String(closestOption.value)}
           onValueChange={(v) => onChange({ ...cfg, cellIntervalSeconds: Number(v), intervalSeconds: undefined })}
@@ -139,7 +139,7 @@ function GridConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange:
       </div>
       <div className="flex items-center justify-between gap-4">
         <div>
-          <Label>Multimodal</Label>
+          <Label>Include videos</Label>
           <p className="text-xs text-muted-foreground mt-0.5">Mix videos from the active albums in with the photos.</p>
         </div>
         <Switch
@@ -212,7 +212,7 @@ function PinterestConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
         <p className="text-xs text-muted-foreground">Videos loop until the page changes — a page always stays up at least as long as its longest clip.</p>
       </div>
       <div className="flex items-center justify-between">
-        <Label>Reverse direction</Label>
+        <Label>Scroll the other way</Label>
         <Switch
           checked={direction === 'right'}
           onCheckedChange={(v) => onChange({ ...cfg, direction: v ? 'right' : 'left', reverse_direction: undefined })}
@@ -220,7 +220,7 @@ function PinterestConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
       </div>
       <div className="flex items-center justify-between gap-4">
         <div>
-          <Label>Multimodal</Label>
+          <Label>Include videos</Label>
           <p className="text-xs text-muted-foreground mt-0.5">Mix videos from the active albums in with the photos.</p>
         </div>
         <Switch
@@ -278,7 +278,7 @@ function FlipboardConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
   return (
     <div className="space-y-5">
       <div className="space-y-2">
-        <Label>Sources</Label>
+        <Label>What to show</Label>
         <div className="flex flex-wrap gap-1.5">
           {['messages', 'reminders', 'quotes', 'calendar', 'weather'].map((s) => (
             <button
@@ -328,7 +328,7 @@ function UnsplashConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCha
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <Label>Mood / keywords</Label>
+        <Label>Mood (e.g. ocean, forest, city)</Label>
         <Input
           value={(cfg.mood as string) ?? ''}
           onChange={(e) => onChange({ ...cfg, mood: e.target.value })}
@@ -337,7 +337,7 @@ function UnsplashConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCha
       </div>
       <div className="space-y-2">
         <div className="flex justify-between">
-          <Label>Photo interval</Label>
+          <Label>Change photo every</Label>
           <span className="text-sm font-semibold text-primary">{intervalMins} min</span>
         </div>
         <Slider
@@ -358,7 +358,7 @@ function EaselConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <Label>Texts (one per line)</Label>
+        <Label>Messages (one per line)</Label>
         <Textarea
           value={texts}
           onChange={(e) => onChange({ ...cfg, texts: e.target.value.split('\n').filter(Boolean) })}
@@ -369,7 +369,7 @@ function EaselConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onChange
       </div>
       <div className="space-y-2">
         <div className="flex justify-between">
-          <Label>Interval</Label>
+          <Label>Change message every</Label>
           <span className="text-sm font-semibold text-primary">{(cfg.interval_minutes as number) ?? 5} min</span>
         </div>
         <Slider
@@ -409,7 +409,7 @@ function ScriptureConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
 
       {/* Custom Unsplash keyword — overrides auto-detection */}
       <div className="space-y-1.5">
-        <Label>Background keyword</Label>
+        <Label>Background scenery</Label>
         <Input
           value={customMood}
           onChange={(e) => onChange({ ...cfg, customMood: e.target.value })}
@@ -447,7 +447,7 @@ function ScriptureConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
 
       {/* Per-theme keyword overrides */}
       <div className="space-y-2">
-        <Label>Auto-detection themes</Label>
+        <Label>Matching scenery by theme</Label>
         <p className="text-xs text-muted-foreground">
           These are used when no custom keyword is set. Edit the Unsplash queries to fine-tune each mood.
         </p>
@@ -523,7 +523,7 @@ function VideoModeConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <Label>Template</Label>
+        <Label>Style</Label>
         <Select value={template} onValueChange={(v) => onChange({ ...cfg, template: v })}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -590,7 +590,7 @@ function VideoModeConfig({ cfg, onChange }: { cfg: Record<string, unknown>; onCh
       )}
       {template === 'normal' && (
         <div className="space-y-1.5">
-          <Label>Fit</Label>
+          <Label>Fill the screen?</Label>
           <Select value={(cfg.fit as string) ?? 'cover'} onValueChange={(v) => onChange({ ...cfg, fit: v })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>

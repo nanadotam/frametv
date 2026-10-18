@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle, Television } from '@phosphor-icons/react';
 import { Page } from '@/components/m/Page';
@@ -76,20 +76,23 @@ function LooksContent() {
     toast(`Showing ${LOOK_BY_ID[id]?.name ?? 'look'}`);
   };
 
-  const save = async () => {
-    if (!open) return;
+  // Settings save as you change them (debounced), like iOS Settings.
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const changeCfg = (lookId: string, cfg: Cfg) => {
+    setOpen((o) => (o ? { ...o, cfg } : o));
     setSaving(true);
-    const res = await fetch(`/api/modes/${open.look.id}/config`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(open.cfg),
-    }).catch(() => null);
-    setSaving(false);
-    if (!res?.ok) return toast.error('Couldn’t save those settings.');
-    setModes((prev) => prev.map((m) => (m.id === open.look.id ? { ...m, config: open.cfg } : m)));
-    invalidateModes();
-    toast('Saved');
-    setOpen(null);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      const res = await fetch(`/api/modes/${lookId}/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      }).catch(() => null);
+      setSaving(false);
+      if (!res?.ok) return toast.error('Couldn’t save that change.');
+      setModes((prev) => prev.map((m) => (m.id === lookId ? { ...m, config: cfg } : m)));
+      invalidateModes();
+    }, 450);
   };
 
   const setEnabled = async (id: string, enabled: boolean) => {
@@ -157,17 +160,13 @@ function LooksContent() {
         size="lg"
         footer={
           open && (
-            <div className="flex gap-2">
-              <Button variant="gray" className="flex-1" onClick={save} loading={saving}>Save settings</Button>
-              <Button
-                className="flex-1"
-                onClick={async () => {
-                  await save();
-                  await showNow(open.look.id);
-                }}
-              >
-                {open.look.id === activeId ? 'Save & keep showing' : 'Show it now'}
-              </Button>
+            <div className="flex items-center gap-3">
+              <span className="flex-1 text-[13px] text-label-2">{saving ? 'Saving…' : 'Changes save automatically'}</span>
+              {open.look.id === activeId ? (
+                <Button variant="tinted" disabled>Showing now ✓</Button>
+              ) : (
+                <Button onClick={() => showNow(open.look.id)}>Show it now</Button>
+              )}
             </div>
           )
         }
@@ -184,12 +183,12 @@ function LooksContent() {
               <ModeConfigForm
                 mode={openMode ?? ({ id: open.look.id, name: open.look.name, config: open.cfg } as Mode)}
                 cfg={open.cfg}
-                onChange={(cfg) => setOpen((o) => (o ? { ...o, cfg } : o))}
+                onChange={(cfg) => changeCfg(open.look.id, cfg)}
               />
             </div>
             <Section footer="Hidden looks don’t appear in the quick picker or in schedules.">
               <ToggleRow
-                title="Show in picker"
+                title="Show in the quick picker"
                 checked={modeById[open.look.id]?.is_enabled !== false}
                 onChange={(v) => setEnabled(open.look.id, v)}
               />
