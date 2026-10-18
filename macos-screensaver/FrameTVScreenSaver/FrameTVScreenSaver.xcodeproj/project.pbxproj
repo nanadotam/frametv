@@ -484,8 +484,8 @@
 				GCC_PREFIX_HEADER = FrameTVScreenSaver_Prefix.pch;
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
-				PRODUCT_BUNDLE_IDENTIFIER = "com.frametv.${PRODUCT_NAME:identifier}";
-				PRODUCT_NAME = FrameTVScreenSaver;
+				PRODUCT_BUNDLE_IDENTIFIER = app.mantel.screensaver;
+				PRODUCT_NAME = Mantel;
 				WRAPPER_EXTENSION = saver;
 			};
 			name = Debug;
@@ -502,8 +502,8 @@
 				GCC_PREFIX_HEADER = FrameTVScreenSaver_Prefix.pch;
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
-				PRODUCT_BUNDLE_IDENTIFIER = "com.frametv.${PRODUCT_NAME:identifier}";
-				PRODUCT_NAME = FrameTVScreenSaver;
+				PRODUCT_BUNDLE_IDENTIFIER = app.mantel.screensaver;
+				PRODUCT_NAME = Mantel;
 				WRAPPER_EXTENSION = saver;
 			};
 			name = Release;
@@ -542,7 +542,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
 			};
@@ -581,7 +581,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				SDKROOT = macosx;
 			};
 			name = Release;

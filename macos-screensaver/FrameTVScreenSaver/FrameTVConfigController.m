@@ -8,7 +8,7 @@
 #import <WebKit/WebKit.h>
 #import <ScreenSaver/ScreenSaver.h>
 
-static NSString *const kFrameTVBaseURL = @"https://frametv.vercel.app";
+static NSString *const kFrameTVBaseURL = @"https://mantelapp.vercel.app";
 static NSString *const kFrameTVAuthorizePath = @"/screensaver/authorize";
 static NSString *const kFrameTVURLScheme = @"frametvscreensaver";
 static NSString *const kScreenSaverModuleName = @"FrameTVScreenSaver";
@@ -99,13 +99,13 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 - (NSString *)statusText {
   if (self.isConnected) {
     return [NSString stringWithFormat:
-        @"Connected — this screensaver shows your live FrameTV display.\n\n%@\n\n"
-         "Change what's shown any time from the FrameTV app or web dashboard — "
+        @"Connected — this screensaver shows your Mantel display.\n\n%@\n\n"
+         "Change what's shown any time from the Mantel app or website — "
          "no need to come back here.",
         self.connectedURL];
   }
-  return @"Sign in to point this screensaver at your FrameTV display. "
-          "Once connected, you can change what it shows any time from FrameTV "
+  return @"Sign in to point this screensaver at your Mantel display. "
+          "Once connected, you can change what it shows any time from Mantel "
           "itself — on your phone, your Mac, anywhere — without reopening "
           "this panel.";
 }
@@ -118,7 +118,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
                                                   styleMask:NSWindowStyleMaskTitled
                                                     backing:NSBackingStoreBuffered
                                                       defer:NO];
-  window.title = @"FrameTV Screensaver";
+  window.title = @"Mantel Screensaver";
   window.delegate = self;
   self.sheetWindow = window;
 
@@ -133,7 +133,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
   NSTextField *title = [self labelWithFrame:NSMakeRect(20, 358, 400, 28)];
   title.font = [NSFont boldSystemFontOfSize:18];
   title.alignment = NSTextAlignmentCenter;
-  title.stringValue = @"Welcome to FrameTV";
+  title.stringValue = @"Welcome to Mantel";
   [content addSubview:title];
 
   NSTextField *status = [self labelWithFrame:NSMakeRect(30, 240, 380, 110)];
@@ -328,7 +328,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 - (void)uninstallPressed:(id)sender {
   NSAlert *alert = [[NSAlert alloc] init];
   alert.alertStyle = NSAlertStyleWarning;
-  alert.messageText = @"Uninstall FrameTV Screensaver?";
+  alert.messageText = @"Uninstall Mantel Screensaver?";
   alert.informativeText =
       @"This removes the installed screensaver from Screen Savers and "
        "clears all its saved settings, caches, and cookies on this Mac. "
@@ -355,9 +355,10 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
   // Installed bundle.
   NSArray<NSURL *> *libraryDirs = [fm URLsForDirectory:NSLibraryDirectory inDomains:NSUserDomainMask];
   for (NSURL *libraryURL in libraryDirs) {
-    NSURL *saverURL = [[libraryURL URLByAppendingPathComponent:@"Screen Savers"]
-        URLByAppendingPathComponent:@"FrameTVScreenSaver.saver"];
-    [fm removeItemAtURL:saverURL error:nil];
+    for (NSString *name in @[ @"Mantel.saver", @"FrameTVScreenSaver.saver" ]) {
+      NSURL *saverURL = [[libraryURL URLByAppendingPathComponent:@"Screen Savers"] URLByAppendingPathComponent:name];
+      [fm removeItemAtURL:saverURL error:nil];
+    }
   }
 
   // Saved preferences (address/duration, both possible on-disk locations).
@@ -381,7 +382,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
 
   NSAlert *done = [[NSAlert alloc] init];
   done.messageText = @"Uninstalled";
-  done.informativeText = @"FrameTVScreenSaver has been removed and all its saved data cleared from this Mac.";
+  done.informativeText = @"The Mantel screensaver has been removed and all its saved data cleared from this Mac.";
   [done addButtonWithTitle:@"OK"];
   [done runModal];
 }
@@ -415,7 +416,7 @@ static NSString *const kOriginDefaultsKey = @"FrameTVOrigin";
                                                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                                                     backing:NSBackingStoreBuffered
                                                       defer:NO];
-  window.title = @"Sign in to FrameTV";
+  window.title = @"Sign in to Mantel";
   window.delegate = self;
   self.signInWindow = window;
 

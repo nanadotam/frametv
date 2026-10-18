@@ -361,6 +361,14 @@ NSNotificationName const WVSSPreviewStopped = @"webviewscreensaver.preview.stopp
   WVSSTrace();
   if (@available(macOS 14.0, *)) {
     [self teardown];
+    // Since Sonoma, legacyScreenSaver is never told to stop and keeps the
+    // WebKit content processes (and their memory) alive after the saver is
+    // dismissed. Exiting is safe — macOS relaunches it on next activation.
+    if (!self.isPreview) {
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        exit(0);
+      });
+    }
   }
 }
 
