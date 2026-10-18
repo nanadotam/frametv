@@ -46,6 +46,16 @@ function bundledSaverPath(app) {
 
 const installedPath = () => path.join(SAVERS_DIR, SAVER_NAME);
 
+/** Same build? Compare the executables (the version string rarely changes). */
+function sameBuild(a, b) {
+  try {
+    const exe = (p) => fs.readFileSync(path.join(p, 'Contents', 'MacOS', 'Mantel'));
+    return exe(a).equals(exe(b));
+  } catch {
+    return false;
+  }
+}
+
 function bundleVersion(saverPath) {
   try {
     const plist = fs.readFileSync(path.join(saverPath, 'Contents', 'Info.plist'), 'utf8');
@@ -113,7 +123,7 @@ async function status(app) {
   return {
     installed,
     quarantined: installed ? await isQuarantined(installedPath()) : false,
-    upToDate: installed && bundleVersion(installedPath()) === bundleVersion(bundledSaverPath(app)),
+    upToDate: installed && sameBuild(installedPath(), bundledSaverPath(app)),
     connected,
     origin,
   };
@@ -184,4 +194,13 @@ async function openPrivacy() {
   await run('/usr/bin/open', ['x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension']).catch(() => {});
 }
 
-module.exports = { status, install, connect, openSettings, preview, openPrivacy, installedPath };
+/** After an app update, quietly refresh an installed screensaver. */
+async function refreshIfInstalled(app) {
+  if (fs.existsSync(installedPath()) && fs.existsSync(bundledSaverPath(app)) && !sameBuild(installedPath(), bundledSaverPath(app))) {
+    await install(app);
+    return true;
+  }
+  return false;
+}
+
+module.exports = { status, install, refreshIfInstalled, connect, openSettings, preview, openPrivacy, installedPath };

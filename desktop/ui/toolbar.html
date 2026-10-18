@@ -29,6 +29,10 @@
   }
   .pill:hover { background: color-mix(in srgb, var(--tint) 16%, transparent); color: var(--tint); }
   .loading .reload svg { animation: spin .8s linear infinite; }
+  .pill.update { background: linear-gradient(135deg, var(--tint-2), var(--tint) 55%, #e2366b); color: #fff; animation: glow 2.4s ease-in-out infinite; }
+  .pill.update:hover { color: #fff; filter: brightness(1.08); }
+  .pill.update:disabled { animation: none; opacity: .9; cursor: default; }
+  @keyframes glow { 0%,100% { box-shadow: 0 0 0 0 rgb(242 98 46 / .45); } 50% { box-shadow: 0 0 0 6px rgb(242 98 46 / 0); } }
 </style>
 </head>
 <body>
@@ -48,6 +52,7 @@
       </button>
     </div>
     <div class="title" id="title">Mantel</div>
+    <button class="pill update" id="update" title="Install the new version" style="display:none"></button>
     <button class="pill" id="setup" title="Set up the Mac screensaver">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
       Screensaver
@@ -58,13 +63,17 @@
   </div>
 <script>
   const $ = (id) => document.getElementById(id);
-  ['back', 'forward', 'home', 'reload', 'setup', 'help'].forEach((a) => ($(a).onclick = () => window.mantelToolbar.act(a)));
+  ['back', 'forward', 'home', 'reload', 'setup', 'help', 'update'].forEach((a) => ($(a).onclick = () => window.mantelToolbar.act(a)));
   window.mantelToolbar.onState((s) => {
     $('back').disabled = !s.canGoBack;
     $('forward').disabled = !s.canGoForward;
     $('title').textContent = s.section;
     $('bar').classList.toggle('loading', s.loading);
     $('setup').style.display = s.section === 'Screensaver setup' ? 'none' : '';
+    const u = $('update');
+    u.style.display = s.update ? '' : 'none';
+    u.disabled = s.updating !== null && s.updating !== undefined;
+    u.textContent = u.disabled ? `Updating… ${Math.round((s.updating || 0) * 100)}%` : `Update to ${s.update}`;
   });
   window.mantelToolbar.act('ready');
   document.addEventListener('dblclick', (e) => { if (e.target.id === 'bar' || e.target.id === 'title') window.mantelToolbar.act('zoom'); });

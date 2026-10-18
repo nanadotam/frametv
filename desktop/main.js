@@ -4,14 +4,13 @@
 //   • a guided screensaver setup that installs the bundled Mantel.saver
 //     and connects it to the signed-in account.
 
-const { app, BaseWindow, WebContentsView, BrowserWindow, ipcMain, shell, Menu, net, session, clipboard, nativeTheme } = require('electron');
+const { app, BaseWindow, WebContentsView, BrowserWindow, dialog, ipcMain, shell, Menu, net, session, clipboard, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const saver = require('./lib/screensaver');
 
 const SITE = process.env.MANTEL_URL || 'https://mantelapp.vercel.app';
 const SITE_ORIGIN = new URL(SITE).origin;
-const RELEASES_API = 'https://api.github.com/repos/nanadotam/frametv/releases/latest';
 const STATE_FILE = () => path.join(app.getPath('userData'), 'state.json');
 
 let win = null;
@@ -75,6 +74,8 @@ function sendToolbarState() {
     canGoForward: wc.navigationHistory.canGoForward(),
     loading: wc.isLoading(),
     section,
+    update: pendingUpdate?.version ?? null,
+    updating,
   });
   layout();
 }
@@ -257,6 +258,7 @@ ipcMain.on('toolbar:action', (event, action) => {
   if (action === 'home') openSite('/admin');
   if (action === 'setup') openSetup();
   if (action === 'help') openSite('/help');
+  if (action === 'update') runUpdate();
   if (action === 'zoom') win?.isMaximized() ? win.unmaximize() : win?.maximize();
 });
 
@@ -341,23 +343,59 @@ async function whoAmI() {
   }
 }
 
-// ── Update check (unsigned apps can't self-update; we point at the download) ─
+// ── Updates ──────────────────────────────────────────────────────────────────
+// Checks GitHub Releases at launch and every 6 hours; offers a one-click
+// update (download, swap, relaunch). See lib/updater.js.
 
-async function checkForUpdate() {
+const updater = require('./lib/updater');
+let pendingUpdate = null;
+let updating = null; // progress 0–1 while installing
+
+async function checkForUpdate({ manual = false } = {}) {
   try {
-    const res = await net.fetch(RELEASES_API, { headers: { Accept: 'application/vnd.github+json' } });
-    if (!res.ok) return;
-    const { tag_name } = await res.json();
-    const latest = String(tag_name || '').replace(/^[^\d]*/, '');
-    if (latest && latest !== app.getVersion() && latest.localeCompare(app.getVersion(), undefined, { numeric: true }) > 0) {
-      writeState({ updateAvailable: latest });
-    } else {
-      writeState({ updateAvailable: null });
-    }
-  } catch {
-    /* offline */
+    pendingUpdate = await updater.check();
+  } catch (err) {
+    if (manual) dialog.showMessageBox({ type: 'warning', message: 'Couldn’t check for updates', detail: 'Check your internet connection and try again.' });
+    return;
+  }
+  writeState({ updateAvailable: pendingUpdate?.version ?? null });
+  sendToolbarState();
+  if (!pendingUpdate) {
+    if (manual) dialog.showMessageBox({ type: 'info', message: 'You’re up to date', detail: `Mantel ${app.getVersion()} is the newest version.` });
+    return;
+  }
+  if (!manual && readState().skippedVersion === pendingUpdate.version) return;
+  if (process.env.MANTEL_AUTO_UPDATE) return runUpdate(); // test hook
+  const { response } = await dialog.showMessageBox(win ?? undefined, {
+    type: 'info',
+    message: `Mantel ${pendingUpdate.version} is available`,
+    detail: `You have ${app.getVersion()}. Updating takes about a minute. Mantel restarts by itself and keeps you signed in.`,
+    buttons: ['Update Now', 'Later', 'Skip This Version'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (response === 0) runUpdate();
+  if (response === 2) writeState({ skippedVersion: pendingUpdate.version });
+}
+
+async function runUpdate() {
+  if (!pendingUpdate || updating !== null) return;
+  updating = 0;
+  sendToolbarState();
+  try {
+    await updater.install(pendingUpdate, (p) => {
+      updating = p;
+      win?.setProgressBar(p);
+      sendToolbarState();
+    });
+  } catch (err) {
+    updating = null;
+    win?.setProgressBar(-1);
+    sendToolbarState();
+    dialog.showMessageBox({ type: 'warning', message: 'The update didn’t finish', detail: `${err.message}\n\nYou can also download the newest Mantel from mantelapp.vercel.app/download.` });
   }
 }
+
 ipcMain.handle('mantel:update', () => readState().updateAvailable ?? null);
 
 // ── Menu ─────────────────────────────────────────────────────────────────────
@@ -368,6 +406,7 @@ function buildMenu() {
       label: 'Mantel',
       submenu: [
         { role: 'about' },
+        { label: 'Check for Updates…', click: () => checkForUpdate({ manual: true }) },
         { type: 'separator' },
         { label: 'Set Up Screensaver…', accelerator: 'Cmd+Shift+S', click: openSetup },
         { label: 'Preview Screensaver', click: () => saver.preview() },
@@ -458,7 +497,12 @@ if (!app.requestSingleInstanceLock()) {
     session.defaultSession.setUserAgent(`${session.defaultSession.getUserAgent()} MantelDesktop/${app.getVersion()}`);
     buildMenu();
     createWindow();
-    checkForUpdate();
+    setTimeout(() => checkForUpdate(), 5000);
+    setInterval(() => checkForUpdate(), 6 * 60 * 60 * 1000);
+    if (readState().lastVersion !== app.getVersion()) {
+      saver.refreshIfInstalled(app).catch(() => {});
+      writeState({ lastVersion: app.getVersion(), updateAvailable: null });
+    }
     app.on('activate', () => {
       if (BaseWindow.getAllWindows().length === 0) createWindow();
     });
