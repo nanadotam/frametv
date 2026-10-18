@@ -19,8 +19,7 @@ export async function POST(request: NextRequest) {
       supabase
         .from('photos')
         .select('id, album_id, created_at')
-        .eq('user_id', auth.user.id)
-        .eq('media_type', 'video');
+        .eq('user_id', auth.user.id);
 
     const [byPrint, byName] = await Promise.all([
       videos().eq('metadata->>fingerprint', fingerprint),

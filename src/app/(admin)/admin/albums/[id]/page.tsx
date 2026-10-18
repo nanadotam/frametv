@@ -1,9 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import { UploadSimple, AppleLogo, ArrowsClockwise } from '@phosphor-icons/react';
+import { Button as MButton } from '@/components/m/Controls';
+import { toast } from '@/components/m/Toast';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, RefreshCw, Star, Trash2, RotateCw, Info, X, Film, Play, Copy } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { RefreshCw, Star, Trash2, RotateCw, Info, X, Play, Copy } from 'lucide-react';
 import { Button } from '@/components/admin/Button';
 import { Modal } from '@/components/admin/Modal';
 import type { Album, Photo } from '@/types/db';
@@ -178,13 +181,13 @@ function DuplicateDialog({
 
 export default function AlbumPhotosPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const [album, setAlbum] = useState<Album | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [infoPhoto, setInfoPhoto] = useState<Photo | null>(null);
   const [rotatingId, setRotatingId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const videoInput = useRef<HTMLInputElement>(null);
   const uploads = useVideoUploads({
     albumId: id,
@@ -217,6 +220,11 @@ export default function AlbumPhotosPage() {
   }, [id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('from') === 'apple') {
+      toast('Click “From Apple Photos”, then choose Photos in the sidebar of the window that opens');
+    }
+  }, []);
 
   const toggleFavorite = async (photo: Photo) => {
     const next = !photo.is_favorite;
@@ -273,43 +281,80 @@ export default function AlbumPhotosPage() {
   };
 
   return (
-    <div className="px-4 pt-4 pb-28 md:p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-5 pt-2">
-        <button
-          onClick={() => router.back()}
-          className="w-10 h-10 rounded-xl bg-fg/10 flex items-center justify-center text-label-2 hover:text-label hover:bg-fg/15 transition-colors"
-        >
-          <ArrowLeft size={18} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <Link href="/admin/albums" className="mb-1 inline-block text-[17px] text-tint">‹ Library</Link>
-          <h1 className="text-[34px] font-bold leading-tight tracking-[-0.02em] text-label truncate">
-            {loading ? 'Loading…' : (album?.name ?? 'Album')}
-          </h1>
-          <p className="text-xs text-label-2">
-            {photos.length - videoCount} photos{videoCount > 0 && ` · ${videoCount} video${videoCount !== 1 ? 's' : ''}`}
-          </p>
+    <div
+      className="relative px-4 pt-4 pb-28 md:p-6 max-w-5xl mx-auto min-h-full"
+      onDragOver={(e) => {
+        if (album?.source_type === 'drive' || !e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (album?.source_type === 'drive') return;
+        e.preventDefault();
+        setDragging(false);
+        handleVideoFiles(e.dataTransfer.files);
+      }}
+    >
+      {dragging && (
+        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-tint/15 backdrop-blur-[2px]">
+          <div className="rounded-[24px] bg-elevated px-10 py-8 text-center shadow-2xl">
+            <UploadSimple size={44} className="mx-auto text-tint" />
+            <p className="mt-3 text-[20px] font-bold text-label">Drop to add to {album?.name}</p>
+            <p className="text-[15px] text-label-2">Photos are compressed on your device</p>
+          </div>
         </div>
+      )}
+      {/* Header */}
+      <div className="mb-5 pt-2">
+        <Link href="/admin/albums" className="mb-1 inline-block text-[17px] text-tint">‹ Library</Link>
+        <h1 className="truncate text-[34px] font-bold leading-tight tracking-[-0.02em] text-label">
+          {loading ? 'Loading…' : (album?.name ?? 'Album')}
+        </h1>
+        <p className="text-[15px] text-label-2">
+          {photos.length - videoCount} photo{photos.length - videoCount === 1 ? '' : 's'}
+          {videoCount > 0 && ` · ${videoCount} video${videoCount !== 1 ? 's' : ''}`}
+          {album?.source_type === 'drive' && ' · from Google Drive'}
+        </p>
         <input
           ref={videoInput}
           type="file"
-          accept="video/*"
+          accept="image/*,video/*,.heic,.heif"
           multiple
           className="hidden"
           onChange={(e) => handleVideoFiles(e.target.files)}
         />
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => videoInput.current?.click()}
-        >
-          <Film size={15} /> Add video
-        </Button>
-        {album?.source_type === 'drive' && (
-          <Button size="sm" variant="secondary" onClick={syncDrive} loading={syncing}>
-            <RefreshCw size={15} /> Sync from Drive
-          </Button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {album?.source_type !== 'drive' && (
+            <>
+              <MButton size="md" icon={<UploadSimple size={18} weight="bold" />} onClick={() => videoInput.current?.click()}>
+                Add photos &amp; videos
+              </MButton>
+              <MButton
+                size="md"
+                variant="gray"
+                icon={<AppleLogo size={18} weight="fill" />}
+                onClick={() => {
+                  toast('Choose “Photos” in the sidebar, then pick photos or a whole album');
+                  setTimeout(() => videoInput.current?.click(), 600);
+                }}
+              >
+                From Apple Photos
+              </MButton>
+            </>
+          )}
+          {album?.source_type === 'drive' && (
+            <MButton size="md" variant="gray" icon={<ArrowsClockwise size={18} weight="bold" />} onClick={syncDrive} loading={syncing}>
+              Sync from Drive
+            </MButton>
+          )}
+        </div>
+        {album?.source_type !== 'drive' && (
+          <p className="mt-3 text-[13px] text-label-2">
+            Tip: drag photos straight from Finder or the Photos app onto this page. They’re compressed on your device to save space without losing quality.
+          </p>
         )}
       </div>
 
@@ -317,7 +362,15 @@ export default function AlbumPhotosPage() {
       {loading ? (
         <div className="text-label-2 text-sm text-center py-12">Loading photos…</div>
       ) : photos.length === 0 ? (
-        <div className="text-label-2 text-sm text-center py-12">Nothing in this album yet.</div>
+        <button
+          type="button"
+          onClick={() => album?.source_type !== 'drive' && videoInput.current?.click()}
+          className="flex w-full flex-col items-center rounded-[20px] border-2 border-dashed border-separator px-6 py-14 text-center"
+        >
+          <UploadSimple size={36} className="text-tint" />
+          <p className="mt-3 text-[17px] font-semibold text-label">{album?.source_type === 'drive' ? 'No photos synced yet' : 'Drop photos and videos here'}</p>
+          <p className="mt-1 text-[15px] text-label-2">{album?.source_type === 'drive' ? 'Add photos to the Drive folder, then tap Sync from Drive' : 'or click to choose from your computer or Apple Photos'}</p>
+        </button>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {photos.map((photo) => {

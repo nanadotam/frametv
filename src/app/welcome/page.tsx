@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AppleLogo, GoogleDriveLogo, Television, Globe, CheckCircle, ArrowRight } from '@phosphor-icons/react';
+import { AppleLogo, GoogleDriveLogo, Television, Globe, CheckCircle, ArrowRight, UploadSimple, Images } from '@phosphor-icons/react';
+import { useVideoUploads } from '@/lib/video/useVideoUploads';
 import BrandMark from '@/components/BrandMark';
 import { Button, TextInput } from '@/components/m/Controls';
 import { IconTile } from '@/components/m/List';
@@ -29,9 +30,43 @@ export default function WelcomePage() {
   const [added, setAdded] = useState(0);
   const [look, setLook] = useState('slideshow-single');
   const [inApp, setInApp] = useState(false);
+  const [source, setSource] = useState<null | 'upload' | 'apple' | 'drive' | 'gphotos'>(null);
+  const [albumId, setAlbumId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [quotaLabel, setQuotaLabel] = useState('500 MB');
+  const fileInput = useRef<HTMLInputElement>(null);
+  const uploads = useVideoUploads({ albumId: albumId ?? '', onAdded: () => {}, onReplaced: () => {}, source: source === 'apple' ? 'apple-photos' : 'upload' });
+
+  // Uploads go into one "My Photos" album that's put straight on display.
+  const chooseSource = async (s: 'upload' | 'apple' | 'drive' | 'gphotos') => {
+    if (s === 'gphotos') {
+      window.location.assign('/api/google-photos/start');
+      return;
+    }
+    setSource(s);
+    if ((s === 'upload' || s === 'apple') && !albumId) {
+      const res = await fetch('/api/albums', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: s === 'apple' ? 'From Photos' : 'My Photos', source_type: 'upload', display_order: 0 }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSource(null);
+        return toast.error(j.error ?? 'Couldn’t create your album.');
+      }
+      setAlbumId(j.album.id);
+      await fetch('/api/display-state', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active_album_ids: [j.album.id] }),
+      });
+    }
+  };
 
   useEffect(() => {
     setInApp(!!window.mantel?.isApp);
+    fetch('/api/videos/usage').then((r) => (r.ok ? r.json() : null)).then((u) => u && setQuotaLabel(`${Math.round(u.quota / 1024 / 1024)} MB`));
     fetch('/api/auth/me')
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
@@ -105,27 +140,86 @@ export default function WelcomePage() {
             {step === 'photos' && (
               <>
                 <h1 className="text-[34px] font-bold leading-[1.1] tracking-[-0.02em]">
-                  {name ? `Hi ${name}! ` : ''}Let’s add your photos.
+                  {name ? `Hi ${name}! ` : ''}Let’s set up your photo library.
                 </h1>
                 <p className="text-[17px] leading-relaxed text-label-2">
-                  Mantel shows photos straight from a Google Drive folder. They stay in <b className="text-label">your</b> Drive, safe
-                  and backed up, and anything you add there shows up on your screens automatically.
+                  Bring in photos from wherever they live. You can add more sources later in <b className="text-label">Library</b>.
                 </p>
-                <div className="space-y-3 rounded-[18px] bg-cell p-4 shadow-cell">
-                  <div className="flex items-center gap-3">
-                    <IconTile tone="blue" size={40}><GoogleDriveLogo size={24} weight="fill" /></IconTile>
-                    <p className="text-[15px] leading-snug">
-                      In Drive: <b>Share</b> → <b>Anyone with the link</b> → <b>Copy link</b>, then paste it here.
-                    </p>
+
+                {!source && (
+                  <div className="space-y-3">
+                    {[
+                      { id: 'upload' as const, tone: 'ember' as const, icon: <UploadSimple size={26} weight="bold" />, title: 'From this computer', body: `Drag in photos and videos. Compressed on your device, up to ${quotaLabel} free.` },
+                      { id: 'apple' as const, tone: 'gray' as const, icon: <AppleLogo size={26} weight="fill" />, title: 'From Apple Photos', body: 'Pick photos or whole albums from the Photos app.' },
+                      { id: 'drive' as const, tone: 'blue' as const, icon: <GoogleDriveLogo size={26} weight="fill" />, title: 'Google Drive folder', body: 'Best for big libraries: unlimited, and new photos appear by themselves.' },
+                      { id: 'gphotos' as const, tone: 'green' as const, icon: <Images size={26} weight="fill" />, title: 'Google Photos', body: 'Choose from your Google Photos library.' },
+                    ].map((o) => (
+                      <button key={o.id} type="button" onClick={() => chooseSource(o.id)} className="pressable flex w-full items-center gap-4 rounded-[18px] bg-cell p-4 text-left shadow-cell">
+                        <IconTile tone={o.tone} size={48}>{o.icon}</IconTile>
+                        <div className="flex-1">
+                          <p className="text-[17px] font-semibold">{o.title}</p>
+                          <p className="text-[13px] leading-snug text-label-2">{o.body}</p>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                  <TextInput value={driveUrl} onChange={(e) => setDriveUrl(e.target.value)} placeholder="Paste Drive folder link" inputMode="url" />
-                </div>
-                <Button block size="xl" onClick={addDrive} loading={busy} disabled={!driveUrl.includes('drive.google.com')}>
-                  Add photos
-                </Button>
-                <button type="button" onClick={() => setStep('look')} className="w-full py-2 text-center text-[15px] font-medium text-tint">
-                  I’ll do this later
-                </button>
+                )}
+
+                {(source === 'upload' || source === 'apple') && albumId && (
+                  <>
+                    <input
+                      ref={fileInput}
+                      type="file"
+                      accept="image/*,video/*,.heic,.heif"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => { if (e.target.files?.length) uploads.enqueue(Array.from(e.target.files)); e.target.value = ''; }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInput.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                      onDragLeave={() => setDragging(false)}
+                      onDrop={(e) => { e.preventDefault(); setDragging(false); uploads.enqueue(Array.from(e.dataTransfer.files)); }}
+                      className={cn('flex w-full flex-col items-center rounded-[22px] border-2 border-dashed px-6 py-12 text-center transition-colors', dragging ? 'border-tint bg-tint/10' : 'border-separator bg-cell')}
+                    >
+                      {source === 'apple' ? <AppleLogo size={40} weight="fill" className="text-label" /> : <UploadSimple size={40} className="text-tint" />}
+                      <p className="mt-3 text-[18px] font-semibold">{source === 'apple' ? 'Click, then choose “Photos” in the sidebar' : 'Drop photos and videos here'}</p>
+                      <p className="mt-1 text-[14px] text-label-2">
+                        {source === 'apple' ? 'Or drag photos straight out of the Photos app onto this box.' : 'or click to choose them'}
+                      </p>
+                    </button>
+                    {uploads.items.length > 0 && (
+                      <p className="text-center text-[15px] text-label-2">
+                        {uploads.items.filter((i) => i.status === 'done').length} of {uploads.items.length} added
+                        {uploads.busy ? '. Compressing…' : ''}
+                      </p>
+                    )}
+                    <Button block size="xl" onClick={() => setStep('look')} disabled={!uploads.items.some((i) => i.status === 'done')}>
+                      Continue
+                    </Button>
+                    <button type="button" onClick={() => setSource(null)} className="w-full py-2 text-center text-[15px] font-medium text-tint">Choose a different source</button>
+                  </>
+                )}
+
+                {source === 'drive' && (
+                  <>
+                    <div className="space-y-3 rounded-[18px] bg-cell p-4 shadow-cell">
+                      <p className="text-[15px] leading-snug">
+                        In Google Drive, make a folder (e.g. “Mantel”) and drop your photos in. Then <b>Share</b> → <b>Anyone with the link</b> → <b>Copy link</b> and paste it here.
+                      </p>
+                      <TextInput value={driveUrl} onChange={(e) => setDriveUrl(e.target.value)} placeholder="Paste Drive folder link" inputMode="url" />
+                    </div>
+                    <Button block size="xl" onClick={addDrive} loading={busy} disabled={!driveUrl.includes('drive.google.com')}>Add photos</Button>
+                    <button type="button" onClick={() => setSource(null)} className="w-full py-2 text-center text-[15px] font-medium text-tint">Choose a different source</button>
+                  </>
+                )}
+
+                {!source && (
+                  <button type="button" onClick={() => setStep('look')} className="w-full py-2 text-center text-[15px] font-medium text-tint">
+                    I’ll do this later
+                  </button>
+                )}
               </>
             )}
 

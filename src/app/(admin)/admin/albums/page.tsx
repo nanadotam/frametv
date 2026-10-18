@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  GoogleDriveLogo, FilmStrip, Plus, ArrowsClockwise, Trash, CheckCircle, Images, ShieldCheck, CaretRight,
+  GoogleDriveLogo, FilmStrip, Plus, ArrowsClockwise, Trash, CheckCircle, Images, ShieldCheck, CaretRight, UploadSimple, AppleLogo,
 } from '@phosphor-icons/react';
 import { Page } from '@/components/m/Page';
 import { Section, Row, IconTile } from '@/components/m/List';
@@ -29,6 +29,7 @@ export default function LibraryPage() {
   const [manage, setManage] = useState<Album | null>(null);
   const [driveUrl, setDriveUrl] = useState('');
   const [name, setName] = useState('');
+  const [uploadFrom, setUploadFrom] = useState<'upload' | 'apple-photos'>('upload');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -45,6 +46,13 @@ export default function LibraryPage() {
 
   useEffect(() => {
     load();
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('add') === '1') setSheet('add');
+    const g = q.get('gphotos');
+    if (g === 'unavailable') toast.error('Google Photos isn’t switched on yet. Use a Drive folder or upload for now.');
+    if (g === 'denied') toast.error('Google Photos access wasn’t allowed.');
+    if (g === 'error') toast.error('Google Photos didn’t connect. Try again.');
+    if (g || q.get('add')) window.history.replaceState({}, '', '/admin/albums');
   }, [load]);
 
   const addDrive = async () => {
@@ -79,7 +87,7 @@ export default function LibraryPage() {
     const j = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) return toast.error(j.error ?? 'Couldn’t create the album.');
-    router.push(`/admin/albums/${j.album.id}`);
+    router.push(`/admin/albums/${j.album.id}${uploadFrom === 'apple-photos' ? '?from=apple' : ''}`);
   };
 
   const toggleOnDisplay = async (id: string) => {
@@ -139,7 +147,7 @@ export default function LibraryPage() {
             </div>
           }
           title="Add your first album"
-          body="Point Mantel at a Google Drive folder of photos. Your photos stay in your Drive. We only show them."
+          body="Upload from this computer or Apple Photos, or point Mantel at a Google Drive folder."
           action={<Button block size="xl" onClick={() => setSheet('add')}>Add an album</Button>}
         />
       ) : (
@@ -163,7 +171,7 @@ export default function LibraryPage() {
                 <div className="flex items-center gap-2 px-3 py-2.5">
                   <button type="button" onClick={() => setManage(a)} className="min-w-0 flex-1 text-left">
                     <p className="truncate text-[15px] font-semibold">{a.name}</p>
-                    <p className="text-[12px] text-label-2">{a.source_type === 'upload' ? 'Videos' : 'Google Drive'}</p>
+                    <p className="text-[12px] text-label-2">{a.source_type === 'upload' ? 'Uploads' : 'Google Drive'}</p>
                   </button>
                   <button
                     type="button"
@@ -182,11 +190,11 @@ export default function LibraryPage() {
       )}
 
       {usage && (
-        <Section header="Video storage" footer="Photos don’t count: they stay in your Google Drive. Uploaded videos are compressed on your device before they’re stored.">
+        <Section header="Mantel storage" footer="Uploads are compressed on your device: high quality, a fraction of the size. Google Drive albums don’t count.">
           <div className="px-4 py-3.5">
             <div className="flex justify-between text-[15px]">
               <span>{mb(usage.used)} of {mb(usage.quota)}</span>
-              <span className="text-label-2">{usage.count} video{usage.count === 1 ? '' : 's'}</span>
+              <span className="text-label-2">{(usage as { photos?: number }).photos ?? 0} photos · {(usage as { videos?: number }).videos ?? usage.count} videos</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-fill-2">
               <div className={cn('h-full rounded-full', pct > 90 ? 'bg-bad' : 'bg-ember')} style={{ width: `${pct}%` }} />
@@ -196,25 +204,30 @@ export default function LibraryPage() {
       )}
 
       {/* ── Add ── */}
-      <Sheet open={sheet === 'add'} onOpenChange={(o) => !o && setSheet(null)} title="Add an album">
-        <button type="button" onClick={() => setSheet('drive')} className="pressable flex w-full items-center gap-4 rounded-[18px] bg-cell p-4 text-left shadow-cell">
-          <IconTile tone="blue" size={52}><GoogleDriveLogo size={30} weight="fill" /></IconTile>
-          <div className="flex-1">
-            <p className="flex items-center gap-2 text-[17px] font-semibold">
-              Photos from Google Drive <span className="rounded-full bg-ok/15 px-2 py-0.5 text-[11px] font-bold uppercase text-ok">Best</span>
-            </p>
-            <p className="text-[13px] leading-snug text-label-2">Your photos stay in your own Drive. Add new ones there and Mantel picks them up.</p>
-          </div>
-          <CaretRight size={16} weight="bold" className="text-label-3" />
-        </button>
-        <button type="button" onClick={() => setSheet('video')} className="pressable flex w-full items-center gap-4 rounded-[18px] bg-cell p-4 text-left shadow-cell">
-          <IconTile tone="purple" size={52}><FilmStrip size={30} weight="fill" /></IconTile>
-          <div className="flex-1">
-            <p className="text-[17px] font-semibold">Upload videos</p>
-            <p className="text-[13px] leading-snug text-label-2">Short clips that loop silently. They’re compressed on your device first.</p>
-          </div>
-          <CaretRight size={16} weight="bold" className="text-label-3" />
-        </button>
+      <Sheet open={sheet === 'add'} onOpenChange={(o) => !o && setSheet(null)} title="Add photos" description="Pick where your photos are. You can mix and match.">
+        {[
+          { key: 'upload', tone: 'ember' as const, icon: <UploadSimple size={28} weight="bold" />, title: 'From this computer', body: 'Photos and videos, compressed on your device. Uses your Mantel storage.', badge: null, onClick: () => { setUploadFrom('upload'); setSheet('video'); } },
+          { key: 'apple', tone: 'gray' as const, icon: <AppleLogo size={28} weight="fill" />, title: 'From Apple Photos', body: 'Pick photos or whole albums from the Photos app on this Mac.', badge: null, onClick: () => { setUploadFrom('apple-photos'); setName('From Photos'); setSheet('video'); } },
+          { key: 'drive', tone: 'blue' as const, icon: <GoogleDriveLogo size={28} weight="fill" />, title: 'Google Drive folder', body: 'Best for big libraries. Doesn’t use your Mantel storage, and new photos appear automatically.', badge: 'Most space', onClick: () => setSheet('drive') },
+          { key: 'gphotos', tone: 'green' as const, icon: <Images size={28} weight="fill" />, title: 'Google Photos', body: 'Choose photos from your Google Photos library.', badge: null, onClick: () => { window.location.href = '/api/google-photos/start'; } },
+        ].map((o) => (
+          <button key={o.key} type="button" onClick={o.onClick} className="pressable flex w-full items-center gap-4 rounded-[18px] bg-cell p-4 text-left shadow-cell">
+            <IconTile tone={o.tone} size={52}>{o.icon}</IconTile>
+            <div className="flex-1">
+              <p className="flex items-center gap-2 text-[17px] font-semibold">
+                {o.title}
+                {o.badge && <span className="rounded-full bg-ok/15 px-2 py-0.5 text-[11px] font-bold uppercase text-ok">{o.badge}</span>}
+              </p>
+              <p className="text-[13px] leading-snug text-label-2">{o.body}</p>
+            </div>
+            <CaretRight size={16} weight="bold" className="text-label-3" />
+          </button>
+        ))}
+        {usage && (
+          <p className="px-1 text-[13px] text-label-2">
+            You’ve used {mb(usage.used)} of {mb(usage.quota)} Mantel storage. Need more? Put photos in a Google Drive folder. It doesn’t count.
+          </p>
+        )}
       </Sheet>
 
       <Sheet open={sheet === 'drive'} onOpenChange={(o) => !o && setSheet(null)} title="Google Drive folder">
@@ -231,9 +244,9 @@ export default function LibraryPage() {
         <Button block size="xl" onClick={addDrive} loading={busy} disabled={!driveUrl.includes('drive.google.com')}>Add folder</Button>
       </Sheet>
 
-      <Sheet open={sheet === 'video'} onOpenChange={(o) => !o && setSheet(null)} title="New video album">
-        <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Graduation" autoFocus />
-        <Button block size="xl" onClick={createVideoAlbum} loading={busy} disabled={!name.trim()}>Create and add videos</Button>
+      <Sheet open={sheet === 'video'} onOpenChange={(o) => !o && setSheet(null)} title="Name your album" description={uploadFrom === 'apple-photos' ? 'Next, pick photos from the Photos app.' : 'Next, add photos and videos from your computer.'}>
+        <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Family, Graduation, Summer 2026" autoFocus />
+        <Button block size="xl" onClick={createVideoAlbum} loading={busy} disabled={!name.trim()}>Create album</Button>
       </Sheet>
 
       {/* ── Manage album ── */}

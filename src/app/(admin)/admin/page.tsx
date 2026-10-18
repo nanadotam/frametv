@@ -316,6 +316,17 @@ export default function NowPage() {
         </div>
       </div>
 
+      {loaded && visibleAlbums.length === 0 && (
+        <Link href="/admin/albums?add=1" className="pressable bg-ember flex items-center gap-4 rounded-[22px] p-5 text-white shadow-[0_12px_30px_-12px_var(--m-tint)]">
+          <Images size={40} weight="fill" />
+          <div className="flex-1">
+            <p className="text-[19px] font-bold">Set up your photo library</p>
+            <p className="text-[14px] text-white/85">Upload from this computer or Apple Photos, or connect Google Drive or Google Photos.</p>
+          </div>
+          <CaretRight size={20} weight="bold" />
+        </Link>
+      )}
+
       {/* ── Albums on display ── */}
       {activeId && ALBUM_LOOKS.has(activeId) && (
         <Section

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Photo } from '@/types/db';
 import { uploadVideo, findDuplicates, copyVideo, type DuplicateMatch } from './upload';
 import { fingerprintFile } from './fingerprint';
+import { isImageFile } from '@/lib/photos/compress';
+import { uploadPhoto } from '@/lib/photos/upload';
 
 export type UploadStatus =
   | 'queued'
@@ -62,6 +64,8 @@ export function itemFraction(item: UploadItem): number {
 
 interface Options {
   albumId: string;
+  /** Where files came from (upload, apple-photos…), stored on each photo. */
+  source?: string;
   onAdded: (video: Photo) => void;
   /** New upload replacing existing copies in this album. */
   onReplaced: (video: Photo, oldIds: string[]) => void;
@@ -75,7 +79,7 @@ let keySeq = 0;
  * saturates the encoder), and a failure is recorded on that row without
  * stopping the rest.
  */
-export function useVideoUploads({ albumId, onAdded, onReplaced }: Options) {
+export function useVideoUploads({ albumId, onAdded, onReplaced, source = 'upload' }: Options) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [duplicatePrompt, setDuplicatePrompt] = useState<DuplicatePrompt | null>(null);
 
@@ -115,8 +119,10 @@ export function useVideoUploads({ albumId, onAdded, onReplaced }: Options) {
     const { key, file } = item;
     update(key, { status: 'checking', startedAt: Date.now(), progress: 0 });
 
+    const isPhoto = isImageFile(file);
     const fingerprint = await fingerprintFile(file);
-    const matches = await findDuplicates(fingerprint, file.name);
+    // Photos only check this album (they're cheap to re-add elsewhere).
+    const matches = (await findDuplicates(fingerprint, isPhoto ? '' : file.name)).filter((m) => !isPhoto || m.albumId === albumId);
     const here = matches.filter((m) => m.albumId === albumId);
     const elsewhere = matches.filter((m) => m.albumId !== albumId);
 
@@ -160,9 +166,11 @@ export function useVideoUploads({ albumId, onAdded, onReplaced }: Options) {
       return;
     }
 
-    const video = await uploadVideo(file, albumId, fingerprint, (s) =>
-      update(key, { status: s.stage, progress: 'progress' in s ? s.progress : 0 })
-    );
+    const onStage = (s: { stage: UploadStatus; progress?: number }) =>
+      update(key, { status: s.stage, progress: 'progress' in s ? s.progress ?? 0 : 0 });
+    const video = isPhoto
+      ? await uploadPhoto(file, albumId, fingerprint, onStage, source)
+      : await uploadVideo(file, albumId, fingerprint, onStage);
     if (choice === 'replace') {
       const oldIds = here.map((m) => m.id);
       await Promise.all(oldIds.map((oid) => fetch(`/api/photos/${oid}`, { method: 'DELETE' })));
