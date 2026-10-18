@@ -192,7 +192,10 @@ ipcMain.handle('mantel:open-site', (event, pathname = '/admin') => openSite(Stri
 ipcMain.handle('mantel:saver-status', async (event) => {
   if (!fromLocal(event)) return null;
   const [status, account] = await Promise.all([saver.status(app), whoAmI()]);
-  return { ...status, account };
+  // Fall back to our own record of a successful connect, in case macOS
+  // won't let us read the screensaver's settings back.
+  const connected = status.connected || (!!readState().saverConnectedAt && status.installed);
+  return { ...status, connected, account };
 });
 
 ipcMain.handle('mantel:install-saver', async (event) => {
@@ -208,6 +211,7 @@ ipcMain.handle('mantel:connect-saver', async (event) => {
   if (!res.ok) throw new Error('Mantel couldn’t create a screensaver link. Check your internet connection.');
   const { token, deviceToken } = await res.json();
   await saver.connect({ origin: SITE_ORIGIN, token, deviceToken });
+  writeState({ saverConnectedAt: new Date().toISOString() });
   return { ok: true };
 });
 

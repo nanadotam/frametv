@@ -72,10 +72,16 @@ async function status(app) {
   try {
     const uuid = await hardwareUUID();
     for (const dir of PREF_DIRS) {
-      const file = path.join(dir, `${MODULE}.${uuid}.plist`);
-      if (!fs.existsSync(file)) continue;
-      const { stdout } = await run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', file]);
-      const prefs = JSON.parse(stdout);
+      // Ask cfprefsd (`defaults export`) rather than reading the plist file:
+      // a fresh `defaults import` may not be flushed to disk yet.
+      const domain = path.join(dir, `${MODULE}.${uuid}`);
+      const { stdout } = await run('/usr/bin/defaults', ['export', domain, '-']).catch(() => ({ stdout: '' }));
+      if (!stdout) continue;
+      const tmp = path.join(os.tmpdir(), `mantel-status-${process.pid}.plist`);
+      fs.writeFileSync(tmp, stdout);
+      const json = await run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', tmp]).catch(() => ({ stdout: '{}' }));
+      fs.rmSync(tmp, { force: true });
+      const prefs = JSON.parse(json.stdout || '{}');
       const url = prefs.kScreenSaverURLList?.[0]?.kScreenSaverURL;
       if (url && url.startsWith('http')) {
         connected = true;

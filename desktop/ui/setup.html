@@ -168,7 +168,7 @@
     $('connect-text').textContent = s.connected ? 'Connected. The screensaver will show your Mantel display.' : 'Points the screensaver at your photos and looks.';
     $('connect').textContent = s.connected ? 'Reconnect' : 'Connect';
     setStep('s-connect', !installed ? 'locked' : s.connected ? 'done' : 'current');
-    setStep('s-choose', s.connected && installed ? 'current' : 'locked');
+    setStep('s-choose', s.installed ? 'current' : 'locked');
   }
 
   async function busy(btn, spin, err, fn) {
