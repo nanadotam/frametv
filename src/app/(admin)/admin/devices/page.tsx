@@ -13,6 +13,7 @@ import { Sheet } from '@/components/m/Sheet';
 import { toast } from '@/components/m/Toast';
 import { lookName } from '@/components/looks/catalog';
 import { MAC_DOWNLOAD_URL } from '@/lib/links';
+import { LIVE_WINDOW_MS } from '@/lib/polling';
 import type { DisplayDevice } from '@/types/db';
 
 type Session = {
@@ -189,7 +190,7 @@ export default function DevicesPage() {
           <Row icon={<IconTile tone="gray"><Monitor size={18} weight="bold" /></IconTile>} title="No screens yet" subtitle="Add one above" />
         )}
         {screens.slice(0, 12).map((d) => {
-          const isLive = now - new Date(d.last_seen_at).getTime() < 90_000;
+          const isLive = now - new Date(d.last_seen_at).getTime() < LIVE_WINDOW_MS;
           return (
             <Row
               key={d.id}

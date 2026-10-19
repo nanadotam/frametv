@@ -1,8 +1,10 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
+import { subscribeUserTable } from '@/lib/supabase/userChannel';
+import { FALLBACK_POLL_MS } from '@/lib/polling';
 
 interface Location {
   lat: number;
@@ -56,14 +58,21 @@ async function fetchSettings(): Promise<{ location: Location | null; dim: DimWin
 
 export function useSettings(): SettingsResult {
   const { location, dim, setLocation, setDim } = useSettingsStore();
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: fetchSettings,
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: FALLBACK_POLL_MS,
     refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    return subscribeUserTable('settings', () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    });
+  }, [queryClient]);
 
   useEffect(() => {
     if (data) {

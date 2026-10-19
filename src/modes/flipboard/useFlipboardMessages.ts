@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { subscribeUserTable } from '@/lib/supabase/userChannel';
+import { FALLBACK_POLL_MS, visibleInterval } from '@/lib/polling';
 import type { Reminder, ReminderPriority, FlipboardMessage } from '@/types/db';
 
 export interface FlipMessage {
@@ -88,10 +89,10 @@ export function useFlipboardMessages({ sources, secondsPerMessage }: UseFlipboar
       } catch { /* network error — skip */ }
     };
     fetchMessages();
-    const id = setInterval(fetchMessages, 5_000);
+    const stopPolling = visibleInterval(fetchMessages, FALLBACK_POLL_MS);
     const unsubscribe = subscribeUserTable('flipboard_messages', fetchMessages);
     return () => {
-      clearInterval(id);
+      stopPolling();
       unsubscribe();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

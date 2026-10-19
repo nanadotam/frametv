@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { subscribeUserTable } from '@/lib/supabase/userChannel';
+import { FALLBACK_POLL_MS } from '@/lib/polling';
 import type { Schedule } from '@/types/db';
 
 async function fetchSchedules(): Promise<Schedule[]> {
@@ -19,7 +20,7 @@ export function useSchedules(): Schedule[] {
     queryKey: ['schedules'],
     queryFn: fetchSchedules,
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: FALLBACK_POLL_MS,
   });
 
   useEffect(() => {

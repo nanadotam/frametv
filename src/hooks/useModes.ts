@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { subscribeModesChanges } from '@/lib/supabase/displayRealtimeChannel';
+import { FALLBACK_POLL_MS, visibleInterval } from '@/lib/polling';
 import type { Mode } from '@/types/db';
 
 // Module-level state shared across all instances (like a mini-store)
@@ -44,17 +45,13 @@ function subscribeBrowserSync() {
   browserSyncStarted = true;
 
   const refetch = () => fetchModes();
-  const onVisibilityChange = () => {
-    if (document.visibilityState === 'visible') refetch();
-  };
   const onStorage = (event: StorageEvent) => {
     if (event.key === 'frametv:modes-invalidated') refetch();
   };
 
   window.addEventListener('focus', refetch);
-  document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('storage', onStorage);
-  setInterval(refetch, 60_000);
+  visibleInterval(refetch, FALLBACK_POLL_MS);
 
   if ('BroadcastChannel' in window) {
     const channel = new BroadcastChannel('frametv:modes');

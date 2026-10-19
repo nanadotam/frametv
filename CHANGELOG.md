@@ -113,6 +113,14 @@ See `VERSIONING.md` for how versions get bumped and tagged.
   repeats until every photo and video has had a turn.
 
 ### Changed
+- Screens poll far less, to stay inside Vercel Hobby limits. Live updates
+  already arrive over Broadcast, so the 60 s data polls (5 s for Flipboard)
+  are now a 10-minute safety net, and every poll pauses while the window is
+  hidden and catches up when it's shown again. Spotify now-playing checks
+  every 60 s when idle and at the end of each track while playing (was
+  15 s / 3 s, in every mode). Heartbeats drop from 30 s to 5 min, and the
+  admin "live" window widens to 6 min to match. `/tv` polls every 60 s
+  (was 5 s, plus a heartbeat on every poll).
 - Video uploads cap the output at 30 fps — smaller files, no visible
   difference on a wall TV.
 - Photo modes now load images only (`/api/photos` filters by `media_type`).

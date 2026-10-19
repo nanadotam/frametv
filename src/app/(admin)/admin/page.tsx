@@ -17,6 +17,7 @@ import { LivePreview } from '@/components/looks/LivePreview';
 import { QuickSettingsContent, MODES_WITH_SETTINGS, type Cfg } from '@/components/looks/QuickSettings';
 import { invalidateModes } from '@/hooks/useModes';
 import { cn } from '@/lib/utils';
+import { LIVE_WINDOW_MS, visibleInterval } from '@/lib/polling';
 import type { DisplayState, Album, Schedule, Mode, DisplayDevice } from '@/types/db';
 
 type ClockConfig = { enabled: boolean; position: string; font: string };
@@ -86,8 +87,7 @@ export default function NowPage() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 15_000);
-    return () => clearInterval(id);
+    return visibleInterval(load, 15_000);
   }, [load]);
 
   useEffect(() => {
@@ -208,7 +208,7 @@ export default function NowPage() {
   const coverAlbum = activeAlbums.find((a) => a.cover_photo_id) ?? visibleAlbums.find((a) => a.cover_photo_id);
   const paused = state?.is_paused ?? false;
   const screens = devices.filter((d) => d.route !== 'admin');
-  const liveScreens = screens.filter((d) => now - new Date(d.last_seen_at).getTime() < 90_000);
+  const liveScreens = screens.filter((d) => now - new Date(d.last_seen_at).getTime() < LIVE_WINDOW_MS);
   const enabledModeIds = new Set(modes.filter((m) => m.is_enabled !== false).map((m) => m.id));
   const pickable = LOOKS.filter((l) => enabledModeIds.size === 0 || enabledModeIds.has(l.id));
 

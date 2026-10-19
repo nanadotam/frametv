@@ -19,6 +19,7 @@ import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
 import { Input } from '@/components/ui/input';
 import { Maximize2, Minimize2, Search, X, Play, Loader2 } from 'lucide-react';
 import type { DisplayState, Mode } from '@/types/db';
+import { HEARTBEAT_MS, isPageVisible } from '@/lib/polling';
 
 // ─── Spotify modes ────────────────────────────────────────────────────────────
 
@@ -323,7 +324,10 @@ function useDisplayDeviceHeartbeat(activeModeId: string | null, enabled: boolean
     };
 
     send();
-    const interval = window.setInterval(send, 30_000);
+    // Hidden windows report once via visibilitychange, then go quiet.
+    const interval = window.setInterval(() => {
+      if (isPageVisible()) send();
+    }, HEARTBEAT_MS);
     document.addEventListener('fullscreenchange', send);
     document.addEventListener('visibilitychange', send);
     window.addEventListener('resize', sendAfterResize);

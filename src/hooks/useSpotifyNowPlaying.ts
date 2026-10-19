@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { isPageVisible } from '@/lib/polling';
 
 export type { SpotifyTrack } from '@/lib/spotify/now-playing';
 import type { SpotifyTrack } from '@/lib/spotify/now-playing';
@@ -18,8 +19,11 @@ interface NowPlayingApiResponse {
   isPlaying?: boolean;
 }
 
-const POLL_ACTIVE_MS = 3_000;
-const POLL_PAUSED_MS = 15_000;
+// While playing, re-check when the current track should end (clamped), so
+// track changes land on time without hammering the API mid-song.
+const POLL_ACTIVE_MIN_MS = 3_000;
+const POLL_ACTIVE_MAX_MS = 30_000;
+const POLL_PAUSED_MS = 60_000;
 const HISTORY_KEY = 'frametv:spotify:history';
 const LAST_TRACK_KEY = 'frametv:spotify:last-track';
 const MAX_HISTORY = 20;
@@ -75,8 +79,11 @@ export function useSpotifyNowPlaying(): NowPlayingResult {
 
   useEffect(() => {
     let cancelled = false;
+    let inflight = false;
 
     const poll = async () => {
+      if (inflight) return;
+      inflight = true;
       try {
         const res = await fetch('/api/spotify/now-playing');
         if (res.ok) {
@@ -145,20 +152,37 @@ export function useSpotifyNowPlaying(): NowPlayingResult {
         }
       } catch {
         // network error — keep stale state
+      } finally {
+        inflight = false;
       }
 
-      // Always schedule next poll — this was missing before and caused polling to stop on track change
-      if (!cancelled) {
-        const delay = isPlayingRef.current ? POLL_ACTIVE_MS : POLL_PAUSED_MS;
-        timerRef.current = setTimeout(poll, delay);
+      // Always schedule next poll — this was missing before and caused polling to stop on track change.
+      // Hidden pages stop here; onVisibilityChange restarts the loop.
+      if (!cancelled && isPageVisible()) {
+        timerRef.current = setTimeout(poll, nextDelay());
       }
     };
 
+    const nextDelay = () => {
+      if (!isPlayingRef.current) return POLL_PAUSED_MS;
+      const track = currentRef.current;
+      const remaining = track ? track.durationMs - track.progressMs + 1_000 : POLL_ACTIVE_MAX_MS;
+      return Math.min(POLL_ACTIVE_MAX_MS, Math.max(POLL_ACTIVE_MIN_MS, remaining));
+    };
+
+    const onVisibilityChange = () => {
+      if (!isPageVisible()) return;
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      poll();
+    };
+
     poll();
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       cancelled = true;
       if (timerRef.current !== null) clearTimeout(timerRef.current);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
 

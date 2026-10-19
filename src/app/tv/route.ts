@@ -372,7 +372,9 @@ const JS = `
 (function () {
   'use strict';
 
-  var POLL_MS          = 5000;
+  /* Every poll is a billed function call and TVs stay on 24/7 — keep slow. */
+  var POLL_MS          = 60000;
+  var HEARTBEAT_MS     = 300000;
   var DEFAULT_DELAY_MS = 10000;
 
   /* ── state ──────────────────────────────────────────────────────────────── */
@@ -392,6 +394,7 @@ const JS = `
   var tPoll         = null;
   var tClock        = null;
   var tSpotify      = null;
+  var lastBeat      = 0;
 
   /* ── dom cache ──────────────────────────────────────────────────────────── */
   var D = {};
@@ -514,6 +517,7 @@ const JS = `
   }
 
   function heartbeat() {
+    lastBeat = Date.now();
     var body = JSON.stringify({
       client_id: clientId(),
       label: 'TV display',
@@ -1070,6 +1074,7 @@ const JS = `
 
   /* ── state polling ──────────────────────────────────────────────────────── */
   function poll() {
+    if (document.hidden) return;
     get('/api/display-state', function (data, ok) {
       if (!ok || !data || !data.state) return;
       var s = data.state;
@@ -1102,8 +1107,13 @@ const JS = `
       if (s.active_mode_id && s.active_mode_id !== modeId) {
         loadState();
       }
-      heartbeat();
+      if (Date.now() - lastBeat >= HEARTBEAT_MS) heartbeat();
     });
+  }
+
+  /* Catch up as soon as the screen wakes instead of waiting a full poll. */
+  function onVisibilityChange() {
+    if (!document.hidden && tPoll) poll();
   }
 
   /* ── remote / keyboard ──────────────────────────────────────────────────── */
@@ -1162,6 +1172,7 @@ const JS = `
     document.addEventListener('keydown', onKey);
     document.addEventListener('fullscreenchange', heartbeat);
     document.addEventListener('webkitfullscreenchange', heartbeat);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     checkAuth();
   }
 

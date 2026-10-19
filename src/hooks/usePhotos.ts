@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { subscribeUserTable } from '@/lib/supabase/userChannel';
+import { FALLBACK_POLL_MS } from '@/lib/polling';
 import type { Photo } from '@/types/db';
 
 /** 'all' mixes stills and videos (multimodal Pinterest/Grid). */
@@ -28,7 +29,7 @@ export function usePhotos(albumIds?: string[], mediaType: MediaType = 'image'): 
     queryKey,
     queryFn: () => fetchPhotos(albumIds, mediaType),
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: FALLBACK_POLL_MS,
   });
 
   useEffect(() => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { subscribeUserTable } from '@/lib/supabase/userChannel';
+import { FALLBACK_POLL_MS, visibleInterval } from '@/lib/polling';
 import type { ClockOverlayConfig } from '@/components/display/ClockOverlay';
 
 const DEFAULT: ClockOverlayConfig = {
@@ -22,12 +23,12 @@ export function useClockOverlayConfig(): ClockOverlayConfig {
     };
 
     fetchConfig();
-    const interval = setInterval(fetchConfig, 60_000);
+    const stopPolling = visibleInterval(fetchConfig, FALLBACK_POLL_MS);
 
     const unsubscribe = subscribeUserTable('settings', () => fetchConfig());
 
     return () => {
-      clearInterval(interval);
+      stopPolling();
       unsubscribe();
     };
   }, []);
