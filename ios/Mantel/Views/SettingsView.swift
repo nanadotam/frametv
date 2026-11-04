@@ -111,7 +111,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 tip("1", "StandBy", "Turn your iPhone on its side while it charges. Swipe to the widgets page, hold, tap +, and add Mantel. Swipe up on a stack to see a full-screen photo.")
                 Divider().overlay(Clean.line)
-                tip("2", "Home Screen", "Hold your Home Screen, tap Edit → Add Widget, and pick Mantel: Photo, Photo & Clock, Mosaic, Pinterest or Scripture. Hold a widget → Edit Widget to choose its album.")
+                tip("2", "Home Screen", "Hold your Home Screen, tap Edit → Add Widget, and pick Mantel: Photo, Photo & Clock, Grid, Pinterest, Scrapbook or Scripture. Hold a widget → Edit Widget to choose its album.")
                 Divider().overlay(Clean.line)
                 tip("3", "Control Center & Action button", "Add the Play Mantel control to open the frame full screen in one tap. It's in Shortcuts too — say \"Play Mantel\".")
             }

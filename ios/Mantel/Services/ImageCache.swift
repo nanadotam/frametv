@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import ImageIO
 import UniformTypeIdentifiers
+import Photos
 
 /// Photos saved on the device so the frame, the widgets and StandBy keep going without internet.
 ///
@@ -26,7 +27,7 @@ actor ImageCache {
         AppGroup.cache.appending(path: "\(s.rawValue)/\(p.albumId)/\(p.id).jpg")
     }
     nonisolated func isSaved(_ p: PhotoItem) -> Bool {
-        p.localFile != nil || FileManager.default.fileExists(atPath: fileURL(p, .full).path)
+        p.localFile != nil || p.assetId != nil || FileManager.default.fileExists(atPath: fileURL(p, .full).path)
     }
 
     /// Instant, memory only (for first frames without a flash).
@@ -51,6 +52,8 @@ actor ImageCache {
     }
 
     private func load(_ p: PhotoItem, _ s: Size, network: Bool) async -> UIImage? {
+        // 0. Linked iPhone album: straight from the Photos library (iCloud photos download on demand).
+        if let id = p.assetId { return await Self.libraryImage(id, max: s.maxPixel) }
         // 1. Picked from this device's library.
         if let f = p.localFile {
             let url = Self.deviceDir.appending(path: f)
@@ -83,7 +86,7 @@ actor ImageCache {
 
     /// Download the full-size copy (and thumbnail) if it isn't saved yet. Returns true when it's on the device.
     func save(_ p: PhotoItem) async -> Bool {
-        if p.localFile != nil { return true }
+        if p.localFile != nil || p.assetId != nil { return true }
         if FileManager.default.fileExists(atPath: fileURL(p, .full).path) { return true }
         let full = await image(p, .full)
         if full != nil { _ = await image(p, .thumb) }
@@ -154,6 +157,27 @@ actor ImageCache {
     private func write(_ img: UIImage, to url: URL, quality: CGFloat) {
         AppGroup.dir(url.deletingLastPathComponent())
         if let d = img.jpegData(compressionQuality: quality) { try? d.write(to: url, options: .atomic) }
+    }
+
+    /// A Photos-library image at up to `max` pixels on the long side.
+    nonisolated static func libraryImage(_ id: String, max: CGFloat) async -> UIImage? {
+        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else { return nil }
+        let opts = PHImageRequestOptions()
+        opts.deliveryMode = .highQualityFormat
+        opts.resizeMode = .fast
+        opts.isNetworkAccessAllowed = true
+        opts.version = .current
+        let scale = max / CGFloat(Swift.max(asset.pixelWidth, asset.pixelHeight, 1))
+        let size = CGSize(width: CGFloat(asset.pixelWidth) * Swift.min(scale, 1), height: CGFloat(asset.pixelHeight) * Swift.min(scale, 1))
+        return await withCheckedContinuation { cont in
+            var done = false
+            PHImageManager.default().requestImage(for: asset, targetSize: size, contentMode: .aspectFit, options: opts) { img, info in
+                guard !done else { return }
+                if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+                done = true
+                cont.resume(returning: img)
+            }
+        }
     }
 
     nonisolated static func folderSize(_ url: URL) -> Int64 {

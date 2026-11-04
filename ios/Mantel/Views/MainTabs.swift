@@ -40,6 +40,7 @@ struct MainTabs: View {
 struct AlbumsView: View {
     @Environment(Library.self) private var library
     @State private var newAlbum: NewAlbumKind?
+    @State private var linking = false
 
     var body: some View {
         GeometryReader { geo in
@@ -53,14 +54,15 @@ struct AlbumsView: View {
                         }
                         Spacer()
                         Menu {
-                            Button { newAlbum = .device } label: { Label("From this iPhone's photos", systemImage: "iphone") }
+                            Button { linking = true } label: { Label("Link an iPhone album (nothing copied)", systemImage: "photo.on.rectangle") }
+                            Button { newAlbum = .device } label: { Label("Pick photos into a new album", systemImage: "iphone") }
                             if library.signedIn { Button { newAlbum = .cloud } label: { Label("Upload to Mantel", systemImage: "icloud.and.arrow.up") } }
                         } label: {
                             Image(systemName: "plus").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
                                 .frame(width: 42, height: 42).background(Circle().fill(Clean.cherry))
                         }
                     }
-                    Text("Tap the tick to choose what plays on the frame. Albums from Mantel are saved on this device for offline.")
+                    Text("Tap the tick to choose what plays on the frame. Link an iPhone album to stream it straight from Photos — nothing is uploaded.")
                         .font(.figtree(14, .medium)).foregroundStyle(Clean.label)
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: cols), spacing: 18) {
                         ForEach(library.albums) { a in
@@ -79,5 +81,6 @@ struct AlbumsView: View {
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(for: AlbumItem.self) { AlbumView(albumId: $0.id) }
         .sheet(item: $newAlbum) { NewAlbumSheet(kind: $0) }
+        .sheet(isPresented: $linking) { LinkAlbumSheet() }
     }
 }

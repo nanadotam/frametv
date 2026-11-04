@@ -122,12 +122,20 @@ struct ModePreview: View {
                 }
             case .coverflow:
                 ZStack {
-                    Color.black
-                    ForEach(Array(photos.prefix(3).enumerated()), id: \.offset) { i, p in
-                        ModeImage(photo: p, size: .thumb).frame(width: 62, height: 62)
+                    LinearGradient(colors: [Color(hex: 0xc2368f), .black], startPoint: .top, endPoint: .bottom)
+                    ForEach(0..<3, id: \.self) { i in
+                        let pair: [UInt32] = [[0xffb547, 0xc92d5c], [0x5b8def, 0x1d1d6b], [0x2e9b6a, 0x10402c]][i]
+                        RoundedRectangle(cornerRadius: 6).fill(LinearGradient(colors: pair.map { Color(hex: $0) }, startPoint: .top, endPoint: .bottom))
+                            .overlay(Image(systemName: "music.note").font(.system(size: 18, weight: .bold)).foregroundStyle(.white.opacity(0.8)))
+                            .frame(width: 58, height: 58)
                             .rotation3DEffect(.degrees(i == 1 ? 0 : (i == 0 ? 50 : -50)), axis: (0, 1, 0), perspective: 0.6)
-                            .offset(x: CGFloat(i - 1) * 48).zIndex(i == 1 ? 1 : 0)
+                            .offset(x: CGFloat(i - 1) * 46).zIndex(i == 1 ? 1 : 0)
                     }
+                }
+            case .video:
+                ZStack {
+                    if let v = library.videoPlaylist.first { ModeImage(photo: v, size: .thumb) } else if let p = photos.first { ModeImage(photo: p, size: .thumb) }
+                    Image(systemName: "play.circle.fill").font(.system(size: 34)).foregroundStyle(.white.opacity(0.9)).shadow(radius: 6)
                 }
             default:
                 Image(systemName: mode.icon).font(.system(size: 34, weight: .semibold)).foregroundStyle(.white.opacity(0.95))

@@ -2,7 +2,7 @@ import Foundation
 
 /// An album on your Mantel account, or one made on this device from your photo library.
 struct AlbumItem: Codable, Identifiable, Hashable {
-    enum Kind: String, Codable { case cloud, device }
+    enum Kind: String, Codable { case cloud, device, library }
     var id: String
     var name: String
     var kind: Kind
@@ -10,8 +10,14 @@ struct AlbumItem: Codable, Identifiable, Hashable {
     var coverPhotoId: String?
     var order: Int
     var updatedAt: Date?
+    /// Linked iPhone album: the PHAssetCollection local identifier.
+    var libraryId: String?
 
+    /// Kept on this device (copies you picked) — not on your Mantel account.
     var isDevice: Bool { kind == .device }
+    /// Linked to an album in the iPhone's Photos library: streamed from there, never copied or uploaded.
+    var isLibrary: Bool { kind == .library }
+    var isLocal: Bool { kind != .cloud }
     /// Cloud albums you can add photos to from the phone (uploads go to Mantel's storage).
     var acceptsUploads: Bool { kind == .cloud && source == "upload" }
     var sourceLabel: String {
@@ -19,6 +25,7 @@ struct AlbumItem: Codable, Identifiable, Hashable {
         case "drive": "Google Drive"
         case "picker": "Google Photos"
         case "upload": "Uploads"
+        case "library": "iPhone Photos · linked"
         default: "On this iPhone"
         }
     }
@@ -31,11 +38,18 @@ struct PhotoItem: Codable, Identifiable, Hashable {
     var thumbURL: URL?
     /// Device-album photos: the file name in Application Support (never purged).
     var localFile: String?
+    /// Linked iPhone album: the PHAsset local identifier (read live from the Photos library).
+    var assetId: String?
+    /// Videos (Video mode): the stream URL for Mantel videos; `assetId` for iPhone videos.
+    var isVideo: Bool?
+    var videoURL: URL?
+    var durationMs: Int?
     var width: Int?
     var height: Int?
     var takenAt: Date?
 
     var isPortrait: Bool { (height ?? 0) > (width ?? 0) }
+    var video: Bool { isVideo == true }
     var aspect: CGFloat {
         guard let w = width, let h = height, w > 0, h > 0 else { return 1 }
         return CGFloat(w) / CGFloat(h)
@@ -66,6 +80,7 @@ struct APIPhoto: Decodable {
     let height: Int?
     let taken_at: String?
     let media_type: String?
+    let duration_ms: Int?
 
     /// Mirrors src/lib/image-urls.ts: Drive photos come straight from Google's CDN at the size we ask for;
     /// uploads are already resolved to public storage URLs by /api/photos.
@@ -85,6 +100,13 @@ struct APIPhoto: Decodable {
                 full = base.appending(path: "api/photos/\(id)/thumbnail").appending(queryItems: [.init(name: "size", value: "2000")])
                 thumb = base.appending(path: "api/photos/\(id)/thumbnail").appending(queryItems: [.init(name: "size", value: "400")])
             }
+        }
+        if media_type == "video" {
+            // Videos: storage_path is the clip, thumbnail_path its poster frame.
+            let poster = thumbnail_path.flatMap { $0.hasPrefix("http") ? URL(string: $0) : nil }
+            return PhotoItem(id: id, albumId: album_id, fullURL: poster, thumbURL: poster, localFile: nil,
+                             isVideo: true, videoURL: storage_path.flatMap { $0.hasPrefix("http") ? URL(string: $0) : nil },
+                             durationMs: duration_ms, width: width, height: height, takenAt: taken_at.flatMap(ISO.parse))
         }
         return PhotoItem(id: id, albumId: album_id, fullURL: full, thumbURL: thumb, localFile: nil,
                          width: width, height: height, takenAt: taken_at.flatMap(ISO.parse))

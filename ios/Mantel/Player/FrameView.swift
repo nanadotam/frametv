@@ -111,7 +111,8 @@ struct FrameView: View {
         case .grid: GridMode(landscape: landscape)
         case .pinterest: PinterestMode(landscape: landscape)
         case .scrapbook: ScrapbookMode()
-        case .coverflow: CoverFlowMode()
+        case .coverflow: CoverFlowMode(landscape: landscape)
+        case .video: VideoMode(landscape: landscape)
         case .clock: ClockMode(landscape: landscape)
         case .scripture: ScriptureMode(landscape: landscape)
         case .mood: MoodMode()
@@ -455,6 +456,11 @@ struct FrameOptions: View {
             if prefs.mode == .scripture {
                 group("Bible translation") {
                     ForEach(["KJV", "NKJV", "ESV", "NIV", "NLT", "AMP", "NET"], id: \.self) { t in Chip(title: t, on: prefs.translation == t) { prefs.translation = t } }
+                }
+            }
+            if prefs.mode == .video {
+                group("Video look") {
+                    ForEach(VideoMode.Look.allCases) { l in Chip(title: l.title, on: prefs.videoLook == l.rawValue) { prefs.videoLook = l.rawValue } }
                 }
             }
             if prefs.mode == .mood {

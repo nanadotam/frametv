@@ -4,6 +4,7 @@ import Observation
 import Network
 import WidgetKit
 import UIKit
+import Photos
 
 /// Your albums and photos, what's "Now showing", and what's saved for offline.
 /// Everything is kept on the device so the app opens straight into your photos, online or not.
@@ -19,6 +20,8 @@ final class Library {
     // Content
     private(set) var albums: [AlbumItem] = []
     private(set) var photos: [String: [PhotoItem]] = [:]
+    /// Videos per album (Video mode). Mantel videos stream from storage; iPhone videos play from Photos.
+    private(set) var videos: [String: [PhotoItem]] = [:]
     var showing: Set<String> = [] { didSet { persist(); scheduleSync() } }
     private(set) var hidden: Set<String> = []
 
@@ -36,14 +39,14 @@ final class Library {
     private var file: URL { AppGroup.support.appending(path: "library.json") }
 
     private struct Snapshot: Codable {
-        var user: APIUser?; var albums: [AlbumItem]; var photos: [String: [PhotoItem]]
+        var user: APIUser?; var albums: [AlbumItem]; var photos: [String: [PhotoItem]]; var videos: [String: [PhotoItem]]?
         var showing: Set<String>; var hidden: Set<String>; var lastSynced: Date?
     }
 
     private init() {
         onboarded = UserDefaults.standard.bool(forKey: "onboarded")
         if let data = try? Data(contentsOf: file), let s = try? JSONDecoder().decode(Snapshot.self, from: data) {
-            user = s.user; albums = s.albums; photos = s.photos; hidden = s.hidden; lastSynced = s.lastSynced
+            user = s.user; albums = s.albums; photos = s.photos; videos = s.videos ?? [:]; hidden = s.hidden; lastSynced = s.lastSynced
             showing = s.showing
         }
         recountSaved()
@@ -57,10 +60,11 @@ final class Library {
             }
         }
         monitor.start(queue: .global(qos: .utility))
+        if albums.contains(where: \.isLibrary) { startWatchingPhotos() }
     }
 
     private func persist() {
-        let s = Snapshot(user: user, albums: albums, photos: photos, showing: showing, hidden: hidden, lastSynced: lastSynced)
+        let s = Snapshot(user: user, albums: albums, photos: photos, videos: videos, showing: showing, hidden: hidden, lastSynced: lastSynced)
         if let data = try? JSONEncoder().encode(s) { try? data.write(to: file, options: .atomic) }
     }
 
@@ -75,8 +79,17 @@ final class Library {
         return out
     }
 
+    /// Videos in the albums you're showing, for Video mode.
+    var videoPlaylist: [PhotoItem] {
+        let ids = showing.isEmpty ? albums.map(\.id) : albums.map(\.id).filter(showing.contains)
+        var out = ids.flatMap { videos[$0] ?? [] }.filter { !hidden.contains($0.id) }
+        if !online { out = out.filter { $0.assetId != nil || VideoCache.isSaved($0) } }
+        return out
+    }
+
     func album(_ id: String) -> AlbumItem? { albums.first { $0.id == id } }
     func count(_ id: String) -> Int { (photos[id] ?? []).filter { !hidden.contains($0.id) }.count }
+    func videoCount(_ id: String) -> Int { (videos[id] ?? []).filter { !hidden.contains($0.id) }.count }
     func cover(_ a: AlbumItem) -> PhotoItem? {
         let list = photos[a.id] ?? []
         return list.first { $0.id == a.coverPhotoId } ?? list.first
@@ -101,7 +114,7 @@ final class Library {
         await MantelAPI.shared.signOut()
         let cloud = albums.filter { !$0.isDevice }.map(\.id)
         for id in cloud { await ImageCache.shared.removeAlbum(id); photos[id] = nil }
-        albums.removeAll { !$0.isDevice }
+        albums.removeAll { $0.kind == .cloud }
         showing.subtract(cloud)
         user = nil
         persist(); recountSaved(); writeWidgetFeed()
@@ -111,15 +124,23 @@ final class Library {
 
     /// Fetch albums + photos from Mantel, then save the showing albums for offline.
     func refresh(quiet: Bool = false) async {
+        reloadLibraryAlbums()
         guard signedIn, !refreshing else { scheduleSync(); return }
         refreshing = true
         defer { refreshing = false }
         do {
             let remote = try await MantelAPI.shared.albums()
             var next: [String: [PhotoItem]] = photos
-            try await withThrowingTaskGroup(of: (String, [PhotoItem]).self) { g in
-                for a in remote { g.addTask { (a.id, try await MantelAPI.shared.photos(album: a.id)) } }
-                for try await (id, list) in g { next[id] = list }
+            var nextVideos: [String: [PhotoItem]] = videos
+            try await withThrowingTaskGroup(of: (String, [PhotoItem], [PhotoItem]).self) { g in
+                for a in remote {
+                    g.addTask {
+                        async let p = MantelAPI.shared.photos(album: a.id)
+                        let v = (try? await MantelAPI.shared.photos(album: a.id, media: "video")) ?? []
+                        return (a.id, try await p, v)
+                    }
+                }
+                for try await (id, list, vids) in g { next[id] = list; nextVideos[id] = vids }
             }
             let cloud = remote.map { a in
                 AlbumItem(id: a.id, name: a.name, kind: .cloud, source: a.source_type, coverPhotoId: a.cover_photo_id,
@@ -127,10 +148,11 @@ final class Library {
             }
             // Albums deleted on the website: drop them and their downloads.
             let gone = Set(albums.filter { !$0.isDevice }.map(\.id)).subtracting(cloud.map(\.id))
-            for id in gone { next[id] = nil; await ImageCache.shared.removeAlbum(id) }
+            for id in gone { next[id] = nil; nextVideos[id] = nil; await ImageCache.shared.removeAlbum(id) }
             showing.subtract(gone)
-            albums = cloud.sorted { $0.order < $1.order } + albums.filter(\.isDevice)
+            albums = cloud.sorted { $0.order < $1.order } + albums.filter(\.isLocal)
             photos = next
+            videos = nextVideos
             lastSynced = Date()
             persist()
         } catch MantelAPI.APIError.unauthorized {
@@ -153,7 +175,10 @@ final class Library {
 
     private func downloadShowing() async {
         let prefs = Prefs.shared
-        let wanted = playlist.filter { $0.localFile == nil }
+        let wanted = playlist.filter { $0.localFile == nil && $0.assetId == nil }
+        Task.detached(priority: .background) { [videoPlaylist = self.videoPlaylist, wifi = !self.expensive] in
+            if wifi { await VideoCache.prefetch(Array(videoPlaylist.prefix(12))) }
+        }
         let limit = Int64(prefs.cacheLimitMB) * 1024 * 1024
         let missing = wanted.filter { !ImageCache.shared.isSaved($0) }
         defer { downloading = nil; recountSaved(); writeWidgetFeed() }
@@ -220,6 +245,7 @@ final class Library {
     func delete(_ ids: Set<String>) async {
         var failed = 0
         for p in allPhotos where ids.contains(p.id) {
+            if p.assetId != nil { hidden.insert(p.id); continue }   // never delete from the iPhone's Photos
             if let f = p.localFile {
                 try? FileManager.default.removeItem(at: ImageCache.deviceDir.appending(path: f))
             } else {
@@ -233,6 +259,13 @@ final class Library {
     }
 
     func deleteDeviceAlbum(_ id: String) {
+        if album(id)?.isLibrary == true {
+            photos[id] = nil; videos[id] = nil
+            albums.removeAll { $0.id == id }; showing.remove(id)
+            persist(); recountSaved(); writeWidgetFeed()
+            toast = "Album unlinked — nothing was removed from Photos"
+            return
+        }
         for p in photos[id] ?? [] { if let f = p.localFile { try? FileManager.default.removeItem(at: ImageCache.deviceDir.appending(path: f)) } }
         photos[id] = nil
         albums.removeAll { $0.id == id }
@@ -246,7 +279,67 @@ final class Library {
         albums[i].name = name; persist()
     }
 
-    private var allPhotos: [PhotoItem] { photos.values.flatMap { $0 } }
+    private var allPhotos: [PhotoItem] { photos.values.flatMap { $0 } + videos.values.flatMap { $0 } }
+
+    func appendVideo(_ v: PhotoItem) {
+        videos[v.albumId, default: []].insert(v, at: 0)
+        persist()
+    }
+
+    // MARK: - Linked iPhone albums (PhotoKit)
+
+    /// Links an album from the iPhone's Photos app. Nothing is copied or uploaded: photos and videos are read
+    /// from Photos whenever they're shown, and the album stays in step as you add or remove things in Photos.
+    @discardableResult
+    func linkLibraryAlbum(_ c: PHAssetCollection) -> AlbumItem {
+        if let existing = albums.first(where: { $0.libraryId == c.localIdentifier }) { return existing }
+        let safe = c.localIdentifier.replacingOccurrences(of: "/", with: "_")
+        let a = AlbumItem(id: "lib-\(safe)", name: c.localizedTitle ?? "iPhone album", kind: .library, source: "library",
+                          coverPhotoId: nil, order: 20_000 + albums.count, updatedAt: Date(), libraryId: c.localIdentifier)
+        albums.append(a)
+        if !showing.isEmpty { showing.insert(a.id) }
+        load(a)
+        persist(); recountSaved(); writeWidgetFeed()
+        startWatchingPhotos()
+        toast = "Linked \(a.name) from Photos"
+        return a
+    }
+
+    private func load(_ a: AlbumItem) {
+        guard let lid = a.libraryId,
+              let c = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [lid], options: nil).firstObject else { return }
+        let opts = PHFetchOptions()
+        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        let result = PHAsset.fetchAssets(in: c, options: opts)
+        var pics: [PhotoItem] = [], vids: [PhotoItem] = []
+        result.enumerateObjects { asset, _, _ in
+            let id = "a-" + asset.localIdentifier.replacingOccurrences(of: "/", with: "_")
+            var item = PhotoItem(id: id, albumId: a.id, assetId: asset.localIdentifier,
+                                 width: asset.pixelWidth, height: asset.pixelHeight, takenAt: asset.creationDate)
+            if asset.mediaType == .video { item.isVideo = true; item.durationMs = Int(asset.duration * 1000); vids.append(item) }
+            else if asset.mediaType == .image { pics.append(item) }
+        }
+        photos[a.id] = pics
+        videos[a.id] = vids
+        if let i = albums.firstIndex(where: { $0.id == a.id }) { albums[i].name = c.localizedTitle ?? a.name }
+    }
+
+    func reloadLibraryAlbums() {
+        let linked = albums.filter(\.isLibrary)
+        guard !linked.isEmpty, PHPhotoLibrary.authorizationStatus(for: .readWrite) != .notDetermined else { return }
+        for a in linked { load(a) }
+        persist(); recountSaved()
+    }
+
+    private var photosObserver: PhotosObserver?
+    private func startWatchingPhotos() {
+        guard photosObserver == nil else { return }
+        let o = PhotosObserver { [weak self] in
+            Task { @MainActor in self?.reloadLibraryAlbums(); self?.writeWidgetFeed() }
+        }
+        PHPhotoLibrary.shared().register(o)
+        photosObserver = o
+    }
 
     // MARK: - Adding photos
 
@@ -343,7 +436,9 @@ final class Library {
                 if !FileManager.default.fileExists(atPath: dest.path) {
                     let src = p.localFile.map { ImageCache.deviceDir.appending(path: $0) } ?? ImageCache.shared.fileURL(p, .full)
                     // Widgets have a tight memory budget: ~900 px is sharp on a StandBy screen.
-                    guard let img = ImageCache.downsample(url: src, max: 900), let d = img.jpegData(compressionQuality: 0.8) else { continue }
+                    var img: UIImage?
+                    if let a = p.assetId { img = await ImageCache.libraryImage(a, max: 900) } else { img = ImageCache.downsample(url: src, max: 900) }
+                    guard let img, let d = img.jpegData(compressionQuality: 0.8) else { continue }
                     try? d.write(to: dest, options: .atomic)
                 }
                 items.append(.init(file: file, album: names[p.albumId] ?? "Mantel", takenAt: p.takenAt, albumId: p.albumId, showing: showingIds.contains(p.id)))
@@ -357,5 +452,18 @@ final class Library {
             if let d = try? JSONEncoder().encode(albumsOut) { try? d.write(to: AppGroup.widgetAlbums, options: .atomic) }
             WidgetCenter.shared.reloadAllTimelines()
         }
+    }
+}
+
+/// Tells the library when anything changes in the Photos app (debounced).
+final class PhotosObserver: NSObject, PHPhotoLibraryChangeObserver, @unchecked Sendable {
+    private let onChange: @Sendable () -> Void
+    private var pending: DispatchWorkItem?
+    init(_ onChange: @escaping @Sendable () -> Void) { self.onChange = onChange }
+    func photoLibraryDidChange(_ changeInstance: PHChange) {
+        pending?.cancel()
+        let w = DispatchWorkItem(block: onChange)
+        pending = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: w)
     }
 }

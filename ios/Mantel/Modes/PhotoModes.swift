@@ -30,62 +30,96 @@ struct ModeImage: View {
 
 // MARK: - Grid
 
-/// Mosaic of photos; one tile swaps at a time, like the web Grid mode.
+/// A mosaic that reshapes itself: 4 photos, then 3 (one big), then 6, 2, 5, 9…, depending on how many photos you have.
+/// Between layout changes, single tiles swap to new photos.
 struct GridMode: View {
     let landscape: Bool
     @Environment(Prefs.self) private var prefs
     @Environment(Player.self) private var player
     @State private var tiles: [PhotoItem] = []
+    @State private var layout = 0
     @State private var cursor = 0
+
+    /// Tile rectangles in unit space, drawn for a tall (portrait) screen; landscape swaps x/y.
+    static let layouts: [[CGRect]] = [
+        grid(2, 2),                                                                         // 4
+        [CGRect(x: 0, y: 0, width: 1, height: 0.6)] + row(y: 0.6, h: 0.4, n: 2),           // 3: one big + two
+        grid(2, 3),                                                                         // 6
+        [CGRect(x: 0, y: 0, width: 1, height: 0.5), CGRect(x: 0, y: 0.5, width: 1, height: 0.5)],   // 2
+        [CGRect(x: 0, y: 0, width: 1, height: 0.5)] + grid(2, 2).map { CGRect(x: $0.minX, y: 0.5 + $0.minY / 2, width: $0.width, height: $0.height / 2) }, // 5
+        [CGRect(x: 0, y: 0, width: 0.62, height: 0.5), CGRect(x: 0.62, y: 0, width: 0.38, height: 0.25),
+         CGRect(x: 0.62, y: 0.25, width: 0.38, height: 0.25)] + row(y: 0.5, h: 0.5, n: 2), // 5b: editorial
+        grid(3, 3),                                                                         // 9
+        grid(3, 4),                                                                         // 12
+    ]
+    static func grid(_ c: Int, _ r: Int) -> [CGRect] {
+        (0..<r).flatMap { y in (0..<c).map { x in CGRect(x: CGFloat(x) / CGFloat(c), y: CGFloat(y) / CGFloat(r), width: 1 / CGFloat(c), height: 1 / CGFloat(r)) } }
+    }
+    static func row(y: CGFloat, h: CGFloat, n: Int) -> [CGRect] {
+        (0..<n).map { CGRect(x: CGFloat($0) / CGFloat(n), y: y, width: 1 / CGFloat(n), height: h) }
+    }
+
+    private var available: [Int] {
+        let n = source().count
+        let ok = Self.layouts.indices.filter { Self.layouts[$0].count <= max(n, 1) }
+        return ok.isEmpty ? [3] : ok
+    }
 
     var body: some View {
         GeometryReader { g in
-            let pad = UIDevice.current.userInterfaceIdiom == .pad
-            let cols = landscape ? (pad ? 5 : 4) : (pad ? 4 : 3)
-            let rows = max(2, Int((g.size.height / (g.size.width / CGFloat(cols))).rounded()))
-            let count = cols * rows
-            let w = (g.size.width - CGFloat(cols - 1) * 3) / CGFloat(cols)
-            let h = (g.size.height - CGFloat(rows - 1) * 3) / CGFloat(rows)
-            VStack(spacing: 3) {
-                ForEach(0..<rows, id: \.self) { r in
-                    HStack(spacing: 3) {
-                        ForEach(0..<cols, id: \.self) { c in
-                            let i = r * cols + c
-                            Group {
-                                if i < tiles.count { ModeImage(photo: tiles[i], size: .thumb).id(tiles[i].id).transition(.opacity) }
-                                else { Color.white.opacity(0.04) }
-                            }
-                            .frame(width: w, height: h).clipped()
-                        }
+            let rects = Self.layouts[layout]
+            ZStack(alignment: .topLeading) {
+                ForEach(0..<rects.count, id: \.self) { i in
+                    let r = landscape ? CGRect(x: rects[i].minY, y: rects[i].minX, width: rects[i].height, height: rects[i].width) : rects[i]
+                    let frame = CGRect(x: r.minX * g.size.width, y: r.minY * g.size.height, width: r.width * g.size.width, height: r.height * g.size.height).insetBy(dx: 1.5, dy: 1.5)
+                    Group {
+                        if i < tiles.count { ModeImage(photo: tiles[i], size: r.width * r.height > 0.2 ? .medium : .thumb).id(tiles[i].id).transition(.opacity) }
+                        else { Color.white.opacity(0.04) }
                     }
+                    .frame(width: frame.width, height: frame.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .offset(x: frame.minX, y: frame.minY)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
             }
-            .onAppear { fill(count) }
-            .onChange(of: count) { _, n in fill(n) }
         }
         .background(Color.black)
+        .onAppear { if tiles.isEmpty { layout = available.first ?? 0; fill() } }
         .task(id: player.paused) {
             guard !player.paused else { return }
+            var step = 0
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(max(2.5, prefs.interval / 3))) } catch { break }
-                swapOne()
+                step += 1
+                if step % 4 == 0 { reshape() } else { swapOne() }
             }
         }
     }
 
-    private func fill(_ n: Int) {
+    private func fill() {
         let all = source()
         guard !all.isEmpty else { return }
-        tiles = (0..<n).map { all[$0 % all.count] }
-        cursor = n
+        tiles = (0..<12).map { all[(cursor + $0) % all.count] }
+        cursor += 12
+    }
+
+    /// Next layout (never the same twice), with fresh photos.
+    private func reshape() {
+        let options = available.filter { $0 != layout }
+        guard let next = options.randomElement() else { swapOne(); return }
+        let all = source()
+        withAnimation(.spring(response: 0.8, dampingFraction: 0.85)) {
+            layout = next
+            if !all.isEmpty { tiles = (0..<12).map { all[(cursor + $0) % all.count] }; cursor += Self.layouts[next].count }
+        }
     }
 
     private func swapOne() {
         let all = source()
-        guard !tiles.isEmpty, all.count > 1 else { return }
-        let i = Int.random(in: 0..<tiles.count)
-        var next = all[cursor % all.count]; cursor += 1
-        if tiles.contains(next), all.count > tiles.count { next = all[cursor % all.count]; cursor += 1 }
+        let n = Self.layouts[layout].count
+        guard n > 0, all.count > n else { return }
+        let i = Int.random(in: 0..<n)
+        let next = all[cursor % all.count]; cursor += 1
         withAnimation(.easeInOut(duration: 1.2)) { tiles[i] = next }
     }
 }
@@ -237,65 +271,5 @@ struct ScrapbookMode: View {
         if animated {
             withAnimation(.spring(response: 0.55, dampingFraction: 0.7)) { pins.append(pin); if pins.count > 7 { pins.removeFirst() } }
         } else { pins.append(pin) }
-    }
-}
-
-// MARK: - Cover Flow
-
-/// The 3D carousel: covers tilted either side of the one in front, with a reflection.
-struct CoverFlowMode: View {
-    @Environment(Prefs.self) private var prefs
-    @Environment(Player.self) private var player
-    @State private var items: [PhotoItem] = []
-    @State private var index: Double = 0
-    @State private var dragStart: Double?
-
-    var body: some View {
-        GeometryReader { g in
-            let side = min(g.size.width * 0.62, g.size.height * 0.5)
-            ZStack {
-                LinearGradient(colors: [Color(hex: 0x1a1a1f), .black], startPoint: .top, endPoint: .bottom)
-                ForEach(Array(items.enumerated()), id: \.offset) { i, p in
-                    let d = Double(i) - index
-                    if abs(d) < 5 {
-                        cover(p, side: side)
-                            .rotation3DEffect(.degrees(max(-60, min(60, -d * 60))), axis: (0, 1, 0), perspective: 0.6)
-                            .scaleEffect(abs(d) < 0.5 ? 1 : 0.82)
-                            .offset(x: CGFloat(d.sign == .minus ? -1 : 1) * (abs(d) < 1 ? abs(d) * side * 0.75 : side * 0.75 + (abs(d) - 1) * side * 0.28))
-                            .zIndex(10 - abs(d))   // above the backdrop, nearest cover on top
-                            .opacity(abs(d) > 4 ? 0 : 1)
-                    }
-                }
-                .offset(y: -side * 0.15)
-            }
-            .contentShape(Rectangle())
-            .gesture(DragGesture()
-                .onChanged { v in
-                    if dragStart == nil { dragStart = index }
-                    index = max(0, min(Double(items.count - 1), dragStart! - v.translation.width / (side * 0.5)))
-                }
-                .onEnded { _ in dragStart = nil; withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { index = index.rounded() } })
-        }
-        .onAppear { items = Array(source().prefix(80)) }
-        .task(id: player.paused) {
-            guard !player.paused else { return }
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(max(3, prefs.interval / 2))) } catch { break }
-                guard dragStart == nil, items.count > 1 else { continue }
-                withAnimation(.spring(response: 0.7, dampingFraction: 0.85)) {
-                    index = index + 1 >= Double(items.count) ? 0 : index.rounded() + 1
-                }
-            }
-        }
-    }
-
-    private func cover(_ p: PhotoItem, side: CGFloat) -> some View {
-        VStack(spacing: 2) {
-            ModeImage(photo: p, size: .medium).frame(width: side, height: side)
-            ModeImage(photo: p, size: .medium).frame(width: side, height: side)
-                .scaleEffect(x: 1, y: -1)
-                .frame(width: side, height: side * 0.35, alignment: .top).clipped()
-                .mask(LinearGradient(colors: [.white.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom))
-        }
     }
 }

@@ -39,7 +39,8 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Mantel
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Pick photos from your library to show on your Mantel.
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Show photos and videos from albums you link, straight from your library. Nothing is uploaded.
+        INFOPLIST_KEY_NSAppleMusicUsageDescription: Show the album art of what you're playing in Apple Music, in Cover Flow mode.
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: Save photos from your Mantel albums to your photo library.
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"

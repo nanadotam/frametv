@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import AVKit
 
 struct AlbumView: View {
     @Environment(Library.self) private var library
@@ -16,9 +17,13 @@ struct AlbumView: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var viewing: Int?
+    @State private var uploading: [PhotoItem]?
+    @State private var playingVideo: PhotoItem?
 
     private var album: AlbumItem? { library.album(albumId) }
     private var photos: [PhotoItem] { library.photos[albumId] ?? [] }
+    private var videos: [PhotoItem] { (library.videos[albumId] ?? []).filter { !library.hidden.contains($0.id) } }
+    private var everything: [PhotoItem] { photos + videos }
 
     var body: some View {
         GeometryReader { geo in
@@ -38,7 +43,14 @@ struct AlbumView: View {
                         ForEach(photos) { p in cell(p) }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    if photos.isEmpty { empty }
+                    if !videos.isEmpty {
+                        Kicker("\(videos.count) video\(videos.count == 1 ? "" : "s")", icon: "film").padding(.top, 6)
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: max(2, cols - 1)), spacing: 3) {
+                            ForEach(videos) { v in videoCell(v) }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    if photos.isEmpty && videos.isEmpty { empty }
                 }
                 .padding(.horizontal, 16).padding(.bottom, selecting ? 110 : 40)
             }
@@ -47,6 +59,10 @@ struct AlbumView: View {
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .bottom) { if selecting { selectionBar } }
+        .sheet(item: Binding(get: { uploading.map { UploadBatch(items: $0) } }, set: { if $0 == nil { uploading = nil } })) { b in
+            UploadTargetSheet(items: b.items) { selected = []; selecting = false }
+        }
+        .fullScreenCover(item: $playingVideo) { v in VideoViewer(clip: v) }
         .fullScreenCover(item: Binding(get: { viewing.map { ViewerStart(index: $0) } }, set: { viewing = $0?.index })) { v in
             PhotoViewer(photos: visible, index: v.index)
         }
@@ -97,7 +113,7 @@ struct AlbumView: View {
             }
             .padding(.top, 4)
             VStack(alignment: .leading, spacing: 6) {
-                Kicker(album?.sourceLabel ?? "", icon: album?.isDevice == true ? "iphone" : "cloud")
+                Kicker(album?.sourceLabel ?? "", icon: album?.isLibrary == true ? "photo.on.rectangle" : album?.isDevice == true ? "iphone" : "cloud")
                 Display(album?.name ?? "", size: 32)
                 Text(meta).font(.figtree(14, .semibold)).foregroundStyle(Clean.label)
             }
@@ -113,7 +129,8 @@ struct AlbumView: View {
                 }
                 .buttonStyle(CleanButton(kind: .secondary, size: 48))
                 if canAdd {
-                    PhotosPicker(selection: $picks, maxSelectionCount: 200, matching: .images, preferredItemEncoding: .compatible) {
+                    PhotosPicker(selection: $picks, maxSelectionCount: 200, matching: album?.kind == .cloud ? .any(of: [.images, .videos]) : .images,
+                                 preferredItemEncoding: .compatible) {
                         Image(systemName: "plus").font(.system(size: 18, weight: .bold)).foregroundStyle(Clean.ink)
                             .frame(width: 48, height: 48)
                             .background(RoundedRectangle(cornerRadius: Clean.btnRadius, style: .continuous).fill(Clean.butter))
@@ -134,19 +151,25 @@ struct AlbumView: View {
     private var meta: String {
         let n = library.count(albumId), s = library.saved[albumId] ?? 0, h = library.hiddenCount(album: albumId)
         var parts = ["\(n) photo\(n == 1 ? "" : "s")"]
-        if album?.isDevice == false { parts.append(s >= n && n > 0 ? "all saved for offline" : "\(s) saved for offline") }
+        if let a = album, a.kind == .cloud { parts.append(s >= n && n > 0 ? "all saved for offline" : "\(s) saved for offline") }
         if h > 0 { parts.append("\(h) hidden") }
         return parts.joined(separator: " · ")
     }
 
     private var menu: some View {
         Menu {
-            if album?.isDevice == false {
+            if album?.kind == .cloud {
                 Button { library.showing.insert(albumId); library.scheduleSync() } label: { Label("Save all for offline", systemImage: "arrow.down.circle") }
                 Button { Task { await library.removeDownloads(album: albumId) } } label: { Label("Remove downloads", systemImage: "trash.slash") }
             }
+            if album?.isLocal == true, library.signedIn, !everything.isEmpty {
+                Button { uploading = everything.filter { !library.hidden.contains($0.id) } } label: { Label("Upload all to Mantel…", systemImage: "icloud.and.arrow.up") }
+            }
             if library.hiddenCount(album: albumId) > 0 {
                 Button { library.unhideAll(album: albumId) } label: { Label("Show hidden photos", systemImage: "eye") }
+            }
+            if album?.isLibrary == true {
+                Button(role: .destructive) { library.deleteDeviceAlbum(albumId); dismiss() } label: { Label("Unlink album", systemImage: "link.badge.plus") }
             }
             if album?.isDevice == true {
                 Button { newName = album?.name ?? ""; renaming = true } label: { Label("Rename", systemImage: "pencil") }
@@ -169,7 +192,7 @@ struct AlbumView: View {
             .opacity(hidden ? 0.35 : 1)
             .overlay(alignment: .bottomLeading) {
                 if hidden { Image(systemName: "eye.slash.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.white).padding(6) }
-                else if album?.isDevice == false && !ImageCache.shared.isSaved(p) {
+                else if album?.kind == .cloud && !ImageCache.shared.isSaved(p) {
                     Image(systemName: "icloud").font(.system(size: 10, weight: .bold)).foregroundStyle(.white).shadow(radius: 3).padding(6)
                 }
             }
@@ -191,13 +214,17 @@ struct AlbumView: View {
                 }
             }
             .contextMenu {
-                Button { Task { await PhotoSaver.save([p]) } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") }
+                if p.assetId == nil {
+                    Button { Task { await PhotoSaver.save([p]) } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") }
+                }
                 Button { player.play(startingAt: p, in: visible) } label: { Label("Play from here", systemImage: "play") }
                 Button { Task { await library.hide([p.id]) } } label: { Label("Hide from frame", systemImage: "eye.slash") }
-                if p.localFile == nil {
+                if p.localFile == nil && p.assetId == nil {
                     Button { Task { await library.removeDownload([p.id]) } } label: { Label("Remove download", systemImage: "arrow.down.circle.dotted") }
                 }
-                Button(role: .destructive) { selected = [p.id]; confirmDelete = true } label: { Label("Delete…", systemImage: "trash") }
+                if p.assetId == nil {
+                    Button(role: .destructive) { selected = [p.id]; confirmDelete = true } label: { Label("Delete…", systemImage: "trash") }
+                }
             }
     }
 
@@ -205,7 +232,8 @@ struct AlbumView: View {
         VStack(spacing: 10) {
             Image(systemName: "photo.on.rectangle").font(.system(size: 36, weight: .light)).foregroundStyle(Clean.label)
             Text(canAdd ? "Tap + to add photos" : "No photos yet").font(.figtree(17, .bold)).foregroundStyle(Clean.ink)
-            if !canAdd { Text("Add photos to this album on mantelapp.vercel.app.").font(.figtree(14, .medium)).foregroundStyle(Clean.label) }
+            if album?.isLibrary == true { Text("Add photos to this album in the Photos app — they'll show up here.").font(.figtree(14, .medium)).foregroundStyle(Clean.label) }
+            else if !canAdd { Text("Add photos to this album on mantelapp.vercel.app.").font(.figtree(14, .medium)).foregroundStyle(Clean.label) }
         }
         .frame(maxWidth: .infinity).padding(.vertical, 50)
     }
@@ -214,23 +242,30 @@ struct AlbumView: View {
         HStack(spacing: 8) {
             Text(selected.isEmpty ? "Select photos" : "\(selected.count) selected").font(.figtree(15, .bold)).foregroundStyle(Clean.ink)
             Spacer()
-            Button {
+            if album?.isLibrary != true { Button {
                 let pick = photos.filter { selected.contains($0.id) }
                 Task { await PhotoSaver.save(pick); selected = []; selecting = false }
             } label: { Image(systemName: "square.and.arrow.down") }
                 .buttonStyle(CleanButton(kind: .primary, size: 42, block: false))
-                .accessibilityLabel("Save to Photos")
+                .accessibilityLabel("Save to Photos") }
+            if album?.isLocal == true && library.signedIn {
+                Button { uploading = everything.filter { selected.contains($0.id) } } label: { Image(systemName: "icloud.and.arrow.up") }
+                    .buttonStyle(CleanButton(kind: .primary, size: 42, block: false))
+                    .accessibilityLabel("Upload to Mantel")
+            }
             Button { Task { await library.hide(selected); selected = [] } } label: { Image(systemName: "eye.slash") }
                 .buttonStyle(CleanButton(kind: .secondary, size: 42, block: false))
                 .accessibilityLabel("Hide")
-            if album?.isDevice == false {
+            if album?.kind == .cloud {
                 Button { Task { await library.removeDownload(selected); library.toast = "Downloads removed"; selected = [] } } label: { Image(systemName: "arrow.down.circle.dotted") }
                     .buttonStyle(CleanButton(kind: .secondary, size: 42, block: false))
                     .accessibilityLabel("Remove downloads")
             }
-            Button { confirmDelete = true } label: { Image(systemName: "trash") }
-                .buttonStyle(CleanButton(kind: .danger, size: 42, block: false))
-                .accessibilityLabel("Delete")
+            if album?.isLibrary != true {
+                Button { confirmDelete = true } label: { Image(systemName: "trash") }
+                    .buttonStyle(CleanButton(kind: .danger, size: 42, block: false))
+                    .accessibilityLabel("Delete")
+            }
         }
         .disabled(selected.isEmpty)
         .padding(12)
@@ -242,9 +277,66 @@ struct AlbumView: View {
     private func add(_ items: [PhotosPickerItem]) async {
         guard let album else { return }
         adding = (0, items.count)
-        let data = await loadPicks(items)
-        await library.add(data, to: album) { adding = ($0, items.count) }
+        if album.kind == .cloud {
+            let mixed = await loadMixedPicks(items)
+            await library.addMixed(mixed, to: album) { adding = ($0, items.count) }
+        } else {
+            let data = await loadPicks(items)
+            await library.add(data, to: album) { adding = ($0, items.count) }
+        }
         adding = nil; picks = []
+    }
+
+    private func videoCell(_ v: PhotoItem) -> some View {
+        let on = selected.contains(v.id)
+        return PhotoThumb(photo: v)
+            .aspectRatio(16 / 10, contentMode: .fit)
+            .clipped()
+            .overlay { Image(systemName: "play.circle.fill").font(.system(size: 30)).foregroundStyle(.white.opacity(0.92)).shadow(radius: 4) }
+            .overlay(alignment: .bottomTrailing) {
+                if let ms = v.durationMs, ms > 0 {
+                    Text(Duration.milliseconds(ms).formatted(.time(pattern: .minuteSecond))).font(.figtree(11, .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 3).background(.black.opacity(0.5), in: Capsule()).padding(6)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if selecting {
+                    Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.white, on ? Clean.cherry : .black.opacity(0.25)).symbolRenderingMode(.palette).padding(6)
+                }
+            }
+            .overlay { if on { Rectangle().strokeBorder(Clean.cherry, lineWidth: 3) } }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if selecting { if on { selected.remove(v.id) } else { selected.insert(v.id) } } else { playingVideo = v }
+            }
+            .contextMenu {
+                Button { playingVideo = v } label: { Label("Play", systemImage: "play") }
+                Button { Prefs.shared.videoLook = "normal"; player.play(mode: .video) } label: { Label("Video mode", systemImage: "film") }
+                if album?.isLocal == true && library.signedIn {
+                    Button { uploading = [v] } label: { Label("Upload to Mantel…", systemImage: "icloud.and.arrow.up") }
+                }
+                Button { Task { await library.hide([v.id]) } } label: { Label("Hide from frame", systemImage: "eye.slash") }
+            }
+    }
+}
+
+private struct UploadBatch: Identifiable { let items: [PhotoItem]; var id: String { items.map(\.id).joined() } }
+
+/// Plays one clip full screen, with sound and the system controls.
+struct VideoViewer: View {
+    let clip: PhotoItem
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
+            if let player { VideoPlayer(player: player).ignoresSafeArea() } else { ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity) }
+            GlassCircle(icon: "xmark") { player?.pause(); dismiss() }.padding(16)
+        }
+        .task {
+            if let item = await VideoCache.item(for: clip) { let p = AVPlayer(playerItem: item); player = p; p.play() }
+        }
     }
 }
 

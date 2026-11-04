@@ -70,7 +70,7 @@ enum TCPFetch {
                 conn.receive(minimumIncompleteLength: 1, maximumLength: 1 << 16) { data, _, done, error in
                     if let data { buffer.append(data) }
                     if let error, buffer.isEmpty { finish(.failure(error)); return }
-                    if done || error != nil { finish(.success(buffer)) } else { receive() }
+                    if done || error != nil || complete(buffer) { finish(.success(buffer)) } else { receive() }
                 }
             }
             conn.stateUpdateHandler = { state in
@@ -87,6 +87,23 @@ enum TCPFetch {
             queue.asyncAfter(deadline: .now() + timeout) { finish(.failure(URLError(.timedOut))) }
             conn.start(queue: queue)
         }
+    }
+
+    /// True once a whole response is in: Content-Length reached, or the last chunk of a chunked body seen.
+    /// (Don't wait for the server to close — some keep the socket open despite "Connection: close".)
+    private static func complete(_ raw: Data) -> Bool {
+        guard let split = raw.range(of: Data("\r\n\r\n".utf8)) else { return false }
+        let head = String(decoding: raw[raw.startIndex..<split.lowerBound], as: UTF8.self).lowercased()
+        let bodyCount = raw.distance(from: split.upperBound, to: raw.endIndex)
+        if let line = head.components(separatedBy: "\r\n").first(where: { $0.hasPrefix("content-length:") }),
+           let n = Int(line.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)) {
+            return bodyCount >= n
+        }
+        if head.contains("transfer-encoding: chunked") {
+            return raw.suffix(5) == Data("0\r\n\r\n".utf8)
+        }
+        // 204/304 have no body.
+        return head.hasPrefix("http/1.1 204") || head.hasPrefix("http/1.1 304")
     }
 
     /// Splits status line, headers and body; undoes chunked transfer encoding.

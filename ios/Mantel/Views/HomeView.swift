@@ -7,6 +7,7 @@ struct HomeView: View {
     @Environment(Player.self) private var player
     @State private var newAlbum: NewAlbumKind?
     @State private var openAlbum: AlbumItem?
+    @State private var linking = false
 
     var body: some View {
         GeometryReader { geo in
@@ -47,6 +48,7 @@ struct HomeView: View {
         .navigationDestination(for: AlbumItem.self) { AlbumView(albumId: $0.id) }
         .sheet(item: $newAlbum) { NewAlbumSheet(kind: $0) }
         .navigationDestination(item: $openAlbum) { AlbumView(albumId: $0.id) }
+        .sheet(isPresented: $linking) { LinkAlbumSheet() }
         .task {
             // Screenshot helpers for the simulator (scripts/screens.sh).
             let args = ProcessInfo.processInfo.arguments
@@ -208,7 +210,8 @@ struct HomeView: View {
                         .padding(.trailing, 6)
                 }
                 Menu {
-                    Button { newAlbum = .device } label: { Label("From this iPhone's photos", systemImage: "iphone") }
+                    Button { linking = true } label: { Label("Link an iPhone album (nothing copied)", systemImage: "photo.on.rectangle") }
+                    Button { newAlbum = .device } label: { Label("Pick photos into a new album", systemImage: "iphone") }
                     if library.signedIn {
                         Button { newAlbum = .cloud } label: { Label("Upload to Mantel", systemImage: "icloud.and.arrow.up") }
                     }
@@ -277,7 +280,7 @@ struct AlbumCard: View {
             ZStack(alignment: .topTrailing) {
                 Group {
                     if let c = library.cover(album) { PhotoThumb(photo: c) } else {
-                        Clean.cream.overlay(Image(systemName: album.isDevice ? "iphone" : "photo").font(.system(size: 26)).foregroundStyle(Clean.label))
+                        Clean.cream.overlay(Image(systemName: album.isLocal ? "iphone" : "photo").font(.system(size: 26)).foregroundStyle(Clean.label))
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)
@@ -300,8 +303,15 @@ struct AlbumCard: View {
                     if !album.isDevice && n > 0 {
                         Image(systemName: s >= n ? "arrow.down.circle.fill" : "arrow.down.circle").foregroundStyle(s >= n ? Clean.green : Clean.label)
                         Text(s >= n ? "offline" : "\(s) saved")
+                    } else if album.isLibrary {
+                        Image(systemName: "photo.on.rectangle")
+                        Text("linked")
                     } else if album.isDevice {
                         Image(systemName: "iphone")
+                    }
+                    if library.videoCount(album.id) > 0 {
+                        Image(systemName: "film").padding(.leading, 2)
+                        Text("\(library.videoCount(album.id))")
                     }
                 }
                 .font(.figtree(13, .semibold)).foregroundStyle(Clean.label).lineLimit(1)
@@ -387,10 +397,11 @@ struct NewAlbumSheet: View {
                                  : "Photos are uploaded to your Mantel account so your TV and Mac show them too.")
                 .font(.figtree(15, .medium)).foregroundStyle(Clean.label)
             CleanField(label: "Name", text: $name)
-            PhotosPicker(selection: $picks, maxSelectionCount: 200, matching: .images, preferredItemEncoding: .compatible) {
+            PhotosPicker(selection: $picks, maxSelectionCount: 200, matching: kind == .cloud ? .any(of: [.images, .videos]) : .images,
+                         preferredItemEncoding: .compatible) {
                 HStack {
                     Image(systemName: "photo.stack")
-                    Text(picks.isEmpty ? "Choose photos" : "\(picks.count) photo\(picks.count == 1 ? "" : "s") chosen")
+                    Text(picks.isEmpty ? (kind == .cloud ? "Choose photos & videos" : "Choose photos") : "\(picks.count) chosen")
                 }
                 .font(.figtree(16, .bold)).foregroundStyle(Clean.ink)
                 .frame(maxWidth: .infinity, minHeight: 52)
@@ -420,8 +431,11 @@ struct NewAlbumSheet: View {
         busy = true
         let a: AlbumItem? = kind == .device ? library.newDeviceAlbum(name) : await library.newCloudAlbum(name)
         guard let a else { busy = false; return }
-        let items = await loadPicks(picks)
-        await library.add(items, to: a) { progress = $0 }
+        if kind == .cloud {
+            await library.addMixed(await loadMixedPicks(picks), to: a) { progress = $0 }
+        } else {
+            await library.add(await loadPicks(picks), to: a) { progress = $0 }
+        }
         busy = false
         dismiss()
     }

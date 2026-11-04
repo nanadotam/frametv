@@ -1,6 +1,7 @@
 import SwiftUI
 import AppIntents
 import BackgroundTasks
+import Photos
 
 @main
 struct MantelApp: App {
@@ -62,6 +63,10 @@ struct MantelApp: App {
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-MantelLogin"), args.count > i + 2, !library.signedIn {
             try? await library.signIn(email: args[i + 1], password: args[i + 2])
+        }
+        if args.contains("-MantelLinkRecents"),
+           let c = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .smartAlbumUserLibrary, options: nil).firstObject {
+            library.linkLibraryAlbum(c)
         }
         if let i = args.firstIndex(of: "-MantelSetTV"), args.count > i + 1 {
             await ModeContent.shared.setRemote(["active_mode_id": args[i + 1], "brightness": 60])

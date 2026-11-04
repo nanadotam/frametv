@@ -43,6 +43,8 @@ struct PhotoEntry: TimelineEntry {
     let album: String
     let takenAt: Date?
     var showDate = false
+    /// Which layout the Grid widget uses for this entry (it changes shape as it rotates).
+    var variant = 0
     var empty: Bool { files.isEmpty }
 }
 
@@ -79,7 +81,7 @@ struct PhotoProvider: AppIntentTimelineProvider {
             let group = (0..<perEntry).map { items[(first + $0) % items.count] }
             let at = clock ? minute.addingTimeInterval(Double(i * 60)) : now.addingTimeInterval(Double(i * step * 60))
             return PhotoEntry(date: i == 0 ? now : at, files: group.map(\.file), album: group[0].album,
-                              takenAt: group[0].takenAt, showDate: config.showDate)
+                              takenAt: group[0].takenAt, showDate: config.showDate, variant: start + slot)
         }
         return Timeline(entries: entries, policy: .atEnd)
     }
@@ -169,31 +171,72 @@ struct PhotoWidgetView: View {
     }
 }
 
+/// Grid: a mosaic that changes shape every rotation (big + 2, 2×2, three columns, editorial…), like the Grid mode.
 struct MosaicView: View {
     @Environment(\.widgetFamily) private var family
     let entry: PhotoEntry
+
+    /// Unit rects drawn for a wide widget (medium); tall widgets swap x/y.
+    private static let layouts: [[CGRect]] = [
+        [CGRect(x: 0, y: 0, width: 0.5, height: 1), CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5)],
+        [CGRect(x: 0, y: 0, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5), CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5)],
+        [CGRect(x: 0, y: 0, width: 1 / 3, height: 1), CGRect(x: 1 / 3, y: 0, width: 1 / 3, height: 1), CGRect(x: 2 / 3, y: 0, width: 1 / 3, height: 1)],
+        [CGRect(x: 0, y: 0, width: 0.6, height: 1), CGRect(x: 0.6, y: 0, width: 0.4, height: 1 / 3), CGRect(x: 0.6, y: 1 / 3, width: 0.4, height: 1 / 3), CGRect(x: 0.6, y: 2 / 3, width: 0.4, height: 1 / 3)],
+        [CGRect(x: 0, y: 0, width: 0.5, height: 1), CGRect(x: 0.5, y: 0, width: 0.5, height: 1)],
+    ]
+
     var body: some View {
-        let files = entry.files
+        let tall = family == .systemLarge
+        let rects = Self.layouts[abs(entry.variant) % Self.layouts.count]
         GeometryReader { g in
-            let gap: CGFloat = 4
-            if family == .systemMedium {
-                HStack(spacing: gap) {
-                    tile(files[safe: 0]).frame(width: g.size.width * 0.5)
-                    VStack(spacing: gap) { tile(files[safe: 1]); tile(files[safe: 2]) }
-                }
-            } else {
-                VStack(spacing: gap) {
-                    tile(files[safe: 0]).frame(height: g.size.height * 0.58)
-                    HStack(spacing: gap) { tile(files[safe: 1]); tile(files[safe: 2]); tile(files[safe: 3]) }
+            ZStack(alignment: .topLeading) {
+                ForEach(0..<rects.count, id: \.self) { i in
+                    let r = tall ? CGRect(x: rects[i].minY, y: rects[i].minX, width: rects[i].height, height: rects[i].width) : rects[i]
+                    let f = CGRect(x: r.minX * g.size.width, y: r.minY * g.size.height, width: r.width * g.size.width, height: r.height * g.size.height).insetBy(dx: 2, dy: 2)
+                    PhotoFill(file: entry.files[safe: i % max(entry.files.count, 1)], family: .systemSmall, px: 420)
+                        .frame(width: f.width, height: f.height)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .offset(x: f.minX, y: f.minY)
                 }
             }
         }
-        .padding(4)
+        .padding(3)
         .containerBackground(for: .widget) { Color.black }
         .widgetURL(URL(string: "mantel://play"))
     }
-    private func tile(_ f: String?) -> some View {
-        PhotoFill(file: f, family: .systemSmall, px: 400).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+}
+
+/// Polaroids taped onto paper, like the Scrapbook mode.
+struct ScrapbookWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: PhotoEntry
+    var body: some View {
+        let n = family == .systemSmall ? 1 : 3
+        GeometryReader { g in
+            let w = family == .systemSmall ? g.size.width * 0.78 : min(g.size.width * 0.36, g.size.height * 0.7)
+            ZStack {
+                ForEach(0..<n, id: \.self) { i in
+                    let angle: Double = [-7, 5, -2][(i + abs(entry.variant)) % 3]
+                    VStack(spacing: 0) {
+                        PhotoFill(file: entry.files[safe: i % max(entry.files.count, 1)], family: .systemSmall, px: 380)
+                            .frame(width: w - 12, height: w - 12)
+                        Text(entry.takenAt.map { $0.formatted(.dateTime.day().month(.abbreviated)) } ?? " ")
+                            .font(.figtree(10, .semibold)).foregroundStyle(Color(hex: 0x3a3632)).frame(height: w * 0.2)
+                    }
+                    .padding(.top, 6).padding(.horizontal, 6)
+                    .background(Color(hex: 0xfdfcf8))
+                    .shadow(color: .black.opacity(0.25), radius: 5, y: 3)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(Color(hex: 0xf3e4b5).opacity(0.8)).frame(width: w * 0.36, height: 12).rotationEffect(.degrees(-angle / 2)).offset(y: -6)
+                    }
+                    .rotationEffect(.degrees(angle))
+                    .offset(x: n == 1 ? 0 : CGFloat(i - 1) * g.size.width * 0.3, y: n == 1 ? 0 : CGFloat(i % 2) * 8)
+                }
+            }
+            .frame(width: g.size.width, height: g.size.height)
+        }
+        .containerBackground(for: .widget) { Color(hex: 0xe9dfcc) }
+        .widgetURL(URL(string: "mantel://play"))
     }
 }
 
@@ -318,9 +361,20 @@ struct PinterestWidget: Widget {
 struct MosaicWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "MantelMosaic", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 4)) { MosaicView(entry: $0) }
-            .configurationDisplayName("Mosaic")
-            .description("A few photos at once.")
+            .configurationDisplayName("Grid")
+            .description("A mosaic that changes shape every few minutes.")
             .supportedFamilies([.systemMedium, .systemLarge, .systemExtraLarge])
+            .containerBackgroundRemovable(false)
+            .contentMarginsDisabled()
+    }
+}
+
+struct ScrapbookWidget: Widget {
+    var body: some WidgetConfiguration {
+        AppIntentConfiguration(kind: "MantelScrapbook", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 3)) { ScrapbookWidgetView(entry: $0) }
+            .configurationDisplayName("Scrapbook")
+            .description("Polaroids taped onto paper.")
+            .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
             .containerBackgroundRemovable(false)
             .contentMarginsDisabled()
     }
@@ -356,6 +410,7 @@ struct MantelWidgetBundle: WidgetBundle {
         ClockWidget()
         PinterestWidget()
         MosaicWidget()
+        ScrapbookWidget()
         VerseWidget()
         PlayControl()
     }

@@ -124,14 +124,14 @@ final class MantelAPI: @unchecked Sendable {
     }
 
     /// Every photo in an album (pages of 200).
-    func photos(album: String) async throws -> [PhotoItem] {
+    func photos(album: String, media: String = "image") async throws -> [PhotoItem] {
         struct R: Decodable { let photos: [APIPhoto]; let total: Int? }
         var all: [PhotoItem] = [], offset = 0
         while true {
             let data = try await request("api/photos", query: [.init(name: "albumId", value: album), .init(name: "limit", value: "200"),
-                                                               .init(name: "offset", value: String(offset))])
+                                                               .init(name: "offset", value: String(offset)), .init(name: "mediaType", value: media)])
             let r = try JSONDecoder().decode(R.self, from: data)
-            all += r.photos.filter { ($0.media_type ?? "image") == "image" }.map { $0.item(base: base) }
+            all += r.photos.filter { ($0.media_type ?? "image") == media }.map { $0.item(base: base) }
             offset += r.photos.count
             if r.photos.count < 200 || offset >= (r.total ?? 0) || offset > 5000 { break }
         }
@@ -162,18 +162,49 @@ final class MantelAPI: @unchecked Sendable {
         return try JSONDecoder().decode(Wrap<APIPhoto>.self, from: data, key: "photo").item(base: base)
     }
 
-    private func put(_ data: Data, path: String, token: String) async throws {
+    private func put(_ data: Data, path: String, token: String, type: String = "image/jpeg") async throws {
+        try await putFile(nil, data: data, path: path, token: token, type: type)
+    }
+
+    /// PUT to a signed storage upload URL — from memory, or streamed from a file (videos).
+    func putFileUpload(_ file: URL?, data: Data? = nil, path: String, token: String, type: String) async throws {
+        try await putFile(file, data: data, path: path, token: token, type: type)
+    }
+
+    private func putFile(_ file: URL?, data: Data? = nil, path: String, token: String, type: String) async throws {
         var url = Self.storageBase.appending(path: "storage/v1/object/upload/sign/photos/\(path)")
         url = url.appending(queryItems: [.init(name: "token", value: token)])
         var req = URLRequest(url: url)
         req.httpMethod = "PUT"
-        req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 600
+        req.setValue(type, forHTTPHeaderField: "Content-Type")
         req.setValue("max-age=31536000", forHTTPHeaderField: "cache-control")
-        let (body, resp) = try await session.upload(for: req, from: data)
+        let body: Data, resp: URLResponse
+        if let file { (body, resp) = try await session.upload(for: req, fromFile: file) }
+        else { (body, resp) = try await session.upload(for: req, from: data ?? Data()) }
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else {
             throw APIError.server("Upload failed (\(code)): \(String(data: body, encoding: .utf8)?.prefix(120) ?? "")")
         }
+    }
+}
+
+extension MantelAPI {
+    /// Same flow as the website's video uploader: signed URLs → PUT the MP4 + poster → register with /api/videos.
+    func uploadVideo(mp4: URL, poster: Data, width: Int, height: Int, durationMs: Int, takenAt: Date?, album: String, name: String?) async throws -> PhotoItem {
+        struct Signed: Decodable { let videoPath: String; let videoToken: String; let posterPath: String; let posterToken: String }
+        let bytes = (try? FileManager.default.attributesOfItem(atPath: mp4.path)[.size] as? Int) ?? 0
+        let signed = try JSONDecoder().decode(Signed.self, from: try await send("api/videos/upload-url", method: "POST", json: ["albumId": album, "bytes": bytes]))
+        try await putFileUpload(mp4, path: signed.videoPath, token: signed.videoToken, type: "video/mp4")
+        try await putFileUpload(nil, data: poster, path: signed.posterPath, token: signed.posterToken, type: "image/jpeg")
+        var body: [String: Any] = ["albumId": album, "videoPath": signed.videoPath, "posterPath": signed.posterPath,
+                                   "width": width, "height": height, "durationMs": durationMs, "bytes": bytes]
+        if let name { body["originalName"] = name }
+        if let takenAt { body["takenAt"] = ISO.string(takenAt) }
+        _ = try await send("api/videos", method: "POST", json: body)
+        let pub = { (p: String) in Self.storageBase.appending(path: "storage/v1/object/public/photos/\(p)") }
+        return PhotoItem(id: "up-\(UUID().uuidString.prefix(8))", albumId: album, fullURL: pub(signed.posterPath), thumbURL: pub(signed.posterPath),
+                         isVideo: true, videoURL: pub(signed.videoPath), durationMs: durationMs, width: width, height: height, takenAt: takenAt ?? Date())
     }
 }
 

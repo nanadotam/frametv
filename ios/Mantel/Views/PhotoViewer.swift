@@ -118,7 +118,9 @@ struct PhotoViewer: View {
 
     private var actions: some View {
         HStack(spacing: 4) {
-            action("square.and.arrow.down", "Save") { if let p = current { Task { await PhotoSaver.save([p]) } } }
+            if current?.assetId == nil {
+                action("square.and.arrow.down", "Save") { if let p = current { Task { await PhotoSaver.save([p]) } } }
+            }
             action("square.and.arrow.up", "Share") {
                 guard let p = current else { return }
                 Task { shareImage = await ImageCache.shared.image(p, .full, network: library.online) }
@@ -129,7 +131,7 @@ struct PhotoViewer: View {
                 Task { try? await Task.sleep(for: .milliseconds(350)); player.play(startingAt: p, in: photos) }
             }
             action("eye.slash", "Hide") { if let p = current { Task { await library.hide([p.id]); dismiss() } } }
-            action("trash", "Delete") { confirmDelete = true }
+            if current?.assetId == nil { action("trash", "Delete") { confirmDelete = true } }
         }
         .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
         .background(LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())

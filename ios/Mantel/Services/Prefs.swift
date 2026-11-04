@@ -29,6 +29,7 @@ final class Prefs {
     var mode: FrameMode { didSet { d.set(mode.rawValue, forKey: "mode") } }
     var clockOverlay: Bool { didSet { d.set(clockOverlay, forKey: "clockOverlay") } }   // small clock on photo modes
     var translation: String { didSet { d.set(translation, forKey: "translation") } }      // Scripture
+    var videoLook: String { didSet { d.set(videoLook, forKey: "videoLook") } }          // Video: normal | grid | film | oldtv
     var moodQuery: String { didSet { d.set(moodQuery, forKey: "moodQuery") } }            // Mood
     var shuffle: Bool { didSet { d.set(shuffle, forKey: "shuffle") } }
     var duo: Bool { didSet { d.set(duo, forKey: "duo") } }                   // landscape: two portrait photos side by side
@@ -50,6 +51,7 @@ final class Prefs {
         clockOverlay = d.bool(forKey: "clockOverlay")
         translation = d.string(forKey: "translation") ?? "NIV"
         moodQuery = d.string(forKey: "moodQuery") ?? "calm"
+        videoLook = d.string(forKey: "videoLook") ?? "normal"
         shuffle = d.bool(forKey: "shuffle")
         duo = d.bool(forKey: "duo")
         nightDim = d.bool(forKey: "nightDim")
