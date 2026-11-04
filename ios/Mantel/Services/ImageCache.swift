@@ -17,7 +17,9 @@ actor ImageCache {
     }
 
     nonisolated(unsafe) let memory: NSCache<NSString, UIImage> = {   // NSCache is thread-safe
-        let c = NSCache<NSString, UIImage>(); c.totalCostLimit = 140 * 1024 * 1024; return c
+        let c = NSCache<NSString, UIImage>()
+        c.totalCostLimit = 96 * 1024 * 1024   // NSCache also empties itself on memory warnings
+        return c
     }()
     private var inflight: [String: Task<UIImage?, Never>] = [:]
 

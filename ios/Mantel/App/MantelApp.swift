@@ -34,7 +34,7 @@ struct MantelApp: App {
                 if LaunchRequest.consume() { startFrame() }
                 Task { await library.refresh(quiet: true) }
             }
-            if p == .background { library.writeWidgetFeed(); Self.scheduleRefresh() }
+            if p == .background { library.persistNow(); library.writeWidgetFeed(); Self.scheduleRefresh() }
         }
         // iOS wakes the app now and then (roughly every 15+ minutes, its choice) to pull new photos,
         // save them for offline and refresh the widgets.

@@ -26,6 +26,11 @@ enum AppGroup {
     static var widgetManifest: URL { widget.appending(path: "feed.json") }
     static var widgetAlbums: URL { widget.appending(path: "albums.json") }
 
+    /// Where a widget feed entry's image is.
+    static func widgetImageURL(_ file: String) -> URL {
+        file.contains("/") ? container.appending(path: file) : widget.appending(path: file)
+    }
+
     @discardableResult
     static func dir(_ url: URL) -> URL {
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -36,6 +41,8 @@ enum AppGroup {
 /// What the widgets show: a rotation of small photos written by the app.
 struct WidgetFeed: Codable {
     struct Item: Codable, Hashable {
+        /// A plain file name lives in the Widget folder (linked-album copies only); a path with "/" is relative to the
+        /// app-group container — the app's own download or on-device photo, read in place (no duplicate copies).
         var file: String
         var album: String
         var takenAt: Date?

@@ -3,6 +3,7 @@ import AVFoundation
 import Photos
 
 /// Mantel videos saved for offline (Caches/Mantel/video). iPhone videos play straight from Photos.
+/// Capped at 30% of the download limit; least recently played go first.
 enum VideoCache {
     static var dir: URL { AppGroup.dir(AppGroup.cache.appending(path: "video")) }
     static func file(_ p: PhotoItem) -> URL { dir.appending(path: "\(p.id).mp4") }
@@ -19,21 +20,53 @@ enum VideoCache {
                 PHImageManager.default().requestPlayerItem(forVideo: asset, options: opts) { item, _ in cont.resume(returning: item) }
             }
         }
-        if isSaved(p) { return AVPlayerItem(url: file(p)) }
-        if let u = p.videoURL { Task.detached(priority: .background) { await prefetch([p]) }; return AVPlayerItem(url: u) }
-        return nil
+        if isSaved(p) {
+            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file(p).path)   // LRU
+            return AVPlayerItem(url: file(p))
+        }
+        return p.videoURL.map { AVPlayerItem(url: $0) }
     }
 
-    /// Downloads clips for offline (skips ones over 120 MB).
     static func prefetch(_ list: [PhotoItem]) async {
-        for p in list where p.assetId == nil && !isSaved(p) {
-            guard let u = p.videoURL else { continue }
+        let limit = await MainActor.run { Int64(Prefs.shared.cacheLimitMB) * 1024 * 1024 * 3 / 10 }
+        await VideoStore.shared.prefetch(list, limit: limit)
+    }
+
+    static func usage() -> Int64 { ImageCache.folderSize(dir) }
+    static func removeAll() { try? FileManager.default.removeItem(at: dir) }
+    static func remove(_ list: [PhotoItem]) { for p in list { try? FileManager.default.removeItem(at: file(p)) } }
+}
+
+/// Downloads one clip at a time; never the same clip twice at once.
+actor VideoStore {
+    static let shared = VideoStore()
+    private var inflight = Set<String>()
+
+    func prefetch(_ list: [PhotoItem], limit: Int64) async {
+        for p in list where p.assetId == nil && !VideoCache.isSaved(p) && !inflight.contains(p.id) {
+            guard let u = p.videoURL, VideoCache.usage() < limit else { break }
+            inflight.insert(p.id)
+            defer { inflight.remove(p.id) }
             guard let (tmp, resp) = try? await URLSession.shared.download(from: u),
                   (resp as? HTTPURLResponse)?.statusCode == 200 else { continue }
-            let size = (try? FileManager.default.attributesOfItem(atPath: tmp.path)[.size] as? Int) ?? 0
+            let size = (try? FileManager.default.attributesOfItem(atPath: tmp.path)[.size] as? Int64) ?? 0
             if size > 120 << 20 { try? FileManager.default.removeItem(at: tmp); continue }
-            try? FileManager.default.moveItem(at: tmp, to: file(p))
+            try? FileManager.default.moveItem(at: tmp, to: VideoCache.file(p))
         }
+        trim(limit)
+    }
+
+    /// Oldest-played clips go first when over the limit.
+    private func trim(_ limit: Int64) {
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
+        guard let files = try? FileManager.default.contentsOfDirectory(at: VideoCache.dir, includingPropertiesForKeys: keys) else { return }
+        var list = files.compactMap { u -> (URL, Date, Int64)? in
+            guard let v = try? u.resourceValues(forKeys: Set(keys)) else { return nil }
+            return (u, v.contentModificationDate ?? .distantPast, Int64(v.fileSize ?? 0))
+        }
+        var total = list.reduce(0) { $0 + $1.2 }
+        list.sort { $0.1 < $1.1 }
+        for (u, _, size) in list where total > limit { try? FileManager.default.removeItem(at: u); total -= size }
     }
 }
 

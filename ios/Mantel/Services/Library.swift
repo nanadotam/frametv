@@ -37,15 +37,21 @@ final class Library {
     private let monitor = NWPathMonitor()
     private var syncTask: Task<Void, Never>?
     private var file: URL { AppGroup.support.appending(path: "library.json") }
+    private var backup: URL { AppGroup.support.appending(path: "library.backup.json") }
+    @ObservationIgnored private var persistTask: Task<Void, Never>?
+    @ObservationIgnored private var version = 0
 
-    private struct Snapshot: Codable {
+    struct Snapshot: Codable, Sendable {
         var user: APIUser?; var albums: [AlbumItem]; var photos: [String: [PhotoItem]]; var videos: [String: [PhotoItem]]?
         var showing: Set<String>; var hidden: Set<String>; var lastSynced: Date?
     }
 
     private init() {
         onboarded = UserDefaults.standard.bool(forKey: "onboarded")
-        if let data = try? Data(contentsOf: file), let s = try? JSONDecoder().decode(Snapshot.self, from: data) {
+        // Last good copy wins: if library.json is damaged (power loss mid-write, disk full), fall back to the backup
+        // instead of starting empty and losing track of on-device albums.
+        let decode = { (u: URL) in (try? Data(contentsOf: u)).flatMap { try? JSONDecoder().decode(Snapshot.self, from: $0) } }
+        if let s = decode(file) ?? decode(backup) {
             user = s.user; albums = s.albums; photos = s.photos; videos = s.videos ?? [:]; hidden = s.hidden; lastSynced = s.lastSynced
             showing = s.showing
         }
@@ -63,9 +69,26 @@ final class Library {
         if albums.contains(where: \.isLibrary) { startWatchingPhotos() }
     }
 
+    /// Saves soon: bursts of changes (adding 200 photos, toggling albums) become one write, encoded and written
+    /// off the main thread, in order, atomically, keeping the previous good copy as a backup.
     private func persist() {
-        let s = Snapshot(user: user, albums: albums, photos: photos, videos: videos, showing: showing, hidden: hidden, lastSynced: lastSynced)
-        if let data = try? JSONEncoder().encode(s) { try? data.write(to: file, options: .atomic) }
+        persistTask?.cancel()
+        persistTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
+            self?.persistNow()
+        }
+    }
+
+    /// Saves now (e.g. when the app goes to the background).
+    func persistNow() {
+        persistTask?.cancel()
+        version += 1
+        // Linked-album contents are re-read from Photos, so they aren't stored (keeps the file small).
+        let linked = Set(albums.filter(\.isLibrary).map(\.id))
+        let s = Snapshot(user: user, albums: albums, photos: photos.filter { !linked.contains($0.key) },
+                         videos: videos.filter { !linked.contains($0.key) }, showing: showing, hidden: hidden, lastSynced: lastSynced)
+        let (v, f, b) = (version, file, backup)
+        Task.detached(priority: .utility) { await SnapshotWriter.shared.write(s, version: v, to: f, backup: b) }
     }
 
     // MARK: - What the frame plays
@@ -124,7 +147,8 @@ final class Library {
 
     /// Fetch albums + photos from Mantel, then save the showing albums for offline.
     func refresh(quiet: Bool = false) async {
-        reloadLibraryAlbums()
+        // Linked albums are listed once per launch; after that the Photos observer keeps them current.
+        if fetches.isEmpty { reloadLibraryAlbums() }
         guard signedIn, !refreshing else { scheduleSync(); return }
         refreshing = true
         defer { refreshing = false }
@@ -200,12 +224,16 @@ final class Library {
                 if let p = next() { g.addTask { _ = await ImageCache.shared.save(p) } }
             }
         }
-        await ImageCache.shared.trim(to: limit, keep: Set(wanted.prefix(budget).map(\.id)))
+        // Never trim what's showing or what a widget points at (no delete → re-download churn).
+        await ImageCache.shared.trim(to: limit, keep: Set(wanted.prefix(budget).map(\.id)).union(widgetPinned))
     }
 
     func recountSaved() {
         var out: [String: Int] = [:]
-        for a in albums { out[a.id] = (photos[a.id] ?? []).filter { ImageCache.shared.isSaved($0) }.count }
+        for a in albums {
+            let list = photos[a.id] ?? []
+            out[a.id] = a.isLocal ? list.count : list.filter { ImageCache.shared.isSaved($0) }.count
+        }
         saved = out
     }
 
@@ -213,12 +241,15 @@ final class Library {
 
     func removeDownloads(album id: String) async {
         await ImageCache.shared.removeAlbum(id)
+        VideoCache.remove(videos[id] ?? [])
         recountSaved(); writeWidgetFeed()
         toast = "Removed downloads from this \(UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone")"
     }
 
     func clearAllDownloads() async {
         await ImageCache.shared.removeAll()
+        VideoCache.removeAll()
+        RemoteImage.clear()
         recountSaved(); writeWidgetFeed()
         toast = "Cleared every download"
     }
@@ -260,7 +291,7 @@ final class Library {
 
     func deleteDeviceAlbum(_ id: String) {
         if album(id)?.isLibrary == true {
-            photos[id] = nil; videos[id] = nil
+            photos[id] = nil; videos[id] = nil; fetches[id] = nil
             albums.removeAll { $0.id == id }; showing.remove(id)
             persist(); recountSaved(); writeWidgetFeed()
             toast = "Album unlinked — nothing was removed from Photos"
@@ -299,44 +330,67 @@ final class Library {
         albums.append(a)
         if !showing.isEmpty { showing.insert(a.id) }
         load(a)
-        persist(); recountSaved(); writeWidgetFeed()
+        persist()
         startWatchingPhotos()
         toast = "Linked \(a.name) from Photos"
         return a
     }
 
+    /// Fetch results for linked albums, so a Photos change only reloads the album it touched.
+    @ObservationIgnored private var fetches: [String: PHFetchResult<PHAsset>] = [:]
+    /// Newest items read from a linked album (Recents can be tens of thousands; the frame never needs them all).
+    static let linkedCap = (photos: 3000, videos: 300)
+
     private func load(_ a: AlbumItem) {
-        guard let lid = a.libraryId,
-              let c = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [lid], options: nil).firstObject else { return }
-        let opts = PHFetchOptions()
-        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        let result = PHAsset.fetchAssets(in: c, options: opts)
-        var pics: [PhotoItem] = [], vids: [PhotoItem] = []
-        result.enumerateObjects { asset, _, _ in
-            let id = "a-" + asset.localIdentifier.replacingOccurrences(of: "/", with: "_")
-            var item = PhotoItem(id: id, albumId: a.id, assetId: asset.localIdentifier,
-                                 width: asset.pixelWidth, height: asset.pixelHeight, takenAt: asset.creationDate)
-            if asset.mediaType == .video { item.isVideo = true; item.durationMs = Int(asset.duration * 1000); vids.append(item) }
-            else if asset.mediaType == .image { pics.append(item) }
+        guard let lid = a.libraryId else { return }
+        let albumId = a.id
+        Task.detached(priority: .userInitiated) {
+            guard let c = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [lid], options: nil).firstObject else { return }
+            let opts = PHFetchOptions()
+            opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            let result = PHAsset.fetchAssets(in: c, options: opts)
+            var pics: [PhotoItem] = [], vids: [PhotoItem] = []
+            result.enumerateObjects { asset, _, stop in
+                let id = "a-" + asset.localIdentifier.replacingOccurrences(of: "/", with: "_")
+                var item = PhotoItem(id: id, albumId: albumId, assetId: asset.localIdentifier,
+                                     width: asset.pixelWidth, height: asset.pixelHeight, takenAt: asset.creationDate)
+                if asset.mediaType == .video, vids.count < Library.linkedCap.videos {
+                    item.isVideo = true; item.durationMs = Int(asset.duration * 1000); vids.append(item)
+                } else if asset.mediaType == .image, pics.count < Library.linkedCap.photos { pics.append(item) }
+                if pics.count >= Library.linkedCap.photos && vids.count >= Library.linkedCap.videos { stop.pointee = true }
+            }
+            let title = c.localizedTitle
+            nonisolated(unsafe) let fetch = result
+            await MainActor.run {
+                let lib = Library.shared
+                guard let i = lib.albums.firstIndex(where: { $0.id == albumId }) else { return }   // unlinked meanwhile
+                lib.fetches[albumId] = fetch
+                lib.photos[albumId] = pics
+                lib.videos[albumId] = vids
+                if let title { lib.albums[i].name = title }
+                lib.recountSaved()
+                lib.writeWidgetFeed()
+            }
         }
-        photos[a.id] = pics
-        videos[a.id] = vids
-        if let i = albums.firstIndex(where: { $0.id == a.id }) { albums[i].name = c.localizedTitle ?? a.name }
     }
 
     func reloadLibraryAlbums() {
         let linked = albums.filter(\.isLibrary)
         guard !linked.isEmpty, PHPhotoLibrary.authorizationStatus(for: .readWrite) != .notDetermined else { return }
         for a in linked { load(a) }
-        persist(); recountSaved()
     }
 
-    private var photosObserver: PhotosObserver?
+    /// Only albums whose contents actually changed are re-read.
+    fileprivate func photosChanged(_ changes: [PHChange]) {
+        for a in albums where a.isLibrary {
+            if let f = fetches[a.id] { if changes.contains(where: { $0.changeDetails(for: f) != nil }) { load(a) } } else { load(a) }
+        }
+    }
+
+    @ObservationIgnored private var photosObserver: PhotosObserver?
     private func startWatchingPhotos() {
         guard photosObserver == nil else { return }
-        let o = PhotosObserver { [weak self] in
-            Task { @MainActor in self?.reloadLibraryAlbums(); self?.writeWidgetFeed() }
-        }
+        let o = PhotosObserver()
         PHPhotoLibrary.shared().register(o)
         photosObserver = o
     }
@@ -408,62 +462,151 @@ final class Library {
 
     // MARK: - Widgets & StandBy
 
-    /// Writes small copies of saved photos for the widgets, then asks iOS to redraw them.
+    @ObservationIgnored private var widgetTask: Task<Void, Never>?
+    /// Downloads the widgets read directly; kept safe from the storage-limit trim.
+    @ObservationIgnored private(set) var widgetPinned: Set<String> = []
+
+    /// Updates the widgets' photo copies, then asks iOS to redraw them. Debounced; the actual work is serialized
+    /// in WidgetWriter so two updates can never delete each other's files.
     func writeWidgetFeed() {
-        // Saved photos from every album (so a widget can be set to one album), newest-viewed first,
-        // with the "Now showing" ones flagged for the default rotation.
+        widgetTask?.cancel()
+        widgetTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(1)) } catch { return }
+            guard let self else { return }
+            await WidgetWriter.shared.submit(self.widgetJob())
+        }
+    }
+
+    /// Up to 30 saved photos per album (150 total). Widgets read the app's own downloads and on-device photos in
+    /// place — no second copy. Only linked iPhone-album photos (no file on disk) get a widget copy, and ones that
+    /// already have it are picked first so nothing is re-encoded unless the albums really changed.
+    private func widgetJob() -> WidgetWriter.Job {
+        let existing = Set((try? FileManager.default.contentsOfDirectory(atPath: AppGroup.widget.path)) ?? [])
+        let previous = Set(WidgetFeed.load()?.items.compactMap { $0.file.contains("/") ? $0.file : nil } ?? [])
         let showingIds = Set(playlist.map(\.id))
         var pick: [PhotoItem] = []
         var albumsOut: [WidgetAlbum] = []
         for a in albums {
             let saved = (photos[a.id] ?? []).filter { !hidden.contains($0.id) && ImageCache.shared.isSaved($0) }
             guard !saved.isEmpty else { continue }
-            let chosen = Array((Prefs.shared.shuffle ? saved.shuffled() : saved).prefix(30))
+            let isKept = { (p: PhotoItem) in existing.contains(WidgetWriter.fileName(p)) || previous.contains(WidgetWriter.relativePath(p) ?? "") }
+            let have = saved.filter(isKept)
+            let fresh = saved.filter { !isKept($0) }
+            let chosen = Array((have.prefix(30) + (Prefs.shared.shuffle ? fresh.shuffled() : fresh)).prefix(30))
             pick += chosen
             albumsOut.append(WidgetAlbum(id: a.id, name: a.name, count: chosen.count))
         }
-        pick = Array(pick.prefix(150))   // ~150 HD copies ≈ 50–60 MB
-        let names = Dictionary(uniqueKeysWithValues: albums.map { ($0.id, $0.name) })
-        let minutes = Prefs.shared.widgetMinutes
-        Task.detached(priority: .utility) {
-            let dir = AppGroup.widget
-            var items: [WidgetFeed.Item] = []
-            var keep = Set<String>(["feed.json", "albums.json", "verse.json", "verse.jpg"])
-            for p in pick {
-                let file = "\(p.id)-hd.jpg"   // "-hd": 1600 px copies (older 900 px ones get cleared)
-                keep.insert(file)
+        pick = Array(pick.prefix(150))
+        widgetPinned = Set(pick.filter { $0.assetId == nil && $0.localFile == nil }.map(\.id))
+        return WidgetWriter.Job(pick: pick, showing: showingIds, albums: albumsOut,
+                                names: Dictionary(albums.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }),
+                                minutes: Prefs.shared.widgetMinutes)
+    }
+}
+
+/// Writes library.json in order (a slow older write can never overwrite a newer one) and keeps a backup.
+actor SnapshotWriter {
+    static let shared = SnapshotWriter()
+    private var written = 0
+    func write(_ s: Library.Snapshot, version: Int, to file: URL, backup: URL) {
+        guard version > written, let data = try? JSONEncoder().encode(s) else { return }
+        written = version
+        let fm = FileManager.default
+        if fm.fileExists(atPath: file.path) {
+            try? fm.removeItem(at: backup)
+            try? fm.copyItem(at: file, to: backup)
+        }
+        try? data.write(to: file, options: .atomic)
+    }
+}
+
+/// One widget update at a time; if more arrive while one runs, only the newest runs next.
+actor WidgetWriter {
+    static let shared = WidgetWriter()
+    struct Job: Sendable { var pick: [PhotoItem]; var showing: Set<String>; var albums: [WidgetAlbum]; var names: [String: String]; var minutes: Int }
+    private var running = false
+    private var next: Job?
+
+    static func fileName(_ p: PhotoItem) -> String { "\(p.id)-hd.jpg" }   // linked-album copies, 1600 px
+
+    /// The photo's existing file, relative to the app-group container (downloads and on-device photos).
+    static func relativePath(_ p: PhotoItem) -> String? {
+        let root = AppGroup.container.standardizedFileURL.path
+        let url: URL
+        if let f = p.localFile { url = ImageCache.deviceDir.appending(path: f) }
+        else if p.assetId == nil { url = ImageCache.shared.fileURL(p, .full) }
+        else { return nil }
+        let full = url.standardizedFileURL.path
+        guard full.hasPrefix(root) else { return nil }
+        return String(full.dropFirst(root.count).drop(while: { $0 == "/" }))
+    }
+
+    func submit(_ job: Job) async {
+        next = job
+        guard !running else { return }
+        running = true
+        while let j = next { next = nil; await perform(j) }
+        running = false
+    }
+
+    private func perform(_ job: Job) async {
+        let dir = AppGroup.widget
+        var items: [WidgetFeed.Item] = []
+        var keep = Set<String>(["feed.json", "albums.json", "verse.json", "verse.jpg"])
+        for p in job.pick {
+            let file: String
+            if let rel = Self.relativePath(p) {
+                // Read in place: the full-size download (2048 px) or on-device photo. No copy, no re-encode.
+                guard FileManager.default.fileExists(atPath: AppGroup.container.appending(path: rel).path) else { continue }
+                file = rel
+            } else if let a = p.assetId {
+                // Linked iPhone album: widgets can't read Photos themselves, so this one needs a copy.
+                file = Self.fileName(p)
                 let dest = dir.appending(path: file)
                 if !FileManager.default.fileExists(atPath: dest.path) {
-                    let src = p.localFile.map { ImageCache.deviceDir.appending(path: $0) } ?? ImageCache.shared.fileURL(p, .full)
-                    // 1600 px covers a large widget and StandBy on a Pro Max at 3×; the widget decodes only what it needs.
-                    var img: UIImage?
-                    if let a = p.assetId { img = await ImageCache.libraryImage(a, max: 1600) } else { img = ImageCache.downsample(url: src, max: 1600) }
-                    guard let img, let d = img.jpegData(compressionQuality: 0.9) else { continue }
+                    guard let img = await ImageCache.libraryImage(a, max: 1600), let d = img.jpegData(compressionQuality: 0.9) else { continue }
                     try? d.write(to: dest, options: .atomic)
                 }
-                items.append(.init(file: file, album: names[p.albumId] ?? "Mantel", takenAt: p.takenAt, albumId: p.albumId, showing: showingIds.contains(p.id)))
-            }
-            for f in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where !keep.contains(f) {
-                try? FileManager.default.removeItem(at: dir.appending(path: f))
-            }
-            let feed = WidgetFeed(items: items, rotateMinutes: minutes, updatedAt: Date())
-            let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
-            if let d = try? enc.encode(feed) { try? d.write(to: AppGroup.widgetManifest, options: .atomic) }
-            if let d = try? JSONEncoder().encode(albumsOut) { try? d.write(to: AppGroup.widgetAlbums, options: .atomic) }
-            WidgetCenter.shared.reloadAllTimelines()
+                keep.insert(file)
+            } else { continue }
+            items.append(.init(file: file, album: job.names[p.albumId] ?? "Mantel", takenAt: p.takenAt, albumId: p.albumId, showing: job.showing.contains(p.id)))
+        }
+        // Write the new manifest first, then remove files nothing points at.
+        let feed = WidgetFeed(items: items, rotateMinutes: job.minutes, updatedAt: Date())
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
+        if let d = try? enc.encode(feed) { try? d.write(to: AppGroup.widgetManifest, options: .atomic) }
+        if let d = try? JSONEncoder().encode(job.albums) { try? d.write(to: AppGroup.widgetAlbums, options: .atomic) }
+        for f in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where !keep.contains(f) && f.hasSuffix(".jpg") {
+            try? FileManager.default.removeItem(at: dir.appending(path: f))
+        }
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+}
+
+/// Hands Photos-library changes to the main actor (debounced there).
+final class PhotosObserver: NSObject, PHPhotoLibraryChangeObserver, Sendable {
+    func photoLibraryDidChange(_ changeInstance: PHChange) {
+        nonisolated(unsafe) let change = changeInstance
+        Task { @MainActor in Library.shared.photosChangedDebounced(change) }
+    }
+}
+
+extension Library {
+    func photosChangedDebounced(_ change: PHChange) {
+        // Photos sends bursts (e.g. an iCloud sync); coalesce them.
+        PhotosDebounce.shared.pending.append(change)
+        PhotosDebounce.shared.task?.cancel()
+        PhotosDebounce.shared.task = Task { @MainActor in
+            do { try await Task.sleep(for: .seconds(1.5)) } catch { return }
+            let all = PhotosDebounce.shared.pending
+            PhotosDebounce.shared.pending = []
+            if !all.isEmpty { self.photosChanged(all) }
         }
     }
 }
 
-/// Tells the library when anything changes in the Photos app (debounced).
-final class PhotosObserver: NSObject, PHPhotoLibraryChangeObserver, @unchecked Sendable {
-    private let onChange: @Sendable () -> Void
-    private var pending: DispatchWorkItem?
-    init(_ onChange: @escaping @Sendable () -> Void) { self.onChange = onChange }
-    func photoLibraryDidChange(_ changeInstance: PHChange) {
-        pending?.cancel()
-        let w = DispatchWorkItem(block: onChange)
-        pending = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: w)
-    }
+@MainActor final class PhotosDebounce {
+    static let shared = PhotosDebounce()
+    var pending: [PHChange] = []
+    var task: Task<Void, Never>?
 }

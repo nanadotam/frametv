@@ -147,9 +147,11 @@ struct StorageView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var usage: [String: Int64] = [:]
     @State private var device: Int64 = 0
+    @State private var video: Int64 = 0
+    @State private var web: Int64 = 0
     @State private var confirmClear = false
 
-    private var downloads: Int64 { usage.values.reduce(0, +) }
+    private var downloads: Int64 { usage.values.reduce(0, +) + video + web }
 
     var body: some View {
         @Bindable var prefs = prefs
@@ -188,7 +190,7 @@ struct StorageView: View {
                 }
                 Button(role: .destructive) { confirmClear = true } label: { Label("Clear all downloads", systemImage: "trash") }
                     .buttonStyle(CleanButton(kind: .danger, size: 52))
-                Text("Downloads are copies of your Mantel photos so the frame and widgets work offline. Clearing them doesn't delete anything from your account — they'll download again when needed. Albums made on this device are kept until you delete them.")
+                Text("Downloads are copies of your Mantel photos and videos so the frame and widgets work offline. Videos use at most 30% of the limit. Linked iPhone albums take no extra space — they're read from Photos. Clearing them doesn't delete anything from your account — they'll download again when needed. Albums made on this device are kept until you delete them.")
                     .font(.figtree(13, .medium)).foregroundStyle(Clean.label)
             }
             .padding(20)
@@ -222,6 +224,10 @@ struct StorageView: View {
             HStack(spacing: 16) {
                 legend(Clean.cherry, "Downloads", downloads.bytesText)
                 legend(Clean.ink.opacity(0.5), "Device albums", device.bytesText)
+            }
+            HStack(spacing: 16) {
+                legend(Clean.cherry.opacity(0.6), "Videos", video.bytesText)
+                legend(Clean.label, "Backgrounds & art", web.bytesText)
             }
         }
         .card()
@@ -259,5 +265,7 @@ struct StorageView: View {
     private func measure() async {
         usage = await ImageCache.shared.usage()
         device = ImageCache.deviceUsage()
+        video = VideoCache.usage()
+        web = Int64(RemoteImage.cache.currentDiskUsage)
     }
 }

@@ -99,7 +99,7 @@ struct PhotoProvider: AppIntentTimelineProvider {
 /// Loads a widget photo at exactly the resolution the box needs (aspect-fill, in pixels), so it's sharp but
 /// stays inside the widget's memory budget. `fill` is the on-screen size × display scale.
 func widgetImage(_ file: String, fill: CGSize) -> UIImage? {
-    let url = AppGroup.widget.appending(path: file)
+    let url = AppGroup.widgetImageURL(file)
     guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
     var need = Swift.max(fill.width, fill.height)
     if let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
@@ -113,7 +113,7 @@ func widgetImage(_ file: String, fill: CGSize) -> UIImage? {
 }
 
 func widgetImage(_ file: String, max: CGFloat) -> UIImage? {
-    let url = AppGroup.widget.appending(path: file)
+    let url = AppGroup.widgetImageURL(file)
     guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
     let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
                                  kCGImageSourceThumbnailMaxPixelSize: max]

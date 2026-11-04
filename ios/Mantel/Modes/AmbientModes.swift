@@ -5,9 +5,12 @@ struct RemoteImage: View {
     let url: URL?
     @State private var image: UIImage?
     private static let memory = NSCache<NSURL, UIImage>()
+    /// Unsplash backgrounds and album art. 100 MB on disk at most; counted and cleared in Settings → Storage.
+    static let cache = URLCache(memoryCapacity: 10 << 20, diskCapacity: 100 << 20, directory: AppGroup.cache.appending(path: "web"))
+    static func clear() { cache.removeAllCachedResponses(); memory.removeAllObjects() }
     private static let session: URLSession = {
         let c = URLSessionConfiguration.default
-        c.urlCache = URLCache(memoryCapacity: 20 << 20, diskCapacity: 300 << 20, directory: AppGroup.cache.appending(path: "web"))
+        c.urlCache = cache
         c.requestCachePolicy = .returnCacheDataElseLoad
         c.timeoutIntervalForRequest = 15
         return URLSession(configuration: c)
