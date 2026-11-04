@@ -3,51 +3,94 @@ import SwiftUI
 import AppIntents
 import ImageIO
 
-// Mantel's widgets: Home Screen, Lock-free StandBy (iPhone on its side, charging) and iPad.
-// The app writes small copies of saved photos to the shared app group (see Library.writeWidgetFeed),
-// so everything here works offline.
+// Mantel's widgets: Home Screen, StandBy (iPhone on its side, charging) and iPad.
+// The app writes small copies of saved photos to the shared app group (Library.writeWidgetFeed),
+// so everything here works offline. Each photo widget can be set to one album (hold → Edit Widget).
+
+// MARK: - Album choice
+
+struct AlbumEntity: AppEntity {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Album"
+    static let defaultQuery = AlbumQuery()
+    var id: String
+    var name: String
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+    static let showing = AlbumEntity(id: "showing", name: "Now showing")
+}
+
+struct AlbumQuery: EntityQuery {
+    func all() -> [AlbumEntity] {
+        let list = (try? Data(contentsOf: AppGroup.widgetAlbums)).flatMap { try? JSONDecoder().decode([WidgetAlbum].self, from: $0) } ?? []
+        return [.showing] + list.map { AlbumEntity(id: $0.id, name: $0.name) }
+    }
+    func entities(for identifiers: [String]) async throws -> [AlbumEntity] { all().filter { identifiers.contains($0.id) } }
+    func suggestedEntities() async throws -> [AlbumEntity] { all() }
+    func defaultResult() async -> AlbumEntity? { .showing }
+}
+
+struct PhotoConfig: WidgetConfigurationIntent {
+    static let title: LocalizedStringResource = "Photos"
+    static let description = IntentDescription("Choose which album the widget shows.")
+    @Parameter(title: "Album") var album: AlbumEntity?
+    @Parameter(title: "Show date", default: false) var showDate: Bool
+}
+
+// MARK: - Timeline
 
 struct PhotoEntry: TimelineEntry {
     let date: Date
     let files: [String]
     let album: String
     let takenAt: Date?
+    var showDate = false
     var empty: Bool { files.isEmpty }
 }
 
-struct PhotoProvider: TimelineProvider {
+struct PhotoProvider: AppIntentTimelineProvider {
     var perEntry = 1
-    /// Clock widgets need an entry every minute (widgets can't tick on their own); the photo still changes every N minutes.
+    /// Clock widgets need an entry every minute (widgets can't tick on their own); photos still change every N minutes.
     var clock = false
 
     func placeholder(in context: Context) -> PhotoEntry { PhotoEntry(date: .now, files: [], album: "Mantel", takenAt: nil) }
 
-    func getSnapshot(in context: Context, completion: @escaping (PhotoEntry) -> Void) {
-        let feed = WidgetFeed.load()
-        let items = feed?.items ?? []
-        completion(PhotoEntry(date: .now, files: Array(items.prefix(perEntry)).map(\.file), album: items.first?.album ?? "Mantel", takenAt: items.first?.takenAt))
+    func snapshot(for config: PhotoConfig, in context: Context) async -> PhotoEntry {
+        let items = Self.items(for: config.album)
+        return PhotoEntry(date: .now, files: Array(items.prefix(perEntry)).map(\.file), album: items.first?.album ?? "Mantel",
+                          takenAt: items.first?.takenAt, showDate: config.showDate)
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<PhotoEntry>) -> Void) {
-        guard let feed = WidgetFeed.load(), !feed.items.isEmpty else {
-            completion(Timeline(entries: [placeholder(in: context)], policy: .after(.now.addingTimeInterval(1800))))
-            return
+    func timeline(for config: PhotoConfig, in context: Context) async -> Timeline<PhotoEntry> {
+        let feed = WidgetFeed.load()
+        let items = Self.items(for: config.album)
+        guard !items.isEmpty else {
+            return Timeline(entries: [placeholder(in: context)], policy: .after(.now.addingTimeInterval(900)))
         }
-        // Start somewhere different each refresh so every widget doesn't show the same photo.
-        let items = feed.items
-        let step = max(feed.rotateMinutes, 5)
-        let start = Int(Date().timeIntervalSince1970 / 60) / step % items.count
+        let step = max(feed?.rotateMinutes ?? 5, 1)
+        // Start somewhere different each refresh so two widgets don't show the same photo.
+        let salt = (config.album?.id ?? "").unicodeScalars.reduce(0) { $0 + Int($1.value) } + perEntry * 7
+        let start = (Int(Date().timeIntervalSince1970 / 60) / step + salt) % items.count
         let now = Date()
         let minute = Calendar.current.dateInterval(of: .minute, for: now)?.start ?? now
-        let count = clock ? 120 : 12
+        // Cover about two hours, at most 120 entries.
+        let count = clock ? 120 : min(120, max(12, 120 / step))
         let entries = (0..<count).map { i -> PhotoEntry in
             let slot = clock ? i / step : i
             let first = (start + slot * perEntry) % items.count
             let group = (0..<perEntry).map { items[(first + $0) % items.count] }
             let at = clock ? minute.addingTimeInterval(Double(i * 60)) : now.addingTimeInterval(Double(i * step * 60))
-            return PhotoEntry(date: i == 0 ? now : at, files: group.map(\.file), album: group[0].album, takenAt: group[0].takenAt)
+            return PhotoEntry(date: i == 0 ? now : at, files: group.map(\.file), album: group[0].album,
+                              takenAt: group[0].takenAt, showDate: config.showDate)
         }
-        completion(Timeline(entries: entries, policy: .atEnd))
+        return Timeline(entries: entries, policy: .atEnd)
+    }
+
+    static func items(for album: AlbumEntity?) -> [WidgetFeed.Item] {
+        let all = WidgetFeed.load()?.items ?? []
+        guard let id = album?.id, id != "showing" else {
+            let showing = all.filter { $0.showing ?? true }
+            return showing.isEmpty ? all : showing
+        }
+        return all.filter { $0.albumId == id }
     }
 }
 
@@ -69,19 +112,22 @@ private func maxPixels(_ family: WidgetFamily) -> CGFloat {
 struct PhotoFill: View {
     let file: String?
     let family: WidgetFamily
+    var px: CGFloat? = nil
     var body: some View {
         GeometryReader { g in
-            if let file, let img = widgetImage(file, max: maxPixels(family)) {
+            if let file, let img = widgetImage(file, max: px ?? maxPixels(family)) {
                 Image(uiImage: img).resizable().widgetAccentedRenderingMode(.fullColor)
                     .scaledToFill().frame(width: g.size.width, height: g.size.height).clipped()
             } else {
                 ZStack {
                     LinearGradient(colors: [Color(hex: 0xFFB547), Color(hex: 0xF2622E), Color(hex: 0xC92D5C)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    VStack(spacing: 6) {
-                        Image(systemName: "photo.on.rectangle.angled").font(.system(size: 26, weight: .semibold))
-                        Text("Open Mantel to add photos").font(.figtree(13, .bold)).multilineTextAlignment(.center)
+                    if family != .systemSmall || px == nil {
+                        VStack(spacing: 6) {
+                            Image(systemName: "photo.on.rectangle.angled").font(.system(size: 26, weight: .semibold))
+                            Text("Open Mantel to add photos").font(.figtree(13, .bold)).multilineTextAlignment(.center)
+                        }
+                        .foregroundStyle(.white).padding()
                     }
-                    .foregroundStyle(.white).padding()
                 }
             }
         }
@@ -90,7 +136,6 @@ struct PhotoFill: View {
 
 struct PhotoWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    @Environment(\.showsWidgetContainerBackground) private var hasBackground
     let entry: PhotoEntry
     var clock = false
 
@@ -108,10 +153,15 @@ struct PhotoWidgetView: View {
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.3), radius: 8)
                 .padding(family == .systemSmall ? 14 : 18)
-            } else if family != .systemSmall, !entry.empty {
-                LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .center, endPoint: .bottom)
-                Text(entry.album).font(.figtree(13, .bold)).foregroundStyle(.white).padding(14)
-                    .shadow(color: .black.opacity(0.3), radius: 6)
+            } else if !entry.empty && (family != .systemSmall || entry.showDate) {
+                LinearGradient(colors: [.clear, .black.opacity(0.4)], startPoint: .center, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: 1) {
+                    if family != .systemSmall { Text(entry.album).font(.figtree(13, .bold)) }
+                    if entry.showDate, let d = entry.takenAt {
+                        Text(d.formatted(.dateTime.day().month(.abbreviated).year())).font(.figtree(11, .semibold)).opacity(0.85)
+                    }
+                }
+                .foregroundStyle(.white).padding(14).shadow(color: .black.opacity(0.3), radius: 6)
             }
         }
         .containerBackground(for: .widget) { PhotoFill(file: entry.files.first, family: family) }
@@ -143,7 +193,86 @@ struct MosaicView: View {
         .widgetURL(URL(string: "mantel://play"))
     }
     private func tile(_ f: String?) -> some View {
-        PhotoFill(file: f, family: .systemSmall).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        PhotoFill(file: f, family: .systemSmall, px: 400).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// Staggered masonry columns, like the Pinterest mode.
+struct PinterestWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: PhotoEntry
+    var body: some View {
+        let files = entry.files
+        let cols = family == .systemMedium ? 3 : (family == .systemExtraLarge ? 4 : 2)
+        GeometryReader { g in
+            HStack(alignment: .top, spacing: 4) {
+                ForEach(0..<cols, id: \.self) { c in
+                    let heights: [CGFloat] = (c % 2 == 0) ? [0.62, 0.38, 0.45] : [0.4, 0.6, 0.45]
+                    VStack(spacing: 4) {
+                        ForEach(0..<3, id: \.self) { r in
+                            PhotoFill(file: files[safe: (c * 3 + r) % max(files.count, 1)], family: .systemSmall, px: 360)
+                                .frame(height: g.size.height * heights[r])
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                    }
+                    .offset(y: c % 2 == 0 ? 0 : -g.size.height * 0.12)
+                }
+            }
+            .frame(width: g.size.width, height: g.size.height, alignment: .top)
+            .clipped()
+        }
+        .padding(4)
+        .containerBackground(for: .widget) { Color(hex: 0x111111) }
+        .widgetURL(URL(string: "mantel://play"))
+    }
+}
+
+// MARK: - Scripture
+
+struct VerseEntry: TimelineEntry { let date: Date; let text: String; let reference: String; let author: String? }
+
+struct VerseProvider: TimelineProvider {
+    func placeholder(in context: Context) -> VerseEntry {
+        VerseEntry(date: .now, text: "The Lord is my shepherd; I shall not want.", reference: "Psalm 23:1", author: nil)
+    }
+    func getSnapshot(in context: Context, completion: @escaping (VerseEntry) -> Void) { completion(load() ?? placeholder(in: context)) }
+    func getTimeline(in context: Context, completion: @escaping (Timeline<VerseEntry>) -> Void) {
+        // The app refreshes the verse each day; check again just after midnight.
+        let tomorrow = Calendar.current.startOfDay(for: .now.addingTimeInterval(86_400)).addingTimeInterval(120)
+        completion(Timeline(entries: [load() ?? placeholder(in: context)], policy: .after(tomorrow)))
+    }
+    private func load() -> VerseEntry? {
+        guard let d = try? Data(contentsOf: AppGroup.widget.appending(path: "verse.json")),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: String], let t = o["text"], let r = o["reference"] else { return nil }
+        return VerseEntry(date: .now, text: t, reference: "\(r) · \(o["translation"] ?? "")", author: o["author"])
+    }
+}
+
+struct VerseView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: VerseEntry
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "book.closed.fill").font(.system(size: 12, weight: .bold)).opacity(0.8)
+            Text(entry.text)
+                .font(.system(size: family == .systemSmall ? 14 : 18, weight: .medium, design: .serif))
+                .minimumScaleFactor(0.55)
+            Spacer(minLength: 0)
+            Text(entry.reference).font(.figtree(11, .extrabold)).textCase(.uppercase).tracking(1).opacity(0.85)
+        }
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.5), radius: 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .containerBackground(for: .widget) {
+            ZStack {
+                Color(hex: 0x1c2a22)
+                if FileManager.default.fileExists(atPath: AppGroup.widget.appending(path: "verse.jpg").path) {
+                    PhotoFill(file: "verse.jpg", family: family)
+                }
+                LinearGradient(colors: [.black.opacity(0.25), .black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
+            }
+        }
+        .widgetURL(URL(string: "mantel://play"))
     }
 }
 
@@ -151,12 +280,14 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
 
 // MARK: - Widgets
 
+private let photoFamilies: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge]
+
 struct PhotoWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "MantelPhoto", provider: PhotoProvider()) { PhotoWidgetView(entry: $0) }
+        AppIntentConfiguration(kind: "MantelPhoto", intent: PhotoConfig.self, provider: PhotoProvider()) { PhotoWidgetView(entry: $0) }
             .configurationDisplayName("Photo")
-            .description("A photo from your Mantel, changing through the day. Great in StandBy.")
-            .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
+            .description("A photo from your Mantel, changing every few minutes. Great in StandBy.")
+            .supportedFamilies(photoFamilies)
             .containerBackgroundRemovable(false)
             .contentMarginsDisabled()
     }
@@ -164,10 +295,21 @@ struct PhotoWidget: Widget {
 
 struct ClockWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "MantelClock", provider: PhotoProvider(clock: true)) { PhotoWidgetView(entry: $0, clock: true) }
+        AppIntentConfiguration(kind: "MantelClock", intent: PhotoConfig.self, provider: PhotoProvider(clock: true)) { PhotoWidgetView(entry: $0, clock: true) }
             .configurationDisplayName("Photo & Clock")
             .description("Your photo with a big clock — a bedside frame for StandBy.")
-            .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
+            .supportedFamilies(photoFamilies)
+            .containerBackgroundRemovable(false)
+            .contentMarginsDisabled()
+    }
+}
+
+struct PinterestWidget: Widget {
+    var body: some WidgetConfiguration {
+        AppIntentConfiguration(kind: "MantelPinterest", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 12)) { PinterestWidgetView(entry: $0) }
+            .configurationDisplayName("Pinterest")
+            .description("Staggered masonry columns of your photos.")
+            .supportedFamilies([.systemMedium, .systemLarge, .systemExtraLarge])
             .containerBackgroundRemovable(false)
             .contentMarginsDisabled()
     }
@@ -175,12 +317,22 @@ struct ClockWidget: Widget {
 
 struct MosaicWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "MantelMosaic", provider: PhotoProvider(perEntry: 4)) { MosaicView(entry: $0) }
+        AppIntentConfiguration(kind: "MantelMosaic", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 4)) { MosaicView(entry: $0) }
             .configurationDisplayName("Mosaic")
             .description("A few photos at once.")
             .supportedFamilies([.systemMedium, .systemLarge, .systemExtraLarge])
             .containerBackgroundRemovable(false)
             .contentMarginsDisabled()
+    }
+}
+
+struct VerseWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "MantelVerse", provider: VerseProvider()) { VerseView(entry: $0) }
+            .configurationDisplayName("Scripture")
+            .description("Verse of the day on a matching landscape.")
+            .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+            .containerBackgroundRemovable(false)
     }
 }
 
@@ -202,7 +354,9 @@ struct MantelWidgetBundle: WidgetBundle {
     var body: some Widget {
         PhotoWidget()
         ClockWidget()
+        PinterestWidget()
         MosaicWidget()
+        VerseWidget()
         PlayControl()
     }
 }

@@ -32,6 +32,8 @@ final class Player {
 
     @ObservationIgnored let pip = PiPController()
     @ObservationIgnored private var order: [PhotoItem] = []
+    /// The photos in play order, for the grid/Pinterest/scrapbook/cover-flow modes.
+    var photos: [PhotoItem] { order }
     @ObservationIgnored private var timer: Task<Void, Never>?
     @ObservationIgnored private var history: [Int] = []
 
@@ -46,8 +48,9 @@ final class Player {
 
     // MARK: Controls
 
-    func play(startingAt photo: PhotoItem? = nil, in list: [PhotoItem]? = nil) {
+    func play(startingAt photo: PhotoItem? = nil, in list: [PhotoItem]? = nil, mode: FrameMode? = nil) {
         let prefs = Prefs.shared
+        if let mode { prefs.mode = mode } else if photo != nil || list != nil, !prefs.mode.usesPhotos { prefs.mode = .slideshow }
         var items = list ?? Library.shared.playlist
         if prefs.shuffle && photo == nil { items.shuffle() } else if photo == nil { items.sort { ($0.takenAt ?? .distantPast) > ($1.takenAt ?? .distantPast) } }
         order = items

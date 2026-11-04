@@ -40,13 +40,15 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Pick photos from your library to show on your Mantel.
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: Save photos from your Mantel albums to your photo library.
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     info:
       path: Mantel/Info.plist
       properties:
         UIAppFonts: [Figtree-Regular.ttf, Figtree-Medium.ttf, Figtree-SemiBold.ttf, Figtree-Bold.ttf, Figtree-ExtraBold.ttf]
-        UIBackgroundModes: [audio]
+        UIBackgroundModes: [audio, fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.nanaamoako.mantel.refresh]
         CFBundleURLTypes:
           - CFBundleURLName: com.nanaamoako.mantel
             CFBundleURLSchemes: [mantel]

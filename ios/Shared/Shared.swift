@@ -24,6 +24,7 @@ enum AppGroup {
     /// Small copies for the widgets.
     static var widget: URL { dir(container.appending(path: "Library/Application Support/Mantel/Widget")) }
     static var widgetManifest: URL { widget.appending(path: "feed.json") }
+    static var widgetAlbums: URL { widget.appending(path: "albums.json") }
 
     @discardableResult
     static func dir(_ url: URL) -> URL {
@@ -38,6 +39,9 @@ struct WidgetFeed: Codable {
         var file: String
         var album: String
         var takenAt: Date?
+        var albumId: String?
+        /// In an album that's "Now showing" (the default widget rotation).
+        var showing: Bool?
     }
     var items: [Item]
     var rotateMinutes: Int
@@ -132,3 +136,6 @@ extension Font {
     /// The Clean display face: Figtree 800, tight tracking (apply .tracking(display tracking) on Text).
     static func display(_ size: CGFloat) -> Font { .custom("Figtree-ExtraBold", size: size, relativeTo: .largeTitle) }
 }
+
+/// Albums the widgets can be set to (written by the app).
+struct WidgetAlbum: Codable, Hashable { var id: String; var name: String; var count: Int }

@@ -2,6 +2,7 @@ import SwiftUI
 import WidgetKit
 
 struct SettingsView: View {
+    var inTab = false
     @Environment(Library.self) private var library
     @Environment(Prefs.self) private var prefs
     @Environment(\.dismiss) private var dismiss
@@ -15,7 +16,7 @@ struct SettingsView: View {
                 HStack {
                     Display("Settings", size: 32)
                     Spacer()
-                    IconButton(icon: "xmark", size: 38) { dismiss() }
+                    if !inTab { IconButton(icon: "xmark", size: 38) { dismiss() } }
                 }
                 account
                 section("Frame") { FrameOptions() }
@@ -102,15 +103,15 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Kicker("Widget photo changes every")
                 FlowLayout(spacing: 8) {
-                    ForEach([15, 20, 30, 60, 180], id: \.self) { m in
-                        Chip(title: m < 60 ? "\(m) min" : "\(m / 60) hr", on: prefs.widgetMinutes == m) { prefs.widgetMinutes = m }
+                    ForEach([1, 5, 10, 15, 30, 60], id: \.self) { m in
+                        Chip(title: m < 60 ? "\(m) min" : "1 hr", on: prefs.widgetMinutes == m) { prefs.widgetMinutes = m }
                     }
                 }
             }
             VStack(alignment: .leading, spacing: 14) {
                 tip("1", "StandBy", "Turn your iPhone on its side while it charges. Swipe to the widgets page, hold, tap +, and add Mantel. Swipe up on a stack to see a full-screen photo.")
                 Divider().overlay(Clean.line)
-                tip("2", "Home & Lock Screen", "Hold your Home Screen, tap Edit → Add Widget, and pick Mantel: a photo, photo + clock, or a mosaic.")
+                tip("2", "Home Screen", "Hold your Home Screen, tap Edit → Add Widget, and pick Mantel: Photo, Photo & Clock, Mosaic, Pinterest or Scripture. Hold a widget → Edit Widget to choose its album.")
                 Divider().overlay(Clean.line)
                 tip("3", "Control Center & Action button", "Add the Play Mantel control to open the frame full screen in one tap. It's in Shortcuts too — say \"Play Mantel\".")
             }

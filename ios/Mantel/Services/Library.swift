@@ -317,14 +317,25 @@ final class Library {
 
     /// Writes small copies of saved photos for the widgets, then asks iOS to redraw them.
     func writeWidgetFeed() {
-        let source = playlist.filter { ImageCache.shared.isSaved($0) }
-        let pick = Array((Prefs.shared.shuffle ? source.shuffled() : source).prefix(36))
+        // Saved photos from every album (so a widget can be set to one album), newest-viewed first,
+        // with the "Now showing" ones flagged for the default rotation.
+        let showingIds = Set(playlist.map(\.id))
+        var pick: [PhotoItem] = []
+        var albumsOut: [WidgetAlbum] = []
+        for a in albums {
+            let saved = (photos[a.id] ?? []).filter { !hidden.contains($0.id) && ImageCache.shared.isSaved($0) }
+            guard !saved.isEmpty else { continue }
+            let chosen = Array((Prefs.shared.shuffle ? saved.shuffled() : saved).prefix(30))
+            pick += chosen
+            albumsOut.append(WidgetAlbum(id: a.id, name: a.name, count: chosen.count))
+        }
+        pick = Array(pick.prefix(240))
         let names = Dictionary(uniqueKeysWithValues: albums.map { ($0.id, $0.name) })
         let minutes = Prefs.shared.widgetMinutes
         Task.detached(priority: .utility) {
             let dir = AppGroup.widget
             var items: [WidgetFeed.Item] = []
-            var keep = Set<String>(["feed.json"])
+            var keep = Set<String>(["feed.json", "albums.json", "verse.json", "verse.jpg"])
             for p in pick {
                 let file = "\(p.id).jpg"
                 keep.insert(file)
@@ -332,10 +343,10 @@ final class Library {
                 if !FileManager.default.fileExists(atPath: dest.path) {
                     let src = p.localFile.map { ImageCache.deviceDir.appending(path: $0) } ?? ImageCache.shared.fileURL(p, .full)
                     // Widgets have a tight memory budget: ~900 px is sharp on a StandBy screen.
-                    guard let img = ImageCache.downsample(url: src, max: 900), let d = img.jpegData(compressionQuality: 0.82) else { continue }
+                    guard let img = ImageCache.downsample(url: src, max: 900), let d = img.jpegData(compressionQuality: 0.8) else { continue }
                     try? d.write(to: dest, options: .atomic)
                 }
-                items.append(.init(file: file, album: names[p.albumId] ?? "Mantel", takenAt: p.takenAt))
+                items.append(.init(file: file, album: names[p.albumId] ?? "Mantel", takenAt: p.takenAt, albumId: p.albumId, showing: showingIds.contains(p.id)))
             }
             for f in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where !keep.contains(f) {
                 try? FileManager.default.removeItem(at: dir.appending(path: f))
@@ -343,6 +354,7 @@ final class Library {
             let feed = WidgetFeed(items: items, rotateMinutes: minutes, updatedAt: Date())
             let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
             if let d = try? enc.encode(feed) { try? d.write(to: AppGroup.widgetManifest, options: .atomic) }
+            if let d = try? JSONEncoder().encode(albumsOut) { try? d.write(to: AppGroup.widgetAlbums, options: .atomic) }
             WidgetCenter.shared.reloadAllTimelines()
         }
     }

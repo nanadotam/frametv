@@ -29,10 +29,24 @@ final class MantelAPI: @unchecked Sendable {
         c.httpCookieStorage = .shared
         c.httpCookieAcceptPolicy = .always
         c.httpShouldSetCookies = true
-        c.timeoutIntervalForRequest = 25
+        c.timeoutIntervalForRequest = 12
         c.waitsForConnectivity = false
         return URLSession(configuration: c)
     }()
+
+    /// Data for a request. If URLSession times out or can't connect (often HTTP/3 being blocked), retry over plain TCP.
+    func fetch(_ req0: URLRequest) async throws -> (Data, URLResponse) {
+        var req = req0
+        if UserDefaults.standard.bool(forKey: "tcpOnly") { return try await TCPFetch.data(for: req) }
+        req.assumesHTTP3Capable = false
+        do { return try await session.data(for: req) }
+        catch let e as URLError where [.timedOut, .networkConnectionLost, .cannotConnectToHost, .secureConnectionFailed].contains(e.code) {
+            let r = try await TCPFetch.data(for: req)
+            // HTTP/3 is blocked on this network: go straight to TCP for the rest of this launch.
+            UserDefaults.standard.set(true, forKey: "tcpOnly")
+            return r
+        }
+    }
 
     enum APIError: LocalizedError {
         case unauthorized, server(String), offline
@@ -57,7 +71,7 @@ final class MantelAPI: @unchecked Sendable {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         let data: Data, resp: URLResponse
-        do { (data, resp) = try await session.data(for: req) }
+        do { (data, resp) = try await fetch(req) }
         catch let e as URLError where [.notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost, .dataNotAllowed].contains(e.code) {
             throw APIError.offline
         }
@@ -68,6 +82,20 @@ final class MantelAPI: @unchecked Sendable {
             throw APIError.server(msg ?? "Mantel said \(code). Try again in a moment.")
         }
         return data
+    }
+
+    // MARK: Generic
+
+    func get<T: Decodable>(_ path: String, query: [String: String] = [:]) async throws -> T {
+        try JSONDecoder().decode(T.self, from: try await request(path, query: query.map { .init(name: $0.key, value: $0.value) }))
+    }
+    /// Endpoints that don't need a session (scripture, unsplash) — same call, named for clarity.
+    func getPublic<T: Decodable>(_ path: String, query: [String: String] = [:]) async throws -> T {
+        try await get(path, query: query)
+    }
+    @discardableResult
+    func send(_ path: String, method: String, json: [String: Any]) async throws -> Data {
+        try await request(path, method: method, json: json)
     }
 
     // MARK: Account

@@ -11,8 +11,8 @@ import UniformTypeIdentifiers
 actor ImageCache {
     static let shared = ImageCache()
 
-    enum Size: String { case full, thumb
-        var maxPixel: CGFloat { self == .full ? 2048 : 480 }
+    enum Size: String, CaseIterable { case full, medium, thumb
+        var maxPixel: CGFloat { switch self { case .full: 2048; case .medium: 1000; case .thumb: 480 } }
     }
 
     nonisolated(unsafe) let memory: NSCache<NSString, UIImage> = {   // NSCache is thread-safe
@@ -62,19 +62,21 @@ actor ImageCache {
             touch(file)
             return Self.decode(file)
         }
-        // A thumbnail can be cut from a saved full photo without the network.
-        if s == .thumb, FileManager.default.fileExists(atPath: fileURL(p, .full).path),
+        // Thumbnails and medium copies can be cut from a saved full photo without the network.
+        if s != .full, FileManager.default.fileExists(atPath: fileURL(p, .full).path),
            let img = Self.downsample(url: fileURL(p, .full), max: s.maxPixel) {
             write(img, to: file, quality: 0.8)
             return img
         }
-        guard network, let remote = (s == .full ? p.fullURL : (p.thumbURL ?? p.fullURL)) else { return nil }
+        guard network, let remote = (s == .thumb ? (p.thumbURL ?? p.fullURL) : p.fullURL) else { return nil }
         // 3. Download, shrink, save.
         do {
-            let (data, resp) = try await MantelAPI.shared.session.data(from: remote)
+            let (data, resp) = try await MantelAPI.shared.fetch(URLRequest(url: remote))
             guard (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
                   let img = Self.downsample(data: data, max: s.maxPixel) else { return nil }
             write(img, to: file, quality: s == .full ? 0.88 : 0.8)
+            // Got the full photo while asking for a smaller one? Keep it, so offline has it too.
+            if s == .medium, let full = Self.downsample(data: data, max: Size.full.maxPixel) { write(full, to: fileURL(p, .full), quality: 0.88) }
             return img
         } catch { return nil }
     }
@@ -91,26 +93,26 @@ actor ImageCache {
     // MARK: Housekeeping
 
     func remove(_ p: PhotoItem) {
-        for s in [Size.full, .thumb] {
+        for s in Size.allCases {
             try? FileManager.default.removeItem(at: fileURL(p, s))
             memory.removeObject(forKey: "\(s.rawValue)/\(p.id)" as NSString)
         }
     }
 
     func removeAlbum(_ id: String) {
-        for s in [Size.full, .thumb] { try? FileManager.default.removeItem(at: AppGroup.cache.appending(path: "\(s.rawValue)/\(id)")) }
+        for s in Size.allCases { try? FileManager.default.removeItem(at: AppGroup.cache.appending(path: "\(s.rawValue)/\(id)")) }
         memory.removeAllObjects()
     }
 
     func removeAll() {
-        for s in [Size.full, .thumb] { try? FileManager.default.removeItem(at: AppGroup.cache.appending(path: s.rawValue)) }
+        for s in Size.allCases { try? FileManager.default.removeItem(at: AppGroup.cache.appending(path: s.rawValue)) }
         memory.removeAllObjects()
     }
 
     /// Bytes saved per album (downloads only).
     func usage() -> [String: Int64] {
         var out: [String: Int64] = [:]
-        for s in [Size.full, .thumb] {
+        for s in Size.allCases {
             let root = AppGroup.cache.appending(path: s.rawValue)
             for album in (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
                 out[album.lastPathComponent, default: 0] += Self.folderSize(album)
@@ -127,7 +129,7 @@ actor ImageCache {
         var files: [(URL, Date, Int64)] = []
         var total: Int64 = 0
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
-        for s in [Size.full, .thumb] {
+        for s in Size.allCases {
             let root = AppGroup.cache.appending(path: s.rawValue)
             guard let e = fm.enumerator(at: root, includingPropertiesForKeys: keys) else { continue }
             for case let u as URL in e {

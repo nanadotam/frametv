@@ -5,7 +5,6 @@ import ImageIO
 struct HomeView: View {
     @Environment(Library.self) private var library
     @Environment(Player.self) private var player
-    @State private var settings = false
     @State private var newAlbum: NewAlbumKind?
     @State private var openAlbum: AlbumItem?
 
@@ -22,8 +21,9 @@ struct HomeView: View {
                         }
                         .frame(width: min(geo.size.width * 0.42, 460))
                         VStack(alignment: .leading, spacing: 26) {
+                            modesRow
                             nowShowing
-                            albums(columns: geo.size.width > 1000 ? 3 : 2)
+                            albums(columns: geo.size.width > 1000 ? 3 : 2, limit: nil)
                         }
                         .padding(.top, 8)
                     }
@@ -32,8 +32,9 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 26) {
                         header
                         hero(height: min(geo.size.width * 0.92, 420))
+                        modesRow
                         nowShowing
-                        albums(columns: 2)
+                        albums(columns: 2, limit: 4)
                     }
                     .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 40)
                 }
@@ -44,14 +45,15 @@ struct HomeView: View {
         .background(Clean.appBg.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(for: AlbumItem.self) { AlbumView(albumId: $0.id) }
-        .sheet(isPresented: $settings) { NavigationStack { SettingsView() } }
         .sheet(item: $newAlbum) { NewAlbumSheet(kind: $0) }
         .navigationDestination(item: $openAlbum) { AlbumView(albumId: $0.id) }
         .task {
             // Screenshot helpers for the simulator (scripts/screens.sh).
             let args = ProcessInfo.processInfo.arguments
             try? await Task.sleep(for: .seconds(1.5))
-            if args.contains("-MantelSettings") { settings = true }
+            if args.contains("-MantelSettings") { Nav.shared.tab = .settings }
+            if args.contains("-MantelModes") { Nav.shared.tab = .modes }
+            if args.contains("-MantelRemote") { Nav.shared.tab = .remote }
             if args.contains("-MantelAlbum") { openAlbum = library.albums.first }
         }
     }
@@ -66,7 +68,7 @@ struct HomeView: View {
                 status
             }
             Spacer()
-            IconButton(icon: "gearshape.fill", size: 42) { settings = true }
+            IconButton(icon: "gearshape.fill", size: 42) { Nav.shared.tab = .settings }
         }
     }
 
@@ -121,7 +123,7 @@ struct HomeView: View {
                 Button { player.play() } label: { Label("Play full screen", systemImage: "play.fill") }
                     .buttonStyle(CleanButton(kind: .primary, size: 52))
                 Button {
-                    Prefs.shared.look = .nightstand; player.play()
+                    player.play(mode: .nightstand)
                 } label: { Image(systemName: "bed.double.fill") }
                     .buttonStyle(CleanButton(kind: .secondary, size: 52, block: false))
                     .accessibilityLabel("Nightstand")
@@ -169,11 +171,42 @@ struct HomeView: View {
 
     // MARK: Albums
 
-    private func albums(columns: Int) -> some View {
+    private var modesRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Kicker("Modes")
+                Spacer()
+                Button("See all") { Nav.shared.tab = .modes }.font(.figtree(13, .bold)).foregroundStyle(Clean.cherry)
+            }
+            ScrollView(.horizontal) {
+                HStack(spacing: 10) {
+                    ForEach(FrameMode.allCases.filter { !$0.needsAccount || library.signedIn }) { m in
+                        Button { player.play(mode: m) } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ModePreview(mode: m).frame(width: 128, height: 84)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                Text(m.title).font(.figtree(14, .bold)).foregroundStyle(Clean.ink)
+                            }
+                        }
+                        .buttonStyle(PressScale())
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .padding(.horizontal, -20)
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private func albums(columns: Int, limit: Int?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Kicker("Albums")
                 Spacer()
+                if let limit, library.albums.count > limit {
+                    Button("See all \(library.albums.count)") { Nav.shared.tab = .albums }.font(.figtree(13, .bold)).foregroundStyle(Clean.cherry)
+                        .padding(.trailing, 6)
+                }
                 Menu {
                     Button { newAlbum = .device } label: { Label("From this iPhone's photos", systemImage: "iphone") }
                     if library.signedIn {
@@ -184,10 +217,12 @@ struct HomeView: View {
                 }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: columns), spacing: 18) {
-                ForEach(library.albums) { a in
+                ForEach(limit.map { Array(library.albums.prefix($0)) } ?? library.albums) { a in
                     NavigationLink(value: a) { AlbumCard(album: a) }.buttonStyle(PressScale())
                 }
-                Button { newAlbum = .device } label: { AddAlbumCard() }.buttonStyle(PressScale())
+                if limit == nil || library.albums.count < (limit ?? 0) {
+                    Button { newAlbum = .device } label: { AddAlbumCard() }.buttonStyle(PressScale())
+                }
             }
             if !library.signedIn {
                 SignInNudge().padding(.top, 8)
@@ -207,7 +242,10 @@ struct HeroPreview: View {
         ZStack {
             Clean.cream
             if let image {
-                Image(uiImage: image).resizable().scaledToFill()
+                // Fill inside a fixed box: a bare scaledToFill() would size the view to the photo,
+                // so a landscape photo pushed the whole page sideways.
+                Color.clear.overlay { Image(uiImage: image).resizable().scaledToFill() }
+                    .clipped()
                     .transition(.opacity).id(index)
             } else {
                 Image(systemName: "photo.on.rectangle.angled").font(.system(size: 44, weight: .light)).foregroundStyle(Clean.label)

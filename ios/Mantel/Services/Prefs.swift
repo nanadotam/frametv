@@ -21,17 +21,15 @@ final class Prefs {
         var id: String { rawValue }
         var title: String { switch self { case .fill: "Fill the screen"; case .fit: "Whole photo" } }
     }
-    enum Look: String, CaseIterable, Identifiable { case photo, clock, nightstand
-        var id: String { rawValue }
-        var title: String { switch self { case .photo: "Photo"; case .clock: "Photo + clock"; case .nightstand: "Nightstand" } }
-        var icon: String { switch self { case .photo: "photo"; case .clock: "clock"; case .nightstand: "bed.double" } }
-    }
 
     var appearance: Appearance { didSet { d.set(appearance.rawValue, forKey: "appearance") } }
     var interval: Double { didSet { d.set(interval, forKey: "interval") } }
     var transition: Transition { didSet { d.set(transition.rawValue, forKey: "transition") } }
     var fit: Fit { didSet { d.set(fit.rawValue, forKey: "fit") } }
-    var look: Look { didSet { d.set(look.rawValue, forKey: "look") } }
+    var mode: FrameMode { didSet { d.set(mode.rawValue, forKey: "mode") } }
+    var clockOverlay: Bool { didSet { d.set(clockOverlay, forKey: "clockOverlay") } }   // small clock on photo modes
+    var translation: String { didSet { d.set(translation, forKey: "translation") } }      // Scripture
+    var moodQuery: String { didSet { d.set(moodQuery, forKey: "moodQuery") } }            // Mood
     var shuffle: Bool { didSet { d.set(shuffle, forKey: "shuffle") } }
     var duo: Bool { didSet { d.set(duo, forKey: "duo") } }                   // landscape: two portrait photos side by side
     var nightDim: Bool { didSet { d.set(nightDim, forKey: "nightDim") } }    // dim the frame late at night
@@ -42,12 +40,16 @@ final class Prefs {
 
     private init() {
         d.register(defaults: ["interval": 12.0, "shuffle": true, "duo": true, "nightDim": true, "autoPiP": true,
-                              "cacheLimitMB": 2048, "wifiOnly": false, "widgetMinutes": 20])
+                              "cacheLimitMB": 2048, "wifiOnly": false, "widgetMinutes": 5,
+                              "translation": "NIV", "moodQuery": "calm", "clockOverlay": false])
         appearance = Appearance(rawValue: d.string(forKey: "appearance") ?? "") ?? .auto
         interval = d.double(forKey: "interval")
         transition = Transition(rawValue: d.string(forKey: "transition") ?? "") ?? .drift
         fit = Fit(rawValue: d.string(forKey: "fit") ?? "") ?? .fill
-        look = Look(rawValue: d.string(forKey: "look") ?? "") ?? .photo
+        mode = FrameMode(rawValue: d.string(forKey: "mode") ?? "") ?? .slideshow
+        clockOverlay = d.bool(forKey: "clockOverlay")
+        translation = d.string(forKey: "translation") ?? "NIV"
+        moodQuery = d.string(forKey: "moodQuery") ?? "calm"
         shuffle = d.bool(forKey: "shuffle")
         duo = d.bool(forKey: "duo")
         nightDim = d.bool(forKey: "nightDim")

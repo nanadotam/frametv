@@ -15,6 +15,7 @@ struct AlbumView: View {
     @State private var confirmDeleteAlbum = false
     @State private var renaming = false
     @State private var newName = ""
+    @State private var viewing: Int?
 
     private var album: AlbumItem? { library.album(albumId) }
     private var photos: [PhotoItem] { library.photos[albumId] ?? [] }
@@ -46,7 +47,13 @@ struct AlbumView: View {
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .bottom) { if selecting { selectionBar } }
+        .fullScreenCover(item: Binding(get: { viewing.map { ViewerStart(index: $0) } }, set: { viewing = $0?.index })) { v in
+            PhotoViewer(photos: visible, index: v.index)
+        }
         .onChange(of: picks) { _, new in if !new.isEmpty { Task { await add(new) } } }
+        .task {
+            if ProcessInfo.processInfo.arguments.contains("-MantelViewer") { try? await Task.sleep(for: .seconds(1)); viewing = 0 }
+        }
         .confirmationDialog(deleteTitle, isPresented: $confirmDelete, titleVisibility: .visible) {
             Button(album?.isDevice == true ? "Delete from this iPhone" : "Delete from Mantel", role: .destructive) {
                 let ids = selected
@@ -75,6 +82,12 @@ struct AlbumView: View {
                 IconButton(icon: "chevron.left", size: 40) { dismiss() }
                 Spacer()
                 if !photos.isEmpty {
+                    if selecting {
+                        Button(selected.count == visible.count ? "None" : "All") {
+                            withAnimation(Clean.ease()) { selected = selected.count == visible.count ? [] : Set(visible.map(\.id)) }
+                        }
+                        .buttonStyle(CleanButton(kind: .outline, size: 38, block: false))
+                    }
                     Button(selecting ? "Done" : "Select") {
                         withAnimation(Clean.ease()) { selecting.toggle(); selected = [] }
                     }
@@ -173,11 +186,12 @@ struct AlbumView: View {
             .onTapGesture {
                 if selecting {
                     if on { selected.remove(p.id) } else { selected.insert(p.id) }
-                } else if !hidden {
-                    player.play(startingAt: p, in: visible)
+                } else if let i = visible.firstIndex(of: p) {
+                    viewing = i
                 }
             }
             .contextMenu {
+                Button { Task { await PhotoSaver.save([p]) } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") }
                 Button { player.play(startingAt: p, in: visible) } label: { Label("Play from here", systemImage: "play") }
                 Button { Task { await library.hide([p.id]) } } label: { Label("Hide from frame", systemImage: "eye.slash") }
                 if p.localFile == nil {
@@ -200,8 +214,15 @@ struct AlbumView: View {
         HStack(spacing: 8) {
             Text(selected.isEmpty ? "Select photos" : "\(selected.count) selected").font(.figtree(15, .bold)).foregroundStyle(Clean.ink)
             Spacer()
-            Button { Task { await library.hide(selected); selected = [] } } label: { Label("Hide", systemImage: "eye.slash") }
+            Button {
+                let pick = photos.filter { selected.contains($0.id) }
+                Task { await PhotoSaver.save(pick); selected = []; selecting = false }
+            } label: { Image(systemName: "square.and.arrow.down") }
+                .buttonStyle(CleanButton(kind: .primary, size: 42, block: false))
+                .accessibilityLabel("Save to Photos")
+            Button { Task { await library.hide(selected); selected = [] } } label: { Image(systemName: "eye.slash") }
                 .buttonStyle(CleanButton(kind: .secondary, size: 42, block: false))
+                .accessibilityLabel("Hide")
             if album?.isDevice == false {
                 Button { Task { await library.removeDownload(selected); library.toast = "Downloads removed"; selected = [] } } label: { Image(systemName: "arrow.down.circle.dotted") }
                     .buttonStyle(CleanButton(kind: .secondary, size: 42, block: false))
@@ -226,3 +247,5 @@ struct AlbumView: View {
         adding = nil; picks = []
     }
 }
+
+private struct ViewerStart: Identifiable { let index: Int; var id: Int { index } }

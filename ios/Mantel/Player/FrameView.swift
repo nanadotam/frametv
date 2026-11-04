@@ -53,6 +53,8 @@ struct FrameView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var drag: CGSize = .zero
     @State private var lookSheet = false
+    @State private var modeStrip = false
+    @State private var modeToast: String?
 
     var body: some View {
         GeometryReader { geo in
@@ -62,7 +64,13 @@ struct FrameView: View {
                 PiPHost().ignoresSafeArea()   // the layer PiP lifts out (sits under the photo, showing the same frame)
                 content(landscape: landscape, size: geo.size)
                     .ignoresSafeArea()
-                if prefs.nightDim && prefs.look != .nightstand { NightDim() }
+                if prefs.nightDim && ![.nightstand, .clock].contains(prefs.mode) { NightDim() }
+                if let t = modeToast {
+                    Text(t).font(.figtree(17, .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 18).padding(.vertical, 10).glassPill()
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
+                        .allowsHitTesting(false)
+                }
                 if controls { overlay(landscape: landscape).transition(.opacity) }
             }
             .scaleEffect(1 - min(max(drag.height, 0) / 1600, 0.18))
@@ -84,7 +92,8 @@ struct FrameView: View {
                     if dy > 140 || v.predictedEndTranslation.height > 420 {
                         withAnimation(Clean.ease(0.5)) { player.presentation = .mini; drag = .zero }
                     } else if abs(dx) > abs(dy), abs(dx) > 60 {
-                        dx < 0 ? player.next() : player.previous()
+                        if prefs.mode == .slideshow || prefs.mode == .nightstand { dx < 0 ? player.next() : player.previous() }
+                        else if prefs.mode != .coverflow { stepMode(dx < 0 ? 1 : -1) }
                         withAnimation(Clean.spring) { drag = .zero }
                     } else {
                         withAnimation(Clean.spring) { drag = .zero }
@@ -97,10 +106,19 @@ struct FrameView: View {
     }
 
     @ViewBuilder private func content(landscape: Bool, size: CGSize) -> some View {
-        switch prefs.look {
-        case .nightstand:
-            NightstandView(slide: player.slide, landscape: landscape)
-        default:
+        switch prefs.mode {
+        case .nightstand: NightstandView(slide: player.slide, landscape: landscape)
+        case .grid: GridMode(landscape: landscape)
+        case .pinterest: PinterestMode(landscape: landscape)
+        case .scrapbook: ScrapbookMode()
+        case .coverflow: CoverFlowMode()
+        case .clock: ClockMode(landscape: landscape)
+        case .scripture: ScriptureMode(landscape: landscape)
+        case .mood: MoodMode()
+        case .flipboard: FlipBoardMode(landscape: landscape)
+        case .easel: EaselMode(landscape: landscape)
+        case .tasks: TasksMode(landscape: landscape)
+        case .slideshow:
             ZStack(alignment: .bottomLeading) {
                 if let s = player.slide {
                     SlideCanvas(slide: s, fit: prefs.fit, drift: prefs.transition == .drift, interval: prefs.interval)
@@ -109,12 +127,28 @@ struct FrameView: View {
                 } else {
                     EmptyFrame()
                 }
-                if prefs.look == .clock {
+                if prefs.clockOverlay {
                     ClockOverlay(big: landscape ? 92 : 76)
                         .padding(.leading, landscape ? 48 : 28).padding(.bottom, landscape ? 104 : 140)
                         .allowsHitTesting(false)
                 }
             }
+        }
+    }
+
+    private func stepMode(_ d: Int) {
+        let all = FrameMode.allCases.filter { !$0.needsAccount || library.signedIn }
+        let i = all.firstIndex(of: prefs.mode) ?? 0
+        setMode(all[(i + d + all.count) % all.count])
+    }
+
+    private func setMode(_ m: FrameMode) {
+        withAnimation(Clean.ease(0.5)) { prefs.mode = m; modeToast = m.title }
+        UISelectionFeedbackGenerator().selectionChanged()
+        bump()
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            withAnimation(Clean.ease()) { if modeToast == m.title { modeToast = nil } }
         }
     }
 
@@ -129,7 +163,9 @@ struct FrameView: View {
         VStack {
             HStack(spacing: 12) {
                 GlassCircle(icon: "chevron.down") { withAnimation(Clean.ease(0.5)) { player.presentation = .mini } }
-                if let p = player.slide?.photos.first, let a = library.album(p.albumId) {
+                if !prefs.mode.usesPhotos {
+                    Text(prefs.mode.title).font(.figtree(15, .bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.4), radius: 6)
+                } else if let p = player.slide?.photos.first, let a = library.album(p.albumId) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(a.name).font(.figtree(15, .bold))
                         Text("\(player.position + 1) of \(player.count)\(library.online ? "" : " · offline")")
@@ -145,18 +181,26 @@ struct FrameView: View {
             }
             .padding(.horizontal, 18).padding(.top, landscape ? 18 : 58)
             Spacer()
+            if modeStrip { ModeStrip(current: prefs.mode) { setMode($0) }.transition(.move(edge: .bottom).combined(with: .opacity)) }
             HStack(spacing: 6) {
-                GlassCircle(icon: "backward.fill", plain: true) { player.previous(); bump() }
-                GlassCircle(icon: player.paused ? "play.fill" : "pause.fill", plain: true, big: true) { player.togglePause(); bump() }
-                GlassCircle(icon: "forward.fill", plain: true) { player.next(); bump() }
-                Divider().frame(height: 26).overlay(.white.opacity(0.3)).padding(.horizontal, 4)
-                GlassCircle(icon: prefs.look.icon, plain: true) {
-                    let all = Prefs.Look.allCases
-                    withAnimation(Clean.ease()) { prefs.look = all[(all.firstIndex(of: prefs.look)! + 1) % all.count] }
-                    bump()
+                if prefs.mode == .slideshow || prefs.mode == .nightstand {
+                    GlassCircle(icon: "backward.fill", plain: true) { player.previous(); bump() }
                 }
-                GlassCircle(icon: prefs.fit == .fill ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", plain: true) {
-                    withAnimation(Clean.ease()) { prefs.fit = prefs.fit == .fill ? .fit : .fill }; bump()
+                GlassCircle(icon: player.paused ? "play.fill" : "pause.fill", plain: true, big: true) { player.togglePause(); bump() }
+                if prefs.mode == .slideshow || prefs.mode == .nightstand {
+                    GlassCircle(icon: "forward.fill", plain: true) { player.next(); bump() }
+                }
+                Divider().frame(height: 26).overlay(.white.opacity(0.3)).padding(.horizontal, 4)
+                GlassCircle(icon: modeStrip ? "xmark" : "square.grid.2x2", plain: true) {
+                    withAnimation(Clean.ease()) { modeStrip.toggle() }; bump()
+                }
+                if prefs.mode == .slideshow {
+                    GlassCircle(icon: prefs.clockOverlay ? "clock.fill" : "clock", plain: true) {
+                        withAnimation(Clean.ease()) { prefs.clockOverlay.toggle() }; bump()
+                    }
+                    GlassCircle(icon: prefs.fit == .fill ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", plain: true) {
+                        withAnimation(Clean.ease()) { prefs.fit = prefs.fit == .fill ? .fit : .fill }; bump()
+                    }
                 }
                 GlassCircle(icon: "slider.horizontal.3", plain: true) { lookSheet = true }
             }
@@ -405,8 +449,18 @@ struct FrameOptions: View {
     var body: some View {
         @Bindable var prefs = prefs
         VStack(alignment: .leading, spacing: 22) {
-            group("Style") {
-                ForEach(Prefs.Look.allCases) { l in Chip(title: l.title, icon: l.icon, on: prefs.look == l) { prefs.look = l } }
+            group("Mode") {
+                ForEach(FrameMode.allCases) { m in Chip(title: m.title, icon: m.icon, on: prefs.mode == m) { prefs.mode = m } }
+            }
+            if prefs.mode == .scripture {
+                group("Bible translation") {
+                    ForEach(["KJV", "NKJV", "ESV", "NIV", "NLT", "AMP", "NET"], id: \.self) { t in Chip(title: t, on: prefs.translation == t) { prefs.translation = t } }
+                }
+            }
+            if prefs.mode == .mood {
+                group("Mood") {
+                    ForEach(ModeContent.moods, id: \.self) { m in Chip(title: m.capitalized, on: prefs.moodQuery == m) { prefs.moodQuery = m } }
+                }
             }
             group("Change photo every") {
                 ForEach([6.0, 12, 30, 60, 300], id: \.self) { s in
@@ -420,6 +474,8 @@ struct FrameOptions: View {
                 ForEach(Prefs.Fit.allCases) { f in Chip(title: f.title, on: prefs.fit == f) { prefs.fit = f } }
             }
             VStack(spacing: 14) {
+                Toggle(isOn: $prefs.clockOverlay) { label("Clock on photos", "A big clock in the corner of the slideshow") }
+                Divider().overlay(Clean.line)
                 Toggle(isOn: $prefs.shuffle) { label("Shuffle", "Mix photos from every album") }
                 Divider().overlay(Clean.line)
                 Toggle(isOn: $prefs.duo) { label("Side by side in landscape", "Two portrait photos at once, iPad style") }
@@ -476,5 +532,39 @@ struct FlowLayout: Layout {
             rows[rows.count - 1].h = max(rows[rows.count - 1].h, s.height)
         }
         return rows
+    }
+}
+
+
+/// Quick mode picker that slides up above the frame controls.
+struct ModeStrip: View {
+    let current: FrameMode
+    let pick: (FrameMode) -> Void
+    @Environment(Library.self) private var library
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(FrameMode.allCases.filter { !$0.needsAccount || library.signedIn }) { m in
+                        Button { pick(m) } label: {
+                            VStack(spacing: 6) {
+                                Image(systemName: m.icon).font(.system(size: 18, weight: .semibold))
+                                    .frame(width: 48, height: 48)
+                                    .background(Circle().fill(m == current ? Clean.cherry : .white.opacity(0.14)))
+                                Text(m.title).font(.figtree(11, .bold)).lineLimit(1)
+                            }
+                            .foregroundStyle(.white).frame(width: 70)
+                        }
+                        .buttonStyle(PressScale(scale: 0.92))
+                        .id(m)
+                    }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+            }
+            .scrollIndicators(.hidden)
+            .onAppear { proxy.scrollTo(current, anchor: .center) }
+        }
+        .glassPill()
+        .padding(.horizontal, 12).padding(.bottom, 8)
     }
 }
