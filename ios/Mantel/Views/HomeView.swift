@@ -70,7 +70,6 @@ struct HomeView: View {
                 status
             }
             Spacer()
-            IconButton(icon: "gearshape.fill", size: 42) { Nav.shared.tab = .settings }
         }
     }
 
@@ -122,7 +121,7 @@ struct HomeView: View {
                 }
                 .onTapGesture { player.play() }
             HStack(spacing: 10) {
-                Button { player.play() } label: { Label("Play full screen", systemImage: "play.fill") }
+                Button { player.play() } label: { Label("Play \(Prefs.shared.mode.title)", systemImage: Prefs.shared.mode.icon) }
                     .buttonStyle(CleanButton(kind: .primary, size: 52))
                 Button {
                     player.play(mode: .nightstand)

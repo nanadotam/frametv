@@ -215,7 +215,7 @@ struct ToastHost: ViewModifier {
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
             if let t = text {
-                ToastView(text: t).padding(.bottom, 28)
+                ToastView(text: t).padding(.bottom, 100)   // above the floating tab bar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .task(id: t) {
                         try? await Task.sleep(for: .seconds(2.8))

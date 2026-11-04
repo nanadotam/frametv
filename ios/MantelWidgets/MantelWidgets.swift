@@ -50,6 +50,10 @@ struct PhotoEntry: TimelineEntry {
 
 struct PhotoProvider: AppIntentTimelineProvider {
     var perEntry = 1
+    /// How many future entries to hand iOS per reload. iOS pre-renders every entry (with its photos) into one
+    /// archive and rejects the whole timeline if that archive is too big (~30 MB failed on a Pro Max), so
+    /// multi-photo widgets get fewer entries.
+    var entries = 8
     /// Clock widgets need an entry every minute (widgets can't tick on their own); photos still change every N minutes.
     var clock = false
 
@@ -73,10 +77,11 @@ struct PhotoProvider: AppIntentTimelineProvider {
         let start = (Int(Date().timeIntervalSince1970 / 60) / step + salt) % items.count
         let now = Date()
         let minute = Calendar.current.dateInterval(of: .minute, for: now)?.start ?? now
-        // Cover about two hours, at most 120 entries.
-        let count = clock ? 120 : min(120, max(12, 120 / step))
+        // Clock: one entry a minute for 30 minutes (photos repeat between changes, so they're decoded once).
+        let count = clock ? 30 : entries
         let entries = (0..<count).map { i -> PhotoEntry in
-            let slot = clock ? i / step : i
+            // Clock: the photo changes at most every 5 min (keeps the pre-rendered archive small).
+            let slot = clock ? i / max(step, 5) : i
             let first = (start + slot * perEntry) % items.count
             let group = (0..<perEntry).map { items[(first + $0) % items.count] }
             let at = clock ? minute.addingTimeInterval(Double(i * 60)) : now.addingTimeInterval(Double(i * step * 60))
@@ -98,7 +103,18 @@ struct PhotoProvider: AppIntentTimelineProvider {
 
 /// Loads a widget photo at exactly the resolution the box needs (aspect-fill, in pixels), so it's sharp but
 /// stays inside the widget's memory budget. `fill` is the on-screen size × display scale.
+/// Decoded images, reused across timeline entries (same photo + size = same image, decoded once).
+private let decoded: NSCache<NSString, UIImage> = { let c = NSCache<NSString, UIImage>(); c.totalCostLimit = 24 << 20; return c }()
+
 func widgetImage(_ file: String, fill: CGSize) -> UIImage? {
+    let key = "\(file)|\(Int(fill.width))x\(Int(fill.height))" as NSString
+    if let hit = decoded.object(forKey: key) { return hit }
+    let img = decodeWidgetImage(file, fill: fill)
+    if let img { decoded.setObject(img, forKey: key, cost: Int(img.size.width * img.size.height * 4)) }
+    return img
+}
+
+private func decodeWidgetImage(_ file: String, fill: CGSize) -> UIImage? {
     let url = AppGroup.widgetImageURL(file)
     guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
     var need = Swift.max(fill.width, fill.height)
@@ -126,11 +142,12 @@ func widgetImage(_ file: String, max: CGFloat) -> UIImage? {
 struct PhotoFill: View {
     let file: String?
     let family: WidgetFamily
-    var px: CGFloat? = nil          // kept for call sites; the real size comes from the layout
+    var px: CGFloat? = nil          // set on multi-photo tiles: renders those at 2× (crisp at tile size, half the archive)
     @Environment(\.displayScale) private var displayScale
     var body: some View {
         GeometryReader { g in
-            if let file, let img = widgetImage(file, fill: CGSize(width: g.size.width * displayScale, height: g.size.height * displayScale)) {
+            let scale = px == nil ? displayScale : min(displayScale, 2)
+            if let file, let img = widgetImage(file, fill: CGSize(width: (g.size.width * scale).rounded(), height: (g.size.height * scale).rounded())) {
                 Image(uiImage: img).resizable().interpolation(.high).antialiased(true).widgetAccentedRenderingMode(.fullColor)
                     .scaledToFill().frame(width: g.size.width, height: g.size.height).clipped()
             } else {
@@ -364,7 +381,7 @@ struct ClockWidget: Widget {
 
 struct PinterestWidget: Widget {
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: "MantelPinterest", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 12)) { PinterestWidgetView(entry: $0) }
+        AppIntentConfiguration(kind: "MantelPinterest", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 12, entries: 2)) { PinterestWidgetView(entry: $0) }
             .configurationDisplayName("Pinterest")
             .description("Staggered masonry columns of your photos.")
             .supportedFamilies([.systemMedium, .systemLarge, .systemExtraLarge])
@@ -375,7 +392,7 @@ struct PinterestWidget: Widget {
 
 struct MosaicWidget: Widget {
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: "MantelMosaic", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 4)) { MosaicView(entry: $0) }
+        AppIntentConfiguration(kind: "MantelMosaic", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 4, entries: 4)) { MosaicView(entry: $0) }
             .configurationDisplayName("Grid")
             .description("A mosaic that changes shape every few minutes.")
             .supportedFamilies([.systemMedium, .systemLarge, .systemExtraLarge])
@@ -386,7 +403,7 @@ struct MosaicWidget: Widget {
 
 struct ScrapbookWidget: Widget {
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: "MantelScrapbook", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 3)) { ScrapbookWidgetView(entry: $0) }
+        AppIntentConfiguration(kind: "MantelScrapbook", intent: PhotoConfig.self, provider: PhotoProvider(perEntry: 3, entries: 4)) { ScrapbookWidgetView(entry: $0) }
             .configurationDisplayName("Scrapbook")
             .description("Polaroids taped onto paper.")
             .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])

@@ -408,7 +408,7 @@ struct MiniFrame: View {
             .shadow(color: .black.opacity(0.3), radius: 24, y: 12)
             .padding(.horizontal, 14)
             .padding(.top, 8)
-            .padding(.bottom, 24)
+            .padding(.bottom, 96)      // clear of the floating tab bar
             .offset(drag)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: corner)
             .onTapGesture { withAnimation(Clean.ease(0.5)) { player.presentation = .full } }
@@ -459,7 +459,7 @@ struct FrameOptions: View {
         @Bindable var prefs = prefs
         VStack(alignment: .leading, spacing: 22) {
             group("Mode") {
-                ForEach(FrameMode.allCases) { m in Chip(title: m.title, icon: m.icon, on: prefs.mode == m) { prefs.mode = m } }
+                ForEach(FrameMode.allCases.filter { !$0.needsAccount || Library.shared.signedIn }) { m in Chip(title: m.title, icon: m.icon, on: prefs.mode == m) { prefs.mode = m } }
             }
             if prefs.mode == .scripture {
                 group("Bible translation") {
