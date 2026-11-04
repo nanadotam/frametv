@@ -111,7 +111,7 @@ struct FrameView: View {
                 }
                 if prefs.look == .clock {
                     ClockOverlay(big: landscape ? 92 : 76)
-                        .padding(.leading, landscape ? 48 : 28).padding(.bottom, landscape ? 36 : 56)
+                        .padding(.leading, landscape ? 48 : 28).padding(.bottom, landscape ? 104 : 140)
                         .allowsHitTesting(false)
                 }
             }
