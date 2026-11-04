@@ -1,0 +1,87 @@
+# Mantel for iPhone and iPad. Generate the Xcode project with:  cd ios && xcodegen generate
+# Build + install on a phone: scripts/install.sh   (see ios/README.md)
+name: Mantel
+options:
+  bundleIdPrefix: com.nanaamoako
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: 886M953F89
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: 1.0.0
+    CURRENT_PROJECT_VERSION: 1
+targets:
+  Mantel:
+    type: application
+    platform: iOS
+    sources:
+      - path: Mantel
+      - path: Shared
+      - path: Resources
+    dependencies:
+      - target: MantelWidgets
+        embed: true
+    entitlements:
+      path: Mantel/Mantel.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.nanaamoako.mantel]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nanaamoako.mantel
+        PRODUCT_NAME: Mantel
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Mantel
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Pick photos from your library to show on your Mantel.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    info:
+      path: Mantel/Info.plist
+      properties:
+        UIAppFonts: [Figtree-Regular.ttf, Figtree-Medium.ttf, Figtree-SemiBold.ttf, Figtree-Bold.ttf, Figtree-ExtraBold.ttf]
+        UIBackgroundModes: [audio]
+        CFBundleURLTypes:
+          - CFBundleURLName: com.nanaamoako.mantel
+            CFBundleURLSchemes: [mantel]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+  MantelWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: MantelWidgets
+      - path: Shared
+      - path: Resources/Fonts
+    entitlements:
+      path: MantelWidgets/MantelWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.nanaamoako.mantel]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nanaamoako.mantel.widgets
+        PRODUCT_NAME: MantelWidgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Mantel
+        SKIP_INSTALL: YES
+    info:
+      path: MantelWidgets/Info.plist
+      properties:
+        UIAppFonts: [Figtree-Regular.ttf, Figtree-Medium.ttf, Figtree-SemiBold.ttf, Figtree-Bold.ttf, Figtree-ExtraBold.ttf]
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+schemes:
+  Mantel:
+    build:
+      targets:
+        Mantel: all
+        MantelWidgets: all
+    run:
+      config: Debug
