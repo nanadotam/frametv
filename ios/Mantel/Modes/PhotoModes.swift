@@ -28,6 +28,27 @@ struct ModeImage: View {
     return p.isEmpty ? Library.shared.playlist.shuffled() : p
 }
 
+/// A photo tile, or a muted looping clip if it's a video.
+struct MixedTile: View {
+    let item: PhotoItem
+    var size: ImageCache.Size = .medium
+    @Environment(Player.self) private var player
+    var body: some View {
+        if item.video {
+            ClipView(clip: item, loop: true, paused: player.paused) { }
+                .overlay(alignment: .bottomLeading) {
+                    Image(systemName: "video.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(.white.opacity(0.85))
+                        .padding(5).background(.black.opacity(0.35), in: Circle()).padding(6)
+                }
+        } else {
+            ModeImage(photo: item, size: size)
+        }
+    }
+}
+
+/// Videos available to mix into photo layouts (showing albums).
+@MainActor private func videoSource() -> [PhotoItem] { Library.shared.videoPlaylist }
+
 // MARK: - Grid
 
 /// A mosaic that reshapes itself: 4 photos, then 3 (one big), then 6, 2, 5, 9…, depending on how many photos you have.
@@ -39,6 +60,9 @@ struct GridMode: View {
     @State private var tiles: [PhotoItem] = []
     @State private var layout = 0
     @State private var cursor = 0
+    @State private var videoCursor = 0
+    /// At most this many clips play at once (more would heat the phone up).
+    private var maxVideos: Int { Self.layouts[layout].count <= 3 ? 1 : 2 }
 
     /// Tile rectangles in unit space, drawn for a tall (portrait) screen; landscape swaps x/y.
     static let layouts: [[CGRect]] = [
@@ -73,7 +97,7 @@ struct GridMode: View {
                     let r = landscape ? CGRect(x: rects[i].minY, y: rects[i].minX, width: rects[i].height, height: rects[i].width) : rects[i]
                     let frame = CGRect(x: r.minX * g.size.width, y: r.minY * g.size.height, width: r.width * g.size.width, height: r.height * g.size.height).insetBy(dx: 1.5, dy: 1.5)
                     Group {
-                        if i < tiles.count { ModeImage(photo: tiles[i], size: r.width * r.height > 0.2 ? .medium : .thumb).id(tiles[i].id).transition(.opacity) }
+                        if i < tiles.count { MixedTile(item: tiles[i], size: r.width * r.height > 0.2 ? .medium : .thumb).id(tiles[i].id).transition(.opacity) }
                         else { Color.white.opacity(0.04) }
                     }
                     .frame(width: frame.width, height: frame.height)
@@ -97,20 +121,35 @@ struct GridMode: View {
     }
 
     private func fill() {
+        guard let t = pick(for: layout) else { return }
+        tiles = t
+    }
+
+    /// 12 photos for the slots, with up to `maxVideos` clips dropped into random visible slots.
+    private func pick(for layout: Int) -> [PhotoItem]? {
         let all = source()
-        guard !all.isEmpty else { return }
-        tiles = (0..<12).map { all[(cursor + $0) % all.count] }
-        cursor += 12
+        guard !all.isEmpty else { return nil }
+        var t = (0..<12).map { all[(cursor + $0) % all.count] }
+        cursor += Self.layouts[layout].count
+        let vids = videoSource()
+        let visible = Self.layouts[layout].count
+        if !vids.isEmpty, visible >= 2 {
+            let k = min(visible <= 3 ? 1 : 2, vids.count)
+            for slot in Array(0..<visible).shuffled().prefix(k) {
+                t[slot] = vids[videoCursor % vids.count]; videoCursor += 1
+            }
+        }
+        return t
     }
 
     /// Next layout (never the same twice), with fresh photos.
     private func reshape() {
         let options = available.filter { $0 != layout }
         guard let next = options.randomElement() else { swapOne(); return }
-        let all = source()
+        let t = pick(for: next)
         withAnimation(.spring(response: 0.8, dampingFraction: 0.85)) {
             layout = next
-            if !all.isEmpty { tiles = (0..<12).map { all[(cursor + $0) % all.count] }; cursor += Self.layouts[next].count }
+            if let t { tiles = t }
         }
     }
 
@@ -119,7 +158,11 @@ struct GridMode: View {
         let n = Self.layouts[layout].count
         guard n > 0, all.count > n else { return }
         let i = Int.random(in: 0..<n)
-        let next = all[cursor % all.count]; cursor += 1
+        var next = all[cursor % all.count]; cursor += 1
+        // Now and then swap in a clip, keeping the number playing low.
+        let vids = videoSource()
+        let playing = tiles.prefix(n).filter(\.video).count - (tiles[i].video ? 1 : 0)
+        if !vids.isEmpty, playing < maxVideos, Int.random(in: 0..<4) == 0 { next = vids[videoCursor % vids.count]; videoCursor += 1 }
         withAnimation(.easeInOut(duration: 1.2)) { tiles[i] = next }
     }
 }
@@ -151,7 +194,7 @@ struct PinterestMode: View {
                             ForEach(0..<2, id: \.self) { copy in        // drawn twice for a seamless loop
                                 VStack(spacing: gap) {
                                     ForEach(col) { p in
-                                        ModeImage(photo: p, size: n <= 2 ? .medium : .thumb)
+                                        MixedTile(item: p, size: n <= 2 ? .medium : .thumb)
                                             .frame(width: w, height: w / clampAspect(p.aspect))
                                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                     }
@@ -183,7 +226,13 @@ struct PinterestMode: View {
 
     /// Shortest-column-first, like CSS masonry. Capped so memory stays small.
     private func layout(_ n: Int) {
-        let all = Array(source().prefix(n * 9))
+        var all = Array(source().prefix(n * 9))
+        // Mix in a few clips (about one per column, at most 3 playing).
+        let vids = Array(videoSource().shuffled().prefix(min(3, n)))
+        for (k, v) in vids.enumerated() {
+            let at = min(all.count, (k + 1) * max(2, all.count / (vids.count + 1)))
+            all.insert(v, at: at)
+        }
         var cols = Array(repeating: [PhotoItem](), count: n), heights = Array(repeating: CGFloat(0), count: n)
         for p in all {
             let i = heights.indices.min { heights[$0] < heights[$1] }!

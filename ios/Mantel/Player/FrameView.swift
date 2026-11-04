@@ -64,6 +64,10 @@ struct FrameView: View {
                 PiPHost().ignoresSafeArea()   // the layer PiP lifts out (sits under the photo, showing the same frame)
                 content(landscape: landscape, size: geo.size)
                     .ignoresSafeArea()
+                    // Taps on the picture toggle the controls. This sits on the content only, so it never
+                    // competes with the close / minimise buttons drawn above it.
+                    .contentShape(Rectangle())
+                    .onTapGesture { toggleControls() }
                 if prefs.nightDim && ![.nightstand, .clock].contains(prefs.mode) { NightDim() }
                 if let t = modeToast {
                     Text(t).font(.figtree(17, .bold)).foregroundStyle(.white)
@@ -80,9 +84,7 @@ struct FrameView: View {
             .onAppear { player.relayout(landscape: landscape); bump() }
             .onChange(of: landscape) { _, l in player.relayout(landscape: l) }
         }
-        .contentShape(Rectangle())
-        .onTapGesture { withAnimation(Clean.ease(0.3)) { controls.toggle() }; if controls { bump() } }
-        .gesture(
+        .simultaneousGesture(
             DragGesture(minimumDistance: 18)
                 .onChanged { v in
                     if abs(v.translation.height) > abs(v.translation.width) { drag = CGSize(width: 0, height: v.translation.height) }
@@ -163,7 +165,7 @@ struct FrameView: View {
     @ViewBuilder private func overlay(landscape: Bool) -> some View {
         VStack {
             HStack(spacing: 12) {
-                GlassCircle(icon: "chevron.down") { withAnimation(Clean.ease(0.5)) { player.presentation = .mini } }
+                GlassCircle(icon: "chevron.down") { hideTask?.cancel(); withAnimation(Clean.ease(0.5)) { player.presentation = .mini } }
                 if !prefs.mode.usesPhotos {
                     Text(prefs.mode.title).font(.figtree(15, .bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.4), radius: 6)
                 } else if let p = player.slide?.photos.first, let a = library.album(p.albumId) {
@@ -178,7 +180,7 @@ struct FrameView: View {
                 if PiPController.supported {
                     GlassCircle(icon: "pip.enter") { player.pip.start() }
                 }
-                GlassCircle(icon: "xmark") { player.close() }
+                GlassCircle(icon: "xmark") { hideTask?.cancel(); player.close() }
             }
             .padding(.horizontal, 18).padding(.top, landscape ? 18 : 58)
             Spacer()
@@ -210,6 +212,11 @@ struct FrameView: View {
             .padding(.bottom, landscape ? 18 : 40)
         }
         .ignoresSafeArea()
+    }
+
+    private func toggleControls() {
+        withAnimation(Clean.ease(0.3)) { controls.toggle() }
+        if controls { bump() }
     }
 
     private func bump() {
@@ -262,7 +269,8 @@ private struct GlassCircleBG: ViewModifier {
     let plain: Bool
     func body(content: Content) -> some View {
         if plain { content }
-        else if #available(iOS 26.0, *) { content.glassEffect(.regular.interactive(), in: Circle()) }
+        // Not .interactive(): the interactive glass can take the touch before the Button sees it.
+        else if #available(iOS 26.0, *) { content.glassEffect(.regular, in: Circle()) }
         else { content.background(.ultraThinMaterial, in: Circle()).environment(\.colorScheme, .dark) }
     }
 }

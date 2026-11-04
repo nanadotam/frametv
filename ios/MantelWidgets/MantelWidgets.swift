@@ -192,16 +192,17 @@ struct MosaicView: View {
             ZStack(alignment: .topLeading) {
                 ForEach(0..<rects.count, id: \.self) { i in
                     let r = tall ? CGRect(x: rects[i].minY, y: rects[i].minX, width: rects[i].height, height: rects[i].width) : rects[i]
-                    let f = CGRect(x: r.minX * g.size.width, y: r.minY * g.size.height, width: r.width * g.size.width, height: r.height * g.size.height).insetBy(dx: 2, dy: 2)
+                    let f = CGRect(x: r.minX * g.size.width, y: r.minY * g.size.height, width: r.width * g.size.width, height: r.height * g.size.height).insetBy(dx: 3, dy: 3)
                     PhotoFill(file: entry.files[safe: i % max(entry.files.count, 1)], family: .systemSmall, px: 420)
                         .frame(width: f.width, height: f.height)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        // Concentric with the widget's own corners, like Apple's Photos widget.
+                        .clipShape(ContainerRelativeShape())
                         .offset(x: f.minX, y: f.minY)
                 }
             }
         }
         .padding(3)
-        .containerBackground(for: .widget) { Color.black }
+        .containerBackground(for: .widget) { Color(hex: 0x111111) }
         .widgetURL(URL(string: "mantel://play"))
     }
 }
@@ -248,23 +249,24 @@ struct PinterestWidgetView: View {
         let files = entry.files
         let cols = family == .systemMedium ? 3 : (family == .systemExtraLarge ? 4 : 2)
         GeometryReader { g in
-            HStack(alignment: .top, spacing: 4) {
+            HStack(alignment: .top, spacing: 6) {
                 ForEach(0..<cols, id: \.self) { c in
                     let heights: [CGFloat] = (c % 2 == 0) ? [0.62, 0.38, 0.45] : [0.4, 0.6, 0.45]
-                    VStack(spacing: 4) {
+                    VStack(spacing: 6) {
                         ForEach(0..<3, id: \.self) { r in
                             PhotoFill(file: files[safe: (c * 3 + r) % max(files.count, 1)], family: .systemSmall, px: 360)
                                 .frame(height: g.size.height * heights[r])
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                     }
                     .offset(y: c % 2 == 0 ? 0 : -g.size.height * 0.12)
                 }
             }
             .frame(width: g.size.width, height: g.size.height, alignment: .top)
-            .clipped()
+            // Staggered columns run off the edges, so trim the whole wall to the widget's shape.
+            .clipShape(ContainerRelativeShape())
         }
-        .padding(4)
+        .padding(6)
         .containerBackground(for: .widget) { Color(hex: 0x111111) }
         .widgetURL(URL(string: "mantel://play"))
     }
