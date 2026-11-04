@@ -102,7 +102,7 @@ final class ModeContent {
         if let bg = verseBackground {
             Task.detached {
                 if let (data, _) = try? await MantelAPI.shared.fetch(URLRequest(url: bg.url)),
-                   let img = ImageCache.downsample(data: data, max: 900), let jpg = img.jpegData(compressionQuality: 0.8) {
+                   let img = ImageCache.downsample(data: data, max: 1600), let jpg = img.jpegData(compressionQuality: 0.88) {
                     try? jpg.write(to: AppGroup.widget.appending(path: "verse.jpg"), options: .atomic)
                 }
                 WidgetCenter.shared.reloadTimelines(ofKind: "MantelVerse")

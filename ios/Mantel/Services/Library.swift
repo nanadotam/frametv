@@ -422,7 +422,7 @@ final class Library {
             pick += chosen
             albumsOut.append(WidgetAlbum(id: a.id, name: a.name, count: chosen.count))
         }
-        pick = Array(pick.prefix(240))
+        pick = Array(pick.prefix(150))   // ~150 HD copies ≈ 50–60 MB
         let names = Dictionary(uniqueKeysWithValues: albums.map { ($0.id, $0.name) })
         let minutes = Prefs.shared.widgetMinutes
         Task.detached(priority: .utility) {
@@ -430,15 +430,15 @@ final class Library {
             var items: [WidgetFeed.Item] = []
             var keep = Set<String>(["feed.json", "albums.json", "verse.json", "verse.jpg"])
             for p in pick {
-                let file = "\(p.id).jpg"
+                let file = "\(p.id)-hd.jpg"   // "-hd": 1600 px copies (older 900 px ones get cleared)
                 keep.insert(file)
                 let dest = dir.appending(path: file)
                 if !FileManager.default.fileExists(atPath: dest.path) {
                     let src = p.localFile.map { ImageCache.deviceDir.appending(path: $0) } ?? ImageCache.shared.fileURL(p, .full)
-                    // Widgets have a tight memory budget: ~900 px is sharp on a StandBy screen.
+                    // 1600 px covers a large widget and StandBy on a Pro Max at 3×; the widget decodes only what it needs.
                     var img: UIImage?
-                    if let a = p.assetId { img = await ImageCache.libraryImage(a, max: 900) } else { img = ImageCache.downsample(url: src, max: 900) }
-                    guard let img, let d = img.jpegData(compressionQuality: 0.8) else { continue }
+                    if let a = p.assetId { img = await ImageCache.libraryImage(a, max: 1600) } else { img = ImageCache.downsample(url: src, max: 1600) }
+                    guard let img, let d = img.jpegData(compressionQuality: 0.9) else { continue }
                     try? d.write(to: dest, options: .atomic)
                 }
                 items.append(.init(file: file, album: names[p.albumId] ?? "Mantel", takenAt: p.takenAt, albumId: p.albumId, showing: showingIds.contains(p.id)))

@@ -96,7 +96,22 @@ struct PhotoProvider: AppIntentTimelineProvider {
     }
 }
 
-/// Loads a widget photo small enough for the widget's memory budget.
+/// Loads a widget photo at exactly the resolution the box needs (aspect-fill, in pixels), so it's sharp but
+/// stays inside the widget's memory budget. `fill` is the on-screen size × display scale.
+func widgetImage(_ file: String, fill: CGSize) -> UIImage? {
+    let url = AppGroup.widget.appending(path: file)
+    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    var need = Swift.max(fill.width, fill.height)
+    if let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+       let w = props[kCGImagePropertyPixelWidth] as? CGFloat, let h = props[kCGImagePropertyPixelHeight] as? CGFloat, w > 0, h > 0 {
+        let o = (props[kCGImagePropertyOrientation] as? Int) ?? 1
+        let (sw, sh) = o >= 5 ? (h, w) : (w, h)
+        let scale = Swift.max(fill.width / sw, fill.height / sh)    // aspect-fill
+        need = Swift.max(sw, sh) * scale
+    }
+    return widgetImage(file, max: Swift.min(Swift.max(need, 200), 1600))
+}
+
 func widgetImage(_ file: String, max: CGFloat) -> UIImage? {
     let url = AppGroup.widget.appending(path: file)
     guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
@@ -105,20 +120,18 @@ func widgetImage(_ file: String, max: CGFloat) -> UIImage? {
     return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary).map { UIImage(cgImage: $0) }
 }
 
-private func maxPixels(_ family: WidgetFamily) -> CGFloat {
-    switch family { case .systemSmall: 500; case .systemMedium: 760; default: 900 }
-}
 
 // MARK: - Views
 
 struct PhotoFill: View {
     let file: String?
     let family: WidgetFamily
-    var px: CGFloat? = nil
+    var px: CGFloat? = nil          // kept for call sites; the real size comes from the layout
+    @Environment(\.displayScale) private var displayScale
     var body: some View {
         GeometryReader { g in
-            if let file, let img = widgetImage(file, max: px ?? maxPixels(family)) {
-                Image(uiImage: img).resizable().widgetAccentedRenderingMode(.fullColor)
+            if let file, let img = widgetImage(file, fill: CGSize(width: g.size.width * displayScale, height: g.size.height * displayScale)) {
+                Image(uiImage: img).resizable().interpolation(.high).antialiased(true).widgetAccentedRenderingMode(.fullColor)
                     .scaledToFill().frame(width: g.size.width, height: g.size.height).clipped()
             } else {
                 ZStack {
